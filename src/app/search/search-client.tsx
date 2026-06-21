@@ -2,19 +2,26 @@
 
 import { useRef, useState } from "react";
 
-import type { AnimeSearchResult } from "@/app/api/anime/search/route";
-import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { AddToLibraryButton } from "@/components/add-to-library-button";
+import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type { JikanAnime } from "@/lib/jikan";
 
 type SearchState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "results"; query: string; results: AnimeSearchResult[] };
+  | { kind: "results"; query: string; results: JikanAnime[] };
+
+/** Best available poster from a Jikan record. */
+function posterOf(anime: JikanAnime): string | null {
+  return (
+    anime.images?.jpg?.large_image_url ?? anime.images?.jpg?.image_url ?? null
+  );
+}
 
 export function SearchClient() {
   const [query, setQuery] = useState("");
@@ -24,7 +31,8 @@ export function SearchClient() {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     const q = query.trim();
-    if (!q) return;
+    // The API requires q >= 2 chars; mirror that here.
+    if (q.length < 2) return;
 
     // Cancel any in-flight request before starting a new one.
     abortRef.current?.abort();
@@ -44,7 +52,7 @@ export function SearchClient() {
       setState({
         kind: "results",
         query: q,
-        results: (body.results ?? []) as AnimeSearchResult[],
+        results: (body.results ?? []) as JikanAnime[],
       });
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -65,7 +73,10 @@ export function SearchClient() {
           aria-label="Search anime"
           className="h-9"
         />
-        <Button type="submit" disabled={state.kind === "loading" || !query.trim()}>
+        <Button
+          type="submit"
+          disabled={state.kind === "loading" || query.trim().length < 2}
+        >
           {state.kind === "loading" ? "Searching…" : "Search"}
         </Button>
       </form>
@@ -86,7 +97,7 @@ export function SearchClient() {
         {state.kind === "results" && state.results.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {state.results.map((result) => (
-              <ResultCard key={result.malId} result={result} />
+              <ResultCard key={result.mal_id} result={result} />
             ))}
           </div>
         ) : null}
@@ -95,14 +106,16 @@ export function SearchClient() {
   );
 }
 
-function ResultCard({ result }: { result: AnimeSearchResult }) {
+function ResultCard({ result }: { result: JikanAnime }) {
+  const poster = posterOf(result);
+
   return (
     <Card className="group flex flex-col gap-0 overflow-hidden py-0">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
-        {result.image ? (
+        {poster ? (
           // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN); avoids next/image remote config.
           <img
-            src={result.image}
+            src={poster}
             alt={result.title}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -124,13 +137,21 @@ function ResultCard({ result }: { result: AnimeSearchResult }) {
           className="line-clamp-2 text-sm font-medium leading-snug"
           title={result.title}
         >
-          {result.title}
+          {result.title_english ?? result.title}
         </h3>
         <p className="text-xs text-muted-foreground">
           {result.episodes ? `${result.episodes} episodes` : "Episodes —"}
         </p>
         <div className="mt-auto pt-1">
-          <AddToLibraryButton item={result} />
+          <AddToLibraryButton
+            item={{
+              malId: result.mal_id,
+              title: result.title,
+              image: poster,
+              synopsis: result.synopsis,
+              episodes: result.episodes,
+            }}
+          />
         </div>
       </CardContent>
     </Card>

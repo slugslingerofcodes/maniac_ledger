@@ -1,135 +1,80 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
 
-// Jikan v4 — the unofficial MyAnimeList API. Docs: https://docs.api.jikan.moe/
-const JIKAN_ENDPOINT = "https://api.jikan.moe/v4/anime";
-const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 25;
-const REQUEST_TIMEOUT_MS = 8000;
-// Default synopsis length, keeping payloads light for autocomplete UIs.
-// Pass ?full=true to receive the untruncated synopsis.
-const SYNOPSIS_PREVIEW_LENGTH = 300;
+import { JikanError, searchAnime, type JikanAnime } from "@/lib/jikan";
 
-// Truncate to `max` chars on a word boundary, appending an ellipsis.
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const slice = text.slice(0, max);
-  const lastSpace = slice.lastIndexOf(" ");
-  return `${slice.slice(0, lastSpace > 0 ? lastSpace : max).trimEnd()}…`;
-}
+/**
+ * GET /api/anime/search?q=naruto&page=1
+ *
+ * Proxies the Jikan v4 search through our typed client (which rate-limits to
+ * stay inside Jikan's ~3 req/sec budget) and edge-caches responses for an hour.
+ */
 
-// Subset of the fields we read from each Jikan result.
-interface JikanAnime {
-  mal_id: number;
-  title: string;
-  synopsis: string | null;
-  episodes: number | null;
-  score: number | null;
-  images?: {
-    jpg?: { image_url?: string | null; large_image_url?: string | null };
-  };
-}
+// q: at least 2 chars. page: optional positive integer, defaults to 1.
+const QuerySchema = z.object({
+  q: z.string().trim().min(2, "Query must be at least 2 characters."),
+  page: z.coerce
+    .number()
+    .int("Page must be an integer.")
+    .positive("Page must be a positive integer.")
+    .optional()
+    .default(1),
+});
 
-interface JikanSearchResponse {
-  data?: JikanAnime[];
-}
-
-export interface AnimeSearchResult {
-  malId: number;
-  title: string;
-  image: string | null;
-  synopsis: string | null;
-  episodes: number | null;
-  score: number | null;
+export interface AnimeSearchResponse {
+  results: JikanAnime[];
+  pagination: Awaited<ReturnType<typeof searchAnime>>["pagination"];
 }
 
 export async function GET(request: NextRequest) {
-  const q = request.nextUrl.searchParams.get("q")?.trim();
+  const { searchParams } = request.nextUrl;
 
-  if (!q) {
+  const parsed = QuerySchema.safeParse({
+    q: searchParams.get("q") ?? undefined,
+    page: searchParams.get("page") ?? undefined,
+  });
+
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Missing required query parameter "q".' },
+      {
+        error: "Invalid query parameters.",
+        details: parsed.error.issues.map((issue) => issue.message),
+      },
       { status: 400 },
     );
   }
 
-  // Optional ?limit= (1–25), defaults to 10.
-  const rawLimit = Number(request.nextUrl.searchParams.get("limit"));
-  const limit =
-    Number.isFinite(rawLimit) && rawLimit > 0
-      ? Math.min(Math.trunc(rawLimit), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const { q, page } = parsed.data;
 
-  // Return the full synopsis only when ?full=true; otherwise send a preview.
-  const full = request.nextUrl.searchParams.get("full") === "true";
-
-  const url = new URL(JIKAN_ENDPOINT);
-  url.searchParams.set("q", q);
-  url.searchParams.set("limit", String(limit));
-  url.searchParams.set("sfw", "true");
-
-  let upstream: Response;
   try {
-    upstream = await fetch(url, {
-      headers: { Accept: "application/json" },
-      // Cache identical searches for an hour to stay within Jikan's rate limits.
-      next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const { data, pagination } = await searchAnime(q, page);
+
+    return NextResponse.json(
+      { results: data, pagination } satisfies AnimeSearchResponse,
+      {
+        headers: {
+          // Cache at the edge for 1 hour; serve stale up to a day while
+          // revalidating in the background.
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
+    );
   } catch (err) {
-    const isTimeout =
-      err instanceof DOMException && err.name === "TimeoutError";
+    // Log the real cause server-side, but never leak it to the client.
+    console.error("[/api/anime/search] upstream failure:", err);
+
+    // Pass through Jikan's rate-limit signal so clients can back off; everything
+    // else collapses to a generic 500.
+    if (err instanceof JikanError && err.status === 429) {
+      return NextResponse.json(
+        { error: "Rate limited by the upstream anime service. Try again shortly." },
+        { status: 429 },
+      );
+    }
+
     return NextResponse.json(
-      {
-        error: isTimeout
-          ? "The anime search request timed out. Please try again."
-          : "Could not reach the anime search service.",
-      },
-      { status: 504 },
+      { error: "Failed to fetch anime search results. Please try again." },
+      { status: 500 },
     );
   }
-
-  // Jikan rate limit — surface it so the caller can back off.
-  if (upstream.status === 429) {
-    return NextResponse.json(
-      {
-        error:
-          "Rate limited by the anime search service. Please try again shortly.",
-      },
-      { status: 429 },
-    );
-  }
-
-  if (!upstream.ok) {
-    return NextResponse.json(
-      { error: `Anime search failed (upstream status ${upstream.status}).` },
-      { status: 502 },
-    );
-  }
-
-  let payload: JikanSearchResponse;
-  try {
-    payload = (await upstream.json()) as JikanSearchResponse;
-  } catch {
-    return NextResponse.json(
-      { error: "Received a malformed response from the anime search service." },
-      { status: 502 },
-    );
-  }
-
-  const results: AnimeSearchResult[] = (payload.data ?? []).map((anime) => ({
-    malId: anime.mal_id,
-    title: anime.title,
-    image:
-      anime.images?.jpg?.large_image_url ??
-      anime.images?.jpg?.image_url ??
-      null,
-    synopsis:
-      anime.synopsis && !full
-        ? truncate(anime.synopsis, SYNOPSIS_PREVIEW_LENGTH)
-        : anime.synopsis ?? null,
-    episodes: anime.episodes ?? null,
-    score: anime.score ?? null,
-  }));
-
-  return NextResponse.json({ query: q, count: results.length, results });
 }

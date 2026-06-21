@@ -83,6 +83,20 @@ export interface JikanByIdResponse {
   data: JikanAnime;
 }
 
+/** A single episode from `/anime/{id}/episodes`. `mal_id` is the episode number. */
+export interface JikanEpisode {
+  mal_id: number;
+  title: string | null;
+  aired: string | null;
+  filler: boolean;
+  recap: boolean;
+}
+
+export interface JikanEpisodesResponse {
+  data: JikanEpisode[];
+  pagination: JikanPagination;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Errors                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -209,4 +223,36 @@ export function getAnimeById(malId: number): Promise<JikanAnime> {
   return jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`).then(
     (r) => r.data,
   );
+}
+
+/**
+ * One page of an anime's episode list (`/anime/{id}/episodes`, 100 per page).
+ *
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function getAnimeEpisodes(
+  malId: number,
+  page = 1,
+): Promise<JikanEpisodesResponse> {
+  return jikanFetch<JikanEpisodesResponse>(
+    `/anime/${malId}/episodes?page=${page}`,
+  );
+}
+
+/**
+ * Every episode of an anime, paging through `/anime/{id}/episodes` until done.
+ * Capped at `maxPages` (100 episodes/page) so a 1000+ episode series can't fire
+ * an unbounded number of requests.
+ */
+export async function getAllAnimeEpisodes(
+  malId: number,
+  maxPages = 10,
+): Promise<JikanEpisode[]> {
+  const all: JikanEpisode[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { data, pagination } = await getAnimeEpisodes(malId, page);
+    all.push(...data);
+    if (!pagination.has_next_page) break;
+  }
+  return all;
 }

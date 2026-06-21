@@ -76,3 +76,49 @@ export async function updateProgress(
 
   return { ok: true };
 }
+
+export type ToggleEpisodeResult =
+  | { ok: true; watched: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Marks a single episode watched (insert) or unwatched (delete) for the
+ * signed-in user. The episode_progress trigger bumps user_progress.last_watched_at
+ * on insert, driving "Continue Watching".
+ */
+export async function toggleEpisodeWatched(
+  episodeId: string,
+  animeId: string,
+  watched: boolean,
+): Promise<ToggleEpisodeResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to track episodes." };
+  }
+
+  if (watched) {
+    const { error } = await supabase
+      .from("episode_progress")
+      .upsert(
+        { user_id: user.id, episode_id: episodeId },
+        { onConflict: "user_id,episode_id", ignoreDuplicates: true },
+      );
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("episode_progress")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("episode_id", episodeId);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath(`/anime/${animeId}`);
+  revalidatePath("/library");
+
+  return { ok: true, watched };
+}

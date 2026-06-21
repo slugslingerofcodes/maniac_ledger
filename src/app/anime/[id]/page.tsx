@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
+import { ensureEpisodes } from "@/lib/episodes";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -11,6 +12,7 @@ import type {
   WatchStatus,
 } from "@/types/anime";
 
+import { EpisodeList } from "./episode-list";
 import { ProgressTracker } from "./progress-tracker";
 
 const UUID_RE =
@@ -80,31 +82,45 @@ export default async function AnimeDetailPage({
   }
   if (!anime) notFound();
 
-  const [{ data: episodes }, user] = await Promise.all([
-    supabase
-      .from("episodes")
-      .select("id, number, title, aired_date")
-      .eq("anime_id", id)
-      .order("number", { ascending: true }),
-    getUser(),
-  ]);
+  const user = await getUser();
+
+  // Populate the episode catalog from Jikan on first view (best-effort; needs a
+  // signed-in session per the episodes INSERT policy from migration 0005).
+  await ensureEpisodes(anime.id, anime.mal_id);
+
+  const { data: episodes } = await supabase
+    .from("episodes")
+    .select("id, number, title, aired_date")
+    .eq("anime_id", id)
+    .order("number", { ascending: true });
 
   let progress: {
     episodes_watched: number;
     status: WatchStatus;
     score: number | null;
   } | null = null;
+  let watchedEpisodeIds: string[] = [];
 
   if (user) {
-    const { data } = await supabase
+    const { data: progressRow } = await supabase
       .from("user_progress")
       .select("episodes_watched, status, score")
       .eq("anime_id", id)
       .maybeSingle();
-    progress = data;
+    progress = progressRow;
+
+    if (episodes && episodes.length > 0) {
+      const { data: watchedRows } = await supabase
+        .from("episode_progress")
+        .select("episode_id")
+        .in(
+          "episode_id",
+          episodes.map((e) => e.id),
+        );
+      watchedEpisodeIds = (watchedRows ?? []).map((r) => r.episode_id);
+    }
   }
 
-  const watchedCount = progress?.episodes_watched ?? 0;
   const year =
     anime.year ?? (anime.airing_start ? new Date(anime.airing_start).getFullYear() : null);
 
@@ -211,39 +227,11 @@ export default async function AnimeDetailPage({
               ) : null}
             </h2>
             {episodes && episodes.length > 0 ? (
-              <ul className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-foreground/10">
-                {episodes.map((ep) => {
-                  const watched = ep.number <= watchedCount;
-                  return (
-                    <li
-                      key={ep.id}
-                      className="flex items-center gap-3 bg-card px-4 py-2.5 text-sm"
-                    >
-                      <span
-                        aria-hidden
-                        className={
-                          watched
-                            ? "text-emerald-400"
-                            : "text-muted-foreground/40"
-                        }
-                      >
-                        {watched ? "✓" : "○"}
-                      </span>
-                      <span className="w-10 shrink-0 tabular-nums text-muted-foreground">
-                        {ep.number}
-                      </span>
-                      <span className="flex-1 truncate">
-                        {ep.title ?? `Episode ${ep.number}`}
-                      </span>
-                      {ep.aired_date ? (
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {new Date(ep.aired_date).toLocaleDateString()}
-                        </span>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+              <EpisodeList
+                animeId={anime.id}
+                episodes={episodes}
+                initialWatchedIds={watchedEpisodeIds}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 No episode list available for this title.

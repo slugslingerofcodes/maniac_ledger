@@ -10,6 +10,7 @@ import type {
   TablesInsert,
   TablesUpdate,
   Enums,
+  Views,
 } from "@/lib/database.types";
 
 // Table row shapes
@@ -24,6 +25,13 @@ export type EpisodeUpdate = TablesUpdate<"episodes">;
 export type UserProgress = Tables<"user_progress">;
 export type UserProgressInsert = TablesInsert<"user_progress">;
 export type UserProgressUpdate = TablesUpdate<"user_progress">;
+
+export type EpisodeProgress = Tables<"episode_progress">;
+export type EpisodeProgressInsert = TablesInsert<"episode_progress">;
+export type EpisodeProgressUpdate = TablesUpdate<"episode_progress">;
+
+/** Derived watched-episode count per (user, anime) — from the SQL view. */
+export type AnimeWatchedCount = Views<"anime_watched_count">;
 
 // Enums explicitly requested
 export type WatchStatus = Enums<"watch_status">;

@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    // MyAnimeList CDN serves the Jikan poster images used across the app.
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.myanimelist.net" },
+    ],
+  },
 };
 
 export default nextConfig;

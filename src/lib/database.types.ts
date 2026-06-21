@@ -22,8 +22,11 @@ export type Database = {
           id: string;
           mal_id: number | null;
           title: string;
+          title_english: string | null;
           synopsis: string | null;
           poster_url: string | null;
+          score: number | null;
+          studio: string | null;
           total_episodes: number | null;
           status: Database["public"]["Enums"]["airing_status"];
           airing_start: string | null;
@@ -39,8 +42,11 @@ export type Database = {
           id?: string;
           mal_id?: number | null;
           title: string;
+          title_english?: string | null;
           synopsis?: string | null;
           poster_url?: string | null;
+          score?: number | null;
+          studio?: string | null;
           total_episodes?: number | null;
           status?: Database["public"]["Enums"]["airing_status"];
           airing_start?: string | null;
@@ -56,8 +62,11 @@ export type Database = {
           id?: string;
           mal_id?: number | null;
           title?: string;
+          title_english?: string | null;
           synopsis?: string | null;
           poster_url?: string | null;
+          score?: number | null;
+          studio?: string | null;
           total_episodes?: number | null;
           status?: Database["public"]["Enums"]["airing_status"];
           airing_start?: string | null;
@@ -117,6 +126,7 @@ export type Database = {
           notes: string | null;
           started_at: string | null;
           completed_at: string | null;
+          last_watched_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -130,6 +140,7 @@ export type Database = {
           notes?: string | null;
           started_at?: string | null;
           completed_at?: string | null;
+          last_watched_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -143,6 +154,7 @@ export type Database = {
           notes?: string | null;
           started_at?: string | null;
           completed_at?: string | null;
+          last_watched_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -163,8 +175,53 @@ export type Database = {
           },
         ];
       };
+      episode_progress: {
+        Row: {
+          id: string;
+          user_id: string;
+          episode_id: string;
+          watched_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          episode_id: string;
+          watched_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          episode_id?: string;
+          watched_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "episode_progress_episode_id_fkey";
+            columns: ["episode_id"];
+            isOneToOne: false;
+            referencedRelation: "episodes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "episode_progress_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
-    Views: Record<never, never>;
+    Views: {
+      anime_watched_count: {
+        Row: {
+          user_id: string | null;
+          anime_id: string | null;
+          watched_count: number | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: Record<never, never>;
     Enums: {
       airing_status:
@@ -204,3 +261,6 @@ export type TablesUpdate<T extends keyof PublicSchema["Tables"]> =
 
 export type Enums<T extends keyof PublicSchema["Enums"]> =
   PublicSchema["Enums"][T];
+
+export type Views<T extends keyof PublicSchema["Views"]> =
+  PublicSchema["Views"][T]["Row"];

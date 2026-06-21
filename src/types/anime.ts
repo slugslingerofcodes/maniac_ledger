@@ -34,6 +34,12 @@ export type Notification = Tables<"notifications">;
 export type NotificationInsert = TablesInsert<"notifications">;
 export type NotificationUpdate = TablesUpdate<"notifications">;
 
+/** A stored AI recommendation row. (The action's enriched, poster-bearing
+ * return shape is `RecommendedAnime` in `@/app/actions/recommendations`.) */
+export type Recommendation = Tables<"recommendations">;
+export type RecommendationInsert = TablesInsert<"recommendations">;
+export type RecommendationUpdate = TablesUpdate<"recommendations">;
+
 /** Derived watched-episode count per (user, anime) — from the SQL view. */
 export type AnimeWatchedCount = Views<"anime_watched_count">;
 

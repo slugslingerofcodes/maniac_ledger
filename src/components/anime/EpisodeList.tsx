@@ -36,26 +36,39 @@ export function EpisodeList({ episodes, initialWatchedIds }: Props) {
 
   const [isPending, startTransition] = useTransition();
 
-  function onToggle(episodeId: string) {
-    const willWatch = !watched.has(episodeId);
-
+  function commitToggle(episodeId: string, target: boolean) {
     startTransition(async () => {
       // Instant UI flip; auto-reverts to `watched` if the transition ends
       // without us committing the change below.
       applyOptimistic(episodeId);
 
-      const res = await toggleEpisode(episodeId, willWatch);
-      if (res.ok) {
-        setWatched((prev) => {
-          const next = new Set(prev);
-          if (willWatch) next.add(episodeId);
-          else next.delete(episodeId);
-          return next;
-        });
-      } else {
+      const res = await toggleEpisode(episodeId, target);
+      if (!res.ok) {
         toast.error(res.error);
+        return;
+      }
+
+      setWatched((prev) => {
+        const next = new Set(prev);
+        if (target) next.add(episodeId);
+        else next.delete(episodeId);
+        return next;
+      });
+
+      // Un-marking is the destructive direction — offer a one-tap undo.
+      if (!target) {
+        toast("Episode unmarked", {
+          action: {
+            label: "Undo",
+            onClick: () => commitToggle(episodeId, true),
+          },
+        });
       }
     });
+  }
+
+  function onToggle(episodeId: string) {
+    commitToggle(episodeId, !watched.has(episodeId));
   }
 
   const watchedCount = optimisticWatched.size;

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { resolveAndAssignFranchise } from "@/lib/franchise";
-import type { JikanAnime } from "@/lib/jikan";
+import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { addToLibrary } from "@/lib/library";
 import { createClient } from "@/lib/supabase/server";
 
@@ -49,4 +49,22 @@ export async function addToLibraryAction(
       error: err instanceof Error ? err.message : "Failed to add to library.",
     };
   }
+}
+
+/**
+ * Adds an anime by MyAnimeList id — for callers (e.g. the recommendations page)
+ * that only have a mal_id, not a full JikanAnime. Fetches the record via the
+ * Jikan client, then delegates to the same `addToLibrary` core as the search
+ * flow, including the post-response franchise resolution.
+ */
+export async function addToLibraryByMalId(
+  malId: number,
+): Promise<AddToLibraryActionResult> {
+  let anime: JikanAnime;
+  try {
+    anime = await getAnimeById(malId);
+  } catch {
+    return { ok: false, error: "Couldn't find that anime on MyAnimeList." };
+  }
+  return addToLibraryAction(anime);
 }

@@ -255,6 +255,50 @@ export type Database = {
           },
         ];
       };
+      recommendations: {
+        Row: {
+          id: string;
+          user_id: string;
+          mal_id: number;
+          reason: string;
+          title: string | null;
+          poster_url: string | null;
+          score: number | null;
+          generated_at: string;
+          dismissed: boolean;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          mal_id: number;
+          reason: string;
+          title?: string | null;
+          poster_url?: string | null;
+          score?: number | null;
+          generated_at?: string;
+          dismissed?: boolean;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          mal_id?: number;
+          reason?: string;
+          title?: string | null;
+          poster_url?: string | null;
+          score?: number | null;
+          generated_at?: string;
+          dismissed?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recommendations_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       anime_watched_count: {

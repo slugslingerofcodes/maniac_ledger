@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
+import { ContinueWatching } from "@/components/anime/ContinueWatching";
 import { LibraryGrid } from "@/components/library-grid";
 import { SiteHeader } from "@/components/site-header";
 import { buttonVariants } from "@/components/ui/button";
@@ -63,6 +64,9 @@ export default function Home() {
       <SiteHeader />
       <Hero />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <Suspense fallback={null}>
+          <ContinueWatching />
+        </Suspense>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">Your Library</h2>
         </div>

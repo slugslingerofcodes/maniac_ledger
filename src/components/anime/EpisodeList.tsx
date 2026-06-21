@@ -77,7 +77,8 @@ export function EpisodeList({ episodes, initialWatchedIds }: Props) {
           return (
             <li
               key={ep.id}
-              className="flex items-center gap-3 bg-card px-4 py-2.5 text-sm"
+              id={`ep-${ep.number}`}
+              className="flex scroll-mt-24 items-center gap-3 bg-card px-4 py-2.5 text-sm"
             >
               <input
                 id={checkboxId}

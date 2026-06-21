@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -60,4 +61,61 @@ export async function toggleEpisode(
   revalidatePath("/library");
 
   return { ok: true, watched };
+}
+
+/**
+ * Patch shape for a user_progress row. Every field is optional so callers can
+ * send just what changed; upsert leaves unspecified columns untouched. `.strict()`
+ * rejects unknown keys so a malformed client patch can't write arbitrary columns.
+ */
+const PROGRESS_PATCH = z
+  .object({
+    status: z
+      .enum(["watching", "completed", "plan_to_watch", "on_hold", "dropped"])
+      .optional(),
+    score: z.number().int().min(1).max(10).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+    episodes_watched: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+export type ProgressPatch = z.infer<typeof PROGRESS_PATCH>;
+
+export type UpsertProgressResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Creates or patches the signed-in user's progress row for an anime. Upserts on
+ * the (user_id, anime_id) unique constraint, so the first call adds the anime to
+ * the library and later calls edit it. The Zod patch is validated server-side;
+ * RLS scopes the write to the current user.
+ */
+export async function upsertProgress(
+  animeId: string,
+  patch: ProgressPatch,
+): Promise<UpsertProgressResult> {
+  const parsed = PROGRESS_PATCH.safeParse(patch);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid progress update." };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to track anime." };
+  }
+
+  const { error } = await supabase.from("user_progress").upsert(
+    { user_id: user.id, anime_id: animeId, ...parsed.data },
+    { onConflict: "user_id,anime_id" },
+  );
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/anime/${animeId}`);
+  revalidatePath("/library");
+  revalidatePath("/");
+
+  return { ok: true };
 }

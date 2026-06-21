@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EpisodeList } from "@/components/anime/EpisodeList";
+import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -238,16 +239,20 @@ export default async function AnimeDetailPage({
           {/* Sidebar: my status, rating, episode count, progress bar */}
           <aside className="lg:sticky lg:top-20 lg:self-start">
             {user ? (
-              <ProgressTracker
-                animeId={anime.id}
-                totalEpisodes={anime.total_episodes}
-                inLibrary={progress != null}
-                initial={{
-                  episodesWatched: progress?.episodes_watched ?? 0,
-                  status: progress?.status ?? "plan_to_watch",
-                  score: progress?.score ?? null,
-                }}
-              />
+              <>
+                {/* Live-refresh this page when progress changes in another tab. */}
+                <RealtimeProgress animeId={anime.id} userId={user.id} />
+                <ProgressTracker
+                  animeId={anime.id}
+                  totalEpisodes={anime.total_episodes}
+                  inLibrary={progress != null}
+                  initial={{
+                    episodesWatched: progress?.episodes_watched ?? 0,
+                    status: progress?.status ?? "plan_to_watch",
+                    score: progress?.score ?? null,
+                  }}
+                />
+              </>
             ) : (
               <Card>
                 <CardContent className="text-sm text-muted-foreground">

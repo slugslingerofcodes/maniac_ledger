@@ -21,6 +21,7 @@ export type Database = {
         Row: {
           id: string;
           mal_id: number | null;
+          franchise_id: string | null;
           title: string;
           title_english: string | null;
           synopsis: string | null;
@@ -41,6 +42,7 @@ export type Database = {
         Insert: {
           id?: string;
           mal_id?: number | null;
+          franchise_id?: string | null;
           title: string;
           title_english?: string | null;
           synopsis?: string | null;
@@ -61,6 +63,7 @@ export type Database = {
         Update: {
           id?: string;
           mal_id?: number | null;
+          franchise_id?: string | null;
           title?: string;
           title_english?: string | null;
           synopsis?: string | null;
@@ -204,6 +207,47 @@ export type Database = {
           },
           {
             foreignKeyName: "episode_progress_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          mal_id: number;
+          anime_title: string;
+          poster_url: string | null;
+          scheduled_date: string | null;
+          notified_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          mal_id: number;
+          anime_title: string;
+          poster_url?: string | null;
+          scheduled_date?: string | null;
+          notified_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          mal_id?: number;
+          anime_title?: string;
+          poster_url?: string | null;
+          scheduled_date?: string | null;
+          notified_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";

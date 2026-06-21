@@ -44,6 +44,20 @@ export type JikanAiringStatus =
 
 export type JikanSeason = "winter" | "spring" | "summer" | "fall";
 
+/** Weekly broadcast slot, e.g. `{ day: "Saturdays", time: "23:00", ... }`. */
+export interface JikanBroadcast {
+  day: string | null;
+  time: string | null;
+  timezone: string | null;
+  string: string | null;
+}
+
+/** Airing window. For upcoming anime `from`/`to` are often null. */
+export interface JikanAiredDates {
+  from: string | null;
+  to: string | null;
+}
+
 export interface JikanAnime {
   mal_id: number;
   title: string;
@@ -59,6 +73,9 @@ export interface JikanAnime {
   images: JikanImages;
   genres: JikanNamedEntity[];
   studios: JikanNamedEntity[];
+  /** Present on season/schedule endpoints; optional elsewhere. */
+  broadcast?: JikanBroadcast;
+  aired?: JikanAiredDates;
 }
 
 export interface JikanPagination {
@@ -161,10 +178,18 @@ export function debounce<Args extends unknown[]>(
 /* Core fetch                                                                 */
 /* -------------------------------------------------------------------------- */
 
-async function jikanFetch<T>(path: string): Promise<T> {
+async function jikanFetch<T>(
+  path: string,
+  // Opt into Next's Data Cache for endpoints that change slowly (e.g. the
+  // upcoming season). Omitted → default fetch behavior.
+  opts?: { revalidate?: number },
+): Promise<T> {
   return rateLimited(async () => {
     const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
       headers: { Accept: "application/json" },
+      ...(opts?.revalidate != null
+        ? { next: { revalidate: opts.revalidate } }
+        : {}),
     });
 
     if (!res.ok) {
@@ -209,6 +234,24 @@ export function searchAnime(
     page: String(page),
   });
   return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`);
+}
+
+/** ~3 req/sec → space requests ~350ms apart; one day in seconds for caching. */
+const ONE_DAY_SECONDS = 86_400;
+
+/**
+ * Anime scheduled for upcoming seasons (`/seasons/upcoming`). Cached in Next's
+ * Data Cache for 24h since the slate changes at most daily.
+ *
+ * @param limit Max results (Jikan caps the page at 25).
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function getUpcomingSeason(limit = 25): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return jikanFetch<JikanSearchResponse>(
+    `/seasons/upcoming?${params.toString()}`,
+    { revalidate: ONE_DAY_SECONDS },
+  );
 }
 
 /**

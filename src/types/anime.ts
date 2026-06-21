@@ -30,6 +30,10 @@ export type EpisodeProgress = Tables<"episode_progress">;
 export type EpisodeProgressInsert = TablesInsert<"episode_progress">;
 export type EpisodeProgressUpdate = TablesUpdate<"episode_progress">;
 
+export type Notification = Tables<"notifications">;
+export type NotificationInsert = TablesInsert<"notifications">;
+export type NotificationUpdate = TablesUpdate<"notifications">;
+
 /** Derived watched-episode count per (user, anime) — from the SQL view. */
 export type AnimeWatchedCount = Views<"anime_watched_count">;
 

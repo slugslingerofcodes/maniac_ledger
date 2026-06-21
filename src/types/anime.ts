@@ -33,8 +33,17 @@ export type EpisodeProgressUpdate = TablesUpdate<"episode_progress">;
 /** Derived watched-episode count per (user, anime) — from the SQL view. */
 export type AnimeWatchedCount = Views<"anime_watched_count">;
 
+/**
+ * A user's library row joined to its parent anime — the shape returned by
+ * `user_progress` selects that embed the related `anime` row, e.g.
+ * `.select("*, anime(*)")`.
+ */
+export type LibraryEntry = UserProgress & { anime: Anime };
+
 // Enums explicitly requested
 export type WatchStatus = Enums<"watch_status">;
+/** Per-user watch status for an anime (alias of {@link WatchStatus}). */
+export type UserStatus = Enums<"watch_status">;
 export type AnimeType = Enums<"anime_type">;
 
 // Remaining schema enums, for completeness

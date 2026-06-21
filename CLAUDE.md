@@ -49,7 +49,7 @@ App Router project (TypeScript, RSC by default — add `"use client"` only for b
 - `src/lib/episodes.ts` `ensureEpisodes()` lazily backfills the `episodes` catalog from Jikan the first time an anime's detail page is opened (no-op afterward).
 
 ### Writes — server actions + optimistic UI
-Mutations are `"use server"` actions, not API routes: `src/lib/library.ts` (`addToLibrary` core upsert), `src/app/actions/library.ts` (action wrapper + `revalidatePath`), `src/app/anime/[id]/actions.ts` (`updateProgress`, `toggleEpisodeWatched`). Client components call these and update optimistically (the search "+ Add" button, the episode checklist), then the action `revalidatePath`s the affected routes.
+Mutations are `"use server"` actions, not API routes: `src/lib/library.ts` (`addToLibrary` core upsert), `src/app/actions/library.ts` (action wrapper + `revalidatePath`), `src/app/anime/[id]/actions.ts` (`updateProgress`), and `src/app/actions/progress.ts` (`toggleEpisode` — per-episode watched toggle; resolves the anime from the episode row to `revalidatePath`). Client components call these and update optimistically (the search "+ Add" button, the episode checklist via `useOptimistic` in `src/components/anime/EpisodeList.tsx`), then the action `revalidatePath`s the affected routes.
 
 ## Styling (Tailwind v4 — important differences)
 

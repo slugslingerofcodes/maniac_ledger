@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { label: "Library", href: "/library" },
   { label: "Search", href: "/search" },
-  { label: "Stats", href: "/stats" },
+  { label: "Upcoming", href: "/upcoming" },
+  { label: "Recommendations", href: "/recommendations" },
 ] as const;
 
 export function SiteHeader() {

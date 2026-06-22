@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EpisodeList } from "@/components/anime/EpisodeList";
+import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -270,6 +272,16 @@ export default async function AnimeDetailPage({
             )}
           </aside>
         </div>
+
+        {/* Franchise overview — only when this anime has been grouped. */}
+        {anime.franchise_id ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-base font-semibold">Franchise</h2>
+            <Suspense fallback={null}>
+              <FranchiseCard franchiseId={anime.franchise_id} variant="list" />
+            </Suspense>
+          </section>
+        ) : null}
 
         <Separator className="my-8" />
 

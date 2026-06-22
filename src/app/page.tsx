@@ -34,13 +34,13 @@ function Hero() {
             Browse anime
           </Link>
           <Link
-            href="/stats"
+            href="/recommendations"
             className={cn(
               buttonVariants({ variant: "outline" }),
               "border-white/15 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white",
             )}
           >
-            View stats
+            Recommendations
           </Link>
         </div>
       </div>

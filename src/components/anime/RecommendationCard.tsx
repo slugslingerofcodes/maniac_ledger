@@ -1,11 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useTransition } from "react";
 import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { addToLibraryByMalId } from "@/app/actions/library";
 import { dismissRecommendation } from "@/app/actions/recommendations";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -46,6 +48,8 @@ export function RecommendationCard({
         return;
       }
       setAdded(true);
+      track("recommendation_clicked", { malId, title: item.title });
+      track("anime_added", { malId, title: item.title, source: "recommendation" });
       toast.success(
         res.alreadyAdded ? "Already in your library." : "Added to library.",
       );
@@ -69,12 +73,12 @@ export function RecommendationCard({
     <Card className="w-48 gap-0 overflow-hidden py-0">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN); avoids next/image remote config.
-          <img
+          <Image
             src={item.posterUrl}
             alt={item.title}
-            loading="lazy"
-            className="h-full w-full object-cover"
+            fill
+            sizes="192px"
+            className="object-cover"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">

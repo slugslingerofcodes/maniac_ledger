@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -23,12 +25,12 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
     <Card className="group gap-0 overflow-hidden py-0">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN, Supabase Storage); avoids next/image remote config.
-          <img
+          <Image
             src={item.posterUrl}
             alt={item.title}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">

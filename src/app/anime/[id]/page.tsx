@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -151,12 +152,14 @@ export default async function AnimeDetailPage({
       {/* Hero — full-width backdrop (blurred poster) + dark gradient overlay */}
       <section className="relative isolate overflow-hidden">
         {anime.poster_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN, Supabase Storage); avoids next/image remote config.
-          <img
+          <Image
             src={anime.poster_url}
             alt=""
             aria-hidden
-            className="absolute inset-0 size-full scale-110 object-cover opacity-30 blur-2xl"
+            fill
+            priority
+            sizes="100vw"
+            className="scale-110 object-cover opacity-30 blur-2xl"
           />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/40" />
@@ -171,16 +174,18 @@ export default async function AnimeDetailPage({
 
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-end">
             {/* Poster floating on the left */}
-            <div className="w-40 shrink-0 overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10 sm:w-52 sm:-mb-12">
+            <div className="relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
-                // eslint-disable-next-line @next/next/no-img-element -- see above.
-                <img
+                <Image
                   src={anime.poster_url}
                   alt={anime.title}
-                  className="aspect-[2/3] w-full object-cover"
+                  fill
+                  priority
+                  sizes="(max-width: 640px) 160px, 208px"
+                  className="object-cover"
                 />
               ) : (
-                <div className="flex aspect-[2/3] items-center justify-center text-sm text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   No image
                 </div>
               )}

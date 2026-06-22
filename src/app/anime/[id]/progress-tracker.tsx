@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { WatchStatus } from "@/types/anime";
@@ -82,6 +83,7 @@ export function ProgressTracker({
           kind: "success",
           text: inLibrary ? "Progress saved." : "Added to your library.",
         });
+        track("status_changed", { animeId, status });
         router.refresh();
       } else {
         setMessage({ kind: "error", text: res.error });

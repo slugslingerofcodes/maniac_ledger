@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,6 @@ import {
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { createClient } from "@/lib/supabase/server";
-import { cn } from "@/lib/utils";
 import type { AnimeType } from "@/types/anime";
 
 type Variant = "grid" | "list";
@@ -99,22 +99,17 @@ export async function FranchiseCard({
   const totalWatched = entries.reduce((s, e) => s + clampWatched(e), 0);
   const overallPct = pct(totalWatched, totalEpisodes);
 
-  const poster = (className: string) =>
+  const poster = (sizes: string) =>
     cover.poster_url ? (
-      // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN, Supabase Storage); avoids next/image remote config.
-      <img
+      <Image
         src={cover.poster_url}
         alt={title}
-        loading="lazy"
-        className={cn("object-cover", className)}
+        fill
+        sizes={sizes}
+        className="object-cover"
       />
     ) : (
-      <div
-        className={cn(
-          "flex items-center justify-center bg-muted text-xs text-muted-foreground",
-          className,
-        )}
-      >
+      <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
         No image
       </div>
     );
@@ -169,8 +164,8 @@ export async function FranchiseCard({
   if (variant === "list") {
     return (
       <div className="flex gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
-        <div className="relative shrink-0">
-          {poster("h-24 w-16 rounded-md")}
+        <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md">
+          {poster("64px")}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h3 className="truncate text-sm font-semibold" title={title}>
@@ -187,7 +182,7 @@ export async function FranchiseCard({
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
-        {poster("h-full w-full")}
+        {poster("(max-width: 768px) 50vw, 240px")}
         <Badge className="absolute right-2 top-2 border-transparent bg-black/70 text-white backdrop-blur">
           {entries.length} entries
         </Badge>

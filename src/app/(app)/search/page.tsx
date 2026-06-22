@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction } from "@/app/actions/library";
+import { track } from "@/lib/analytics";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { JikanAnime } from "@/lib/jikan";
@@ -209,6 +210,12 @@ function AddButton({ anime }: { anime: JikanAnime }) {
       if (!res.ok) {
         setAdded(false);
         setError(res.error);
+      } else {
+        track("anime_added", {
+          malId: anime.mal_id,
+          title: anime.title,
+          source: "search",
+        });
       }
     });
   }

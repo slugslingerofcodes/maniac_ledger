@@ -6,18 +6,19 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { toggleEpisode } from "@/app/actions/progress";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/types/anime";
 
 type Props = {
   episodes: Episode[];
   initialWatchedIds: string[];
-  // Part of the public prop contract; the toggle action resolves the anime from
-  // the episode itself, so it isn't needed for the DB call.
+  // The toggle action resolves the anime from the episode, so this isn't needed
+  // for the DB call — only for the analytics event.
   animeId: string;
 };
 
-export function EpisodeList({ episodes, initialWatchedIds }: Props) {
+export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   // Confirmed server state. Seeded once from props; updated when an action
   // succeeds. (Note: the episodes table has no runtime column, so runtime is
   // not rendered — only number / title / air date are available.)
@@ -57,8 +58,10 @@ export function EpisodeList({ episodes, initialWatchedIds }: Props) {
         return next;
       });
 
-      // Un-marking is the destructive direction — offer a one-tap undo.
-      if (!target) {
+      if (target) {
+        track("episode_marked_watched", { animeId, episodeId });
+      } else {
+        // Un-marking is the destructive direction — offer a one-tap undo.
         toast("Episode unmarked", {
           action: {
             label: "Undo",

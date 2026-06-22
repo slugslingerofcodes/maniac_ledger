@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { Progress } from "@/components/ui/progress";
@@ -52,12 +53,12 @@ export async function ContinueWatching() {
             >
               <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
                 {anime.poster_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- poster hosts vary (MAL CDN, Supabase Storage); avoids next/image remote config.
-                  <img
+                  <Image
                     src={anime.poster_url}
                     alt={anime.title}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    fill
+                    sizes="160px"
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs text-muted-foreground">

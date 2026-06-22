@@ -7,6 +7,56 @@ import { resolveAndAssignFranchise } from "@/lib/franchise";
 import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { addToLibrary } from "@/lib/library";
 import { createClient } from "@/lib/supabase/server";
+import type { AnimeType, WatchStatus } from "@/types/anime";
+
+/** A library entry shaped for `LibraryCard` (matches `LibraryCardItem`). */
+export type LibraryEntryItem = {
+  id: string;
+  title: string;
+  posterUrl: string | null;
+  type: AnimeType | null;
+  status: WatchStatus;
+  episodesWatched: number;
+  totalEpisodes: number | null;
+  score: number | null;
+};
+
+/**
+ * Returns the signed-in user's full library (all statuses), newest first, with
+ * per-anime watched counts merged in. Used as the TanStack Query `queryFn` on
+ * /library so the result can be cached + persisted to IndexedDB for offline.
+ * RLS scopes the rows to the current user.
+ */
+export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("user_progress")
+    .select(
+      "episodes_watched, status, score, anime:anime_id (id, title, poster_url, type, total_episodes)",
+    )
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const { data: counts } = await supabase
+    .from("anime_watched_count")
+    .select("anime_id, watched_count");
+  const countMap = new Map<string, number>();
+  for (const c of counts ?? []) {
+    if (c.anime_id) countMap.set(c.anime_id, c.watched_count ?? 0);
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.anime.id,
+    title: row.anime.title,
+    posterUrl: row.anime.poster_url,
+    type: row.anime.type,
+    status: row.status,
+    episodesWatched: countMap.get(row.anime.id) ?? row.episodes_watched,
+    totalEpisodes: row.anime.total_episodes,
+    score: row.score,
+  }));
+}
 
 export type AddToLibraryActionResult =
   | { ok: true; alreadyAdded: boolean; animeId: string }

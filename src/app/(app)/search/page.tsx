@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction } from "@/app/actions/library";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { JikanAnime } from "@/lib/jikan";
 
 type Status = "idle" | "loading" | "success" | "error";
@@ -30,6 +32,12 @@ export default function SearchPage() {
   const [resolvedQuery, setResolvedQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
+  // This effect drives loading/result/idle state around an *aborted* fetch keyed
+  // to the debounced query — a legitimate data-fetching effect. The synchronous
+  // resets (clearing results when the box is emptied, flagging "loading" before
+  // the request) are intentional, so the set-state-in-effect rule is a false
+  // positive here; disabling it beats contorting race-safe code.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const q = debouncedQuery.trim();
 
@@ -73,6 +81,7 @@ export default function SearchPage() {
 
     return () => controller.abort();
   }, [debouncedQuery]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
@@ -185,8 +194,13 @@ function AddButton({ anime }: { anime: JikanAnime }) {
   const [pending, startTransition] = useTransition();
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnlineStatus();
 
   function onAdd() {
+    if (!online) {
+      toast.error("Connect to internet to add anime.");
+      return;
+    }
     setError(null);
     // Optimistic: flip to "Added ✓" immediately, revert if the action fails.
     setAdded(true);
@@ -206,7 +220,7 @@ function AddButton({ anime }: { anime: JikanAnime }) {
         size="sm"
         variant={added ? "secondary" : "default"}
         className="w-full"
-        disabled={added || pending}
+        disabled={added || pending || !online}
         onClick={onAdd}
       >
         {added ? "Added ✓" : "+ Add"}

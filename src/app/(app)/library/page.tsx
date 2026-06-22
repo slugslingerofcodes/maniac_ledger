@@ -1,15 +1,11 @@
-import Link from "next/link";
 import { Suspense } from "react";
 
-import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
-import { cn } from "@/lib/utils";
-import type { WatchStatus } from "@/types/anime";
 
+import { LibraryGridClient } from "./library-grid-client";
 import { LibraryTabs } from "./library-tabs";
 
 // Tabs shown at the top. "all" is a pseudo-status meaning "no filter".
@@ -40,6 +36,7 @@ export default async function LibraryPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      <OfflineBanner />
       <h1 className="text-2xl font-semibold tracking-tight">Your Library</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Everything you&apos;re tracking, most recently updated first.
@@ -53,72 +50,18 @@ export default async function LibraryPage({
         <LibraryTabs filters={FILTERS} current={filter} />
       </div>
 
+      {/* Client-side, TanStack Query–backed grid: cached + persisted to
+          IndexedDB so it survives offline. Filtering is client-side. */}
       <div className="mt-6">
-        {/* `key` forces the skeleton fallback to show again on each filter. */}
-        <Suspense key={filter} fallback={<LibraryGridSkeleton />}>
-          <LibraryGrid filter={filter} />
-        </Suspense>
+        <LibraryGridClient filter={filter} />
       </div>
     </main>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* Data + grid (async — streamed behind <Suspense>)                           */
+/* Continue Watching (server-rendered)                                        */
 /* -------------------------------------------------------------------------- */
-
-async function LibraryGrid({ filter }: { filter: FilterValue }) {
-  const supabase = await createClient();
-
-  // RLS scopes user_progress to the signed-in user, so no explicit user filter
-  // is needed. Join the catalog row for poster/title/episode counts.
-  let query = supabase
-    .from("user_progress")
-    .select(
-      "episodes_watched, status, score, anime:anime_id (id, title, poster_url, type, total_episodes)",
-    )
-    .order("updated_at", { ascending: false });
-
-  if (filter !== "all") {
-    query = query.eq("status", filter satisfies WatchStatus);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return (
-      <p className="text-sm text-destructive">
-        Couldn&apos;t load your library. Please try again.
-      </p>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return <EmptyState filter={filter} />;
-  }
-
-  const counts = await getWatchedCounts();
-
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-      {data.map((row) => (
-        <LibraryCard
-          key={row.anime.id}
-          item={{
-            id: row.anime.id,
-            title: row.anime.title,
-            posterUrl: row.anime.poster_url,
-            type: row.anime.type,
-            status: row.status,
-            episodesWatched: counts.get(row.anime.id) ?? row.episodes_watched,
-            totalEpisodes: row.anime.total_episodes,
-            score: row.score,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 /**
  * "Continue Watching" — anime with a `last_watched_at` (set by the
@@ -176,33 +119,4 @@ async function getWatchedCounts(): Promise<Map<string, number>> {
     if (row.anime_id) map.set(row.anime_id, row.watched_count ?? 0);
   }
   return map;
-}
-
-function LibraryGridSkeleton() {
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <AnimeCardSkeleton key={i} />
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ filter }: { filter: FilterValue }) {
-  const isAll = filter === "all";
-
-  return (
-    <Card className="border border-dashed border-border bg-transparent">
-      <CardContent className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-        <p className="max-w-sm text-sm text-muted-foreground">
-          {isAll
-            ? "Your library is empty — start by searching for an anime."
-            : "Nothing here with this status yet — add or update some anime."}
-        </p>
-        <Link href="/search" className={cn(buttonVariants())}>
-          Search anime
-        </Link>
-      </CardContent>
-    </Card>
-  );
 }

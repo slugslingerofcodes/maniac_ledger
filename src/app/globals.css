@@ -4,6 +4,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Faster, snappier taps on touch devices: remove the 300ms delay and
+   double-tap zoom on interactive elements app-wide. */
+@layer base {
+  button,
+  a,
+  label,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

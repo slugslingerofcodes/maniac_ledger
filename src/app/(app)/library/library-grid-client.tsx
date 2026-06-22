@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getUserLibrary } from "@/app/actions/library";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
+
+const LIBRARY_QUERY_KEY = ["user-library"] as const;
 
 const FIVE_MIN_MS = 5 * 60_000;
 const ONE_DAY_MS = 24 * 60 * 60_000;
@@ -21,38 +24,45 @@ const ONE_DAY_MS = 24 * 60 * 60_000;
  * cached list, so switching tabs never refetches.
  */
 export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
+  const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery({
-    queryKey: ["user-library"],
+    queryKey: LIBRARY_QUERY_KEY,
     queryFn: () => getUserLibrary(),
     staleTime: FIVE_MIN_MS,
     gcTime: ONE_DAY_MS,
   });
 
-  // Pending with nothing cached yet → skeleton.
-  if (isPending) return <GridSkeleton />;
+  // Pull-to-refresh (mobile) invalidates the library query → refetch.
+  const onRefresh = () =>
+    queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
 
-  // Errored (e.g. offline) AND no persisted cache to fall back on.
-  if (isError && !data) {
-    return (
+  let content;
+  if (isPending) {
+    content = <GridSkeleton />;
+  } else if (isError && !data) {
+    // Errored (e.g. offline) AND no persisted cache to fall back on.
+    content = (
       <p className="text-sm text-destructive">
         Couldn&apos;t load your library. Please try again.
       </p>
     );
+  } else {
+    const items = (data ?? []).filter(
+      (i) => filter === "all" || i.status === filter,
+    );
+    content =
+      items.length === 0 ? (
+        <EmptyState isAll={filter === "all"} />
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {items.map((item) => (
+            <LibraryCard key={item.id} item={item} />
+          ))}
+        </div>
+      );
   }
 
-  const items = (data ?? []).filter(
-    (i) => filter === "all" || i.status === filter,
-  );
-
-  if (items.length === 0) return <EmptyState isAll={filter === "all"} />;
-
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-      {items.map((item) => (
-        <LibraryCard key={item.id} item={item} />
-      ))}
-    </div>
-  );
+  return <PullToRefresh onRefresh={onRefresh}>{content}</PullToRefresh>;
 }
 
 function GridSkeleton() {

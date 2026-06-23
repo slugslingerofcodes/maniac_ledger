@@ -28,7 +28,7 @@ export function SiteHeader() {
         >
           <span>anime</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="" aria-hidden width={28} height={28} className="h-7 w-auto" />
+          <img src="/logo.jpg" alt="" aria-hidden width={28} height={28} className="h-7 w-auto rounded" />
           <span>maniacs</span>
         </Link>
 

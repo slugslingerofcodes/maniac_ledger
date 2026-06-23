@@ -1,15 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { addToLibraryAction } from "@/app/actions/library";
+import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
 import { track } from "@/lib/analytics";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -34,6 +34,23 @@ export default function SearchPage() {
   // The query that produced the current `results`, for the no-results message.
   const [resolvedQuery, setResolvedQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+
+  // Shares the same cache as the /library grid (persisted to IndexedDB), so we
+  // can show "Added ✓" for results already in the library.
+  const { data: library } = useQuery({
+    queryKey: LIBRARY_QUERY_KEY,
+    queryFn: () => getUserLibrary(),
+    staleTime: 5 * 60_000,
+  });
+  const libraryMalIds = useMemo(
+    () =>
+      new Set(
+        (library ?? [])
+          .map((i) => i.malId)
+          .filter((id): id is number => id != null),
+      ),
+    [library],
+  );
 
   // This effect drives loading/result/idle state around an *aborted* fetch keyed
   // to the debounced query — a legitimate data-fetching effect. The synchronous
@@ -116,7 +133,11 @@ export default function SearchPage() {
         {status === "success" && results.length > 0 ? (
           <Grid>
             {results.map((anime) => (
-              <PosterCard key={anime.mal_id} anime={anime} />
+              <PosterCard
+                key={anime.mal_id}
+                anime={anime}
+                alreadyInLibrary={libraryMalIds.has(anime.mal_id)}
+              />
             ))}
           </Grid>
         ) : null}
@@ -152,7 +173,13 @@ function Hint({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PosterCard({ anime }: { anime: JikanAnime }) {
+function PosterCard({
+  anime,
+  alreadyInLibrary,
+}: {
+  anime: JikanAnime;
+  alreadyInLibrary: boolean;
+}) {
   const poster = posterOf(anime);
   const title = anime.title_english ?? anime.title;
 
@@ -188,17 +215,26 @@ function PosterCard({ anime }: { anime: JikanAnime }) {
         </div>
       </div>
 
-      <AddButton anime={anime} />
+      <AddButton anime={anime} alreadyInLibrary={alreadyInLibrary} />
     </div>
   );
 }
 
-function AddButton({ anime }: { anime: JikanAnime }) {
+function AddButton({
+  anime,
+  alreadyInLibrary,
+}: {
+  anime: JikanAnime;
+  alreadyInLibrary: boolean;
+}) {
   const [pending, startTransition] = useTransition();
-  const [added, setAdded] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const online = useOnlineStatus();
   const queryClient = useQueryClient();
+
+  // Already in the library (from the cached query) OR just added this session.
+  const added = alreadyInLibrary || justAdded;
 
   function onAdd() {
     if (!online) {
@@ -207,11 +243,11 @@ function AddButton({ anime }: { anime: JikanAnime }) {
     }
     setError(null);
     // Optimistic: flip to "Added ✓" immediately, revert if the action fails.
-    setAdded(true);
+    setJustAdded(true);
     startTransition(async () => {
       const res = await addToLibraryAction(anime);
       if (!res.ok) {
-        setAdded(false);
+        setJustAdded(false);
         setError(res.error);
       } else {
         // Refetch the library grid now instead of waiting out its 5-min

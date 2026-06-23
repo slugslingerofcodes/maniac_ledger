@@ -12,6 +12,8 @@ import type { AnimeType, WatchStatus } from "@/types/anime";
 /** A library entry shaped for `LibraryCard` (matches `LibraryCardItem`). */
 export type LibraryEntryItem = {
   id: string;
+  /** MyAnimeList id — used to match search results against the library. */
+  malId: number | null;
   title: string;
   posterUrl: string | null;
   type: AnimeType | null;
@@ -33,7 +35,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
   const { data, error } = await supabase
     .from("user_progress")
     .select(
-      "episodes_watched, status, score, anime:anime_id (id, title, poster_url, type, total_episodes)",
+      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
     )
     .order("updated_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -48,6 +50,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
 
   return (data ?? []).map((row) => ({
     id: row.anime.id,
+    malId: row.anime.mal_id,
     title: row.anime.title,
     posterUrl: row.anime.poster_url,
     type: row.anime.type,

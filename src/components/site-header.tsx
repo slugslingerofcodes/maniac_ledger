@@ -23,12 +23,13 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight"
+          aria-label="anime_maniacs"
+          className="flex items-center gap-1.5 font-didot text-lg tracking-tight"
         >
-          <span aria-hidden className="text-indigo-400">
-            ▶
-          </span>
-          AniTrack
+          <span>anime</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="" aria-hidden width={28} height={28} className="h-7 w-auto" />
+          <span>maniacs</span>
         </Link>
 
         <nav className="flex items-center gap-1">

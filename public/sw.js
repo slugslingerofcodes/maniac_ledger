@@ -1,5 +1,5 @@
 /*
- * AniTrack service worker — vanilla Cache API (no bundler, Turbopack-safe).
+ * anime_maniacs service worker — vanilla Cache API (no bundler, Turbopack-safe).
  * Served as a static file so it works regardless of webpack/Turbopack.
  *
  * Strategy:

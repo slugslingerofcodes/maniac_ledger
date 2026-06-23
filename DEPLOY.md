@@ -1,4 +1,4 @@
-# Deploying AniTrack
+# Deploying anime_maniacs
 
 Production stack: **Vercel** (Next.js 16) + **Supabase** (Postgres/RLS, Edge
 Functions, pg_cron) + **Resend** (email) + **Gemini** (recommendations).
@@ -26,7 +26,7 @@ supabase login
 supabase link --project-ref <your-project-ref>
 
 # Resend — verify a sending domain at resend.com first
-supabase secrets set RESEND_API_KEY=re_xxx RESEND_FROM="AniTrack <alerts@yourdomain>"
+supabase secrets set RESEND_API_KEY=re_xxx RESEND_FROM="anime_maniacs <alerts@yourdomain>"
 
 supabase functions deploy resolve-franchise
 supabase functions deploy send-airing-notifications

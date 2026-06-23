@@ -11,7 +11,7 @@
 //
 // Secrets (Project → Edge Functions → Secrets, or `supabase secrets set`):
 //   RESEND_API_KEY   — required
-//   RESEND_FROM      — optional, e.g. "AniTrack <alerts@yourdomain.com>"
+//   RESEND_FROM      — optional, e.g. "anime_maniacs <alerts@yourdomain.com>"
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 //
 // Deploy:  supabase functions deploy send-airing-notifications
@@ -22,7 +22,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "AniTrack <onboarding@resend.dev>";
+const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "anime_maniacs <onboarding@resend.dev>";
 
 type NotificationRow = {
   id: string;
@@ -174,7 +174,7 @@ function renderDigest(items: NotificationRow[]): string {
           <table role="presentation" width="480" cellpadding="0" cellspacing="0"
                  style="width:480px;max-width:90%;background:#18181b;border-radius:12px;padding:24px;">
             <tr>
-              <td style="font-size:18px;font-weight:700;color:#fafafa;padding-bottom:4px;">AniTrack</td>
+              <td style="font-size:18px;font-weight:700;color:#fafafa;padding-bottom:4px;">anime_maniacs</td>
             </tr>
             <tr>
               <td style="font-size:14px;color:#a1a1aa;padding-bottom:16px;">

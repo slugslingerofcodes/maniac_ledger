@@ -240,18 +240,31 @@ export function searchAnime(
 const ONE_DAY_SECONDS = 86_400;
 
 /**
- * Anime scheduled for upcoming seasons (`/seasons/upcoming`). Cached in Next's
+ * Anime scheduled for upcoming seasons (`/seasons/upcoming`), concatenated
+ * across `pages` and deduped by `mal_id` — Jikan caps each page at 25, so one
+ * page rarely spans more than a season or two. Each page is cached in Next's
  * Data Cache for 24h since the slate changes at most daily.
  *
- * @param limit Max results (Jikan caps the page at 25).
+ * @param pages Number of 25-result pages to fetch (stops early at the last page).
  * @throws {JikanError} On any non-2xx response.
  */
-export function getUpcomingSeason(limit = 25): Promise<JikanSearchResponse> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  return jikanFetch<JikanSearchResponse>(
-    `/seasons/upcoming?${params.toString()}`,
-    { revalidate: ONE_DAY_SECONDS },
-  );
+export async function getUpcomingSeasons(pages = 2): Promise<JikanAnime[]> {
+  const seen = new Set<number>();
+  const all: JikanAnime[] = [];
+  for (let page = 1; page <= pages; page++) {
+    const params = new URLSearchParams({ page: String(page) });
+    const res = await jikanFetch<JikanSearchResponse>(
+      `/seasons/upcoming?${params.toString()}`,
+      { revalidate: ONE_DAY_SECONDS },
+    );
+    for (const a of res.data) {
+      if (seen.has(a.mal_id)) continue;
+      seen.add(a.mal_id);
+      all.push(a);
+    }
+    if (!res.pagination.has_next_page) break;
+  }
+  return all;
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -185,7 +186,11 @@ function PosterCard({
 
   return (
     <div className="group flex flex-col gap-2">
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border">
+      <Link
+        href={`/anime/mal/${anime.mal_id}`}
+        aria-label={`View details for ${title}`}
+        className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-indigo-500/40"
+      >
         {poster ? (
           <Image
             src={poster}
@@ -213,7 +218,7 @@ function PosterCard({
             {title}
           </p>
         </div>
-      </div>
+      </Link>
 
       <AddButton anime={anime} alreadyInLibrary={alreadyInLibrary} />
     </div>

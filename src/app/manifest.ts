@@ -9,8 +9,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AniTrack",
-    short_name: "AniTrack",
+    name: "anime_maniacs",
+    short_name: "anime_maniacs",
     description: "Track the anime you watch.",
     start_url: "/",
     display: "standalone",

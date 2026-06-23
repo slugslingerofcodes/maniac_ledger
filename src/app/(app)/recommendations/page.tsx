@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Recommendations · AniTrack",
+  title: "Recommendations · anime_maniacs",
   description: "AI picks based on the anime you've loved.",
 };
 

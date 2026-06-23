@@ -58,7 +58,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  if (!UUID_RE.test(id)) return { title: "Anime · AniTrack" };
+  if (!UUID_RE.test(id)) return { title: "Anime · anime_maniacs" };
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -67,14 +67,14 @@ export async function generateMetadata({
     .eq("id", id)
     .maybeSingle();
 
-  if (!data) return { title: "Anime · AniTrack" };
+  if (!data) return { title: "Anime · anime_maniacs" };
 
   const description = data.synopsis?.trim()
     ? data.synopsis.trim().replace(/\s+/g, " ").slice(0, 155)
-    : `Track your progress for ${data.title} on AniTrack.`;
+    : `Track your progress for ${data.title} on anime_maniacs.`;
 
   return {
-    title: `${data.title} · AniTrack`,
+    title: `${data.title} · anime_maniacs`,
     description,
   };
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, GFS_Didot } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -18,8 +18,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Didot-style serif for the brand wordmark. GFS Didot is the free, web-safe
+// Didot on Google Fonts; the CSS stack prefers a real system "Didot" first.
+const didot = GFS_Didot({
+  variable: "--font-didot-src",
+  weight: "400",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "AniTrack",
+  title: "anime_maniacs",
   description: "Track the anime you watch.",
 };
 
@@ -31,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>

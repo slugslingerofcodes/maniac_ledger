@@ -1,6 +1,9 @@
-import type { JikanAnime } from "@/lib/jikan";
+import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 import type { AiringStatus } from "@/types/anime";
+
+/** The request-scoped Supabase server client (RLS runs as the signed-in user). */
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type AddToLibraryResult =
   | { success: true; animeId: string }
@@ -17,6 +20,62 @@ function posterOf(anime: JikanAnime): string | null {
   return (
     anime.images?.jpg?.large_image_url ?? anime.images?.jpg?.image_url ?? null
   );
+}
+
+/**
+ * Upserts the shared catalog row for a Jikan anime (deduped by `mal_id`,
+ * refreshing metadata on repeat) and returns its catalog uuid. The caller must
+ * be a signed-in user — the catalog INSERT policy (migration 0002) requires it.
+ */
+export async function upsertCatalogAnime(
+  supabase: ServerClient,
+  jikanAnime: JikanAnime,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("anime")
+    .upsert(
+      {
+        mal_id: jikanAnime.mal_id,
+        title: jikanAnime.title,
+        title_english: jikanAnime.title_english,
+        synopsis: jikanAnime.synopsis,
+        total_episodes: jikanAnime.episodes,
+        poster_url: posterOf(jikanAnime),
+        score: jikanAnime.score,
+        status: JIKAN_STATUS_TO_AIRING[jikanAnime.status] ?? "finished_airing",
+        year: jikanAnime.year,
+        studio: jikanAnime.studios?.[0]?.name ?? null,
+      },
+      { onConflict: "mal_id" },
+    )
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not save this anime to the catalog.");
+  }
+  return data.id;
+}
+
+/**
+ * Resolves a MyAnimeList id to a catalog uuid so it can be opened on the
+ * `/anime/[id]` detail page. Returns the existing row's id if the anime is
+ * already in the shared catalog; otherwise backfills it from Jikan first.
+ * Used by the `/anime/mal/[malId]` redirect (e.g. clicking a search result).
+ */
+export async function resolveAnimeIdByMalId(malId: number): Promise<string> {
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("anime")
+    .select("id")
+    .eq("mal_id", malId)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  // Not in the catalog yet — fetch from Jikan and contribute it.
+  const jikanAnime = await getAnimeById(malId);
+  return upsertCatalogAnime(supabase, jikanAnime);
 }
 
 /**
@@ -46,36 +105,12 @@ export async function addToLibrary(
   }
 
   // 1. Upsert the catalog row, deduped by mal_id. Refreshes metadata on repeat.
-  const { data: anime, error: upsertError } = await supabase
-    .from("anime")
-    .upsert(
-      {
-        mal_id: jikanAnime.mal_id,
-        title: jikanAnime.title,
-        title_english: jikanAnime.title_english,
-        synopsis: jikanAnime.synopsis,
-        total_episodes: jikanAnime.episodes,
-        poster_url: posterOf(jikanAnime),
-        score: jikanAnime.score,
-        status: JIKAN_STATUS_TO_AIRING[jikanAnime.status] ?? "finished_airing",
-        year: jikanAnime.year,
-        studio: jikanAnime.studios?.[0]?.name ?? null,
-      },
-      { onConflict: "mal_id" },
-    )
-    .select("id")
-    .single();
-
-  if (upsertError || !anime) {
-    throw new Error(
-      upsertError?.message ?? "Could not save this anime to the catalog.",
-    );
-  }
+  const animeId = await upsertCatalogAnime(supabase, jikanAnime);
 
   // 2. Add it to the user's library.
   const { error: progressError } = await supabase.from("user_progress").insert({
     user_id: user.id,
-    anime_id: anime.id,
+    anime_id: animeId,
     status: "plan_to_watch",
     episodes_watched: 0,
   });
@@ -83,10 +118,10 @@ export async function addToLibrary(
   if (progressError) {
     // 23505 = unique (user_id, anime_id) violation → already in their library.
     if (progressError.code === "23505") {
-      return { alreadyAdded: true, animeId: anime.id };
+      return { alreadyAdded: true, animeId };
     }
     throw new Error(progressError.message);
   }
 
-  return { success: true, animeId: anime.id };
+  return { success: true, animeId };
 }

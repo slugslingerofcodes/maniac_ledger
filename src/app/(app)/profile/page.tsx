@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LogoutButton } from "@/components/logout-button";
 import { requireUser } from "@/lib/supabase/auth";
 
-export const metadata: Metadata = { title: "Profile · AniTrack" };
+export const metadata: Metadata = { title: "Profile · anime_maniacs" };
 
 export default async function ProfilePage() {
   const user = await requireUser();

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction } from "@/app/actions/library";
+import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
 import { track } from "@/lib/analytics";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -196,6 +198,7 @@ function AddButton({ anime }: { anime: JikanAnime }) {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const online = useOnlineStatus();
+  const queryClient = useQueryClient();
 
   function onAdd() {
     if (!online) {
@@ -211,6 +214,9 @@ function AddButton({ anime }: { anime: JikanAnime }) {
         setAdded(false);
         setError(res.error);
       } else {
+        // Refetch the library grid now instead of waiting out its 5-min
+        // staleTime, so the new entry shows up on /library immediately.
+        queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
         track("anime_added", {
           malId: anime.mal_id,
           title: anime.title,

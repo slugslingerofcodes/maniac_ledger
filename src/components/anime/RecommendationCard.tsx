@@ -2,10 +2,12 @@
 
 import Image from "next/image";
 import { useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { addToLibraryByMalId } from "@/app/actions/library";
+import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
 import { dismissRecommendation } from "@/app/actions/recommendations";
 import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,7 @@ export function RecommendationCard({
 }) {
   const [added, setAdded] = useState(false);
   const [pending, startTransition] = useTransition();
+  const queryClient = useQueryClient();
   const canAct = item.malId != null;
 
   function add() {
@@ -48,6 +51,8 @@ export function RecommendationCard({
         return;
       }
       setAdded(true);
+      // Refetch the library grid so the added title appears immediately.
+      queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
       track("recommendation_clicked", { malId, title: item.title });
       track("anime_added", { malId, title: item.title, source: "recommendation" });
       toast.success(

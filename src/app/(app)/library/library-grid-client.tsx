@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
 
-const LIBRARY_QUERY_KEY = ["user-library"] as const;
+export const LIBRARY_QUERY_KEY = ["user-library"] as const;
 
 const FIVE_MIN_MS = 5 * 60_000;
 const ONE_DAY_MS = 24 * 60 * 60_000;

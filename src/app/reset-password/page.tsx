@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requestPasswordReset } from "@/app/auth/actions";
+import { AuroraBackdrop } from "@/components/AuroraBackdrop";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,8 +20,9 @@ export default async function ResetPasswordPage(props: {
   const { message } = await props.searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
+      <AuroraBackdrop />
+      <Card className="glass w-full max-w-sm">
         <CardHeader>
           <CardTitle>Reset your password</CardTitle>
           <CardDescription>

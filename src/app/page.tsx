@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
+import { AuroraBackdrop } from "@/components/AuroraBackdrop";
 import { ContinueWatching } from "@/components/anime/ContinueWatching";
 import { LibraryGrid } from "@/components/library-grid";
 import { SiteHeader } from "@/components/site-header";
@@ -10,26 +11,31 @@ import { cn } from "@/lib/utils";
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden border-b border-white/10 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-zinc-50">
+    <section className="relative isolate overflow-hidden border-b border-white/10 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-zinc-50">
+      <AuroraBackdrop />
+      {/* Subtle top sheen + vignette over the aurora for depth. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.18),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_55%)]"
       />
-      <div className="relative mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
-        <p className="mb-3 text-xs font-medium uppercase tracking-widest text-indigo-300/80">
+      <div className="relative mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <p className="mb-3 text-xs font-medium uppercase tracking-[0.2em] text-indigo-300/80">
           Your anime, organized
         </p>
-        <h1 className="max-w-2xl text-4xl font-bold tracking-tight sm:text-5xl">
+        <h1 className="text-gradient max-w-2xl font-didot text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
           Track everything you watch.
         </h1>
-        <p className="mt-4 max-w-xl text-zinc-400">
+        <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-zinc-400">
           Build your library, follow your progress, and discover what to watch
           next — all in one place.
         </p>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-8 flex flex-wrap gap-3">
           <Link
             href="/search"
-            className={cn(buttonVariants(), "bg-indigo-500 text-white hover:bg-indigo-400")}
+            className={cn(
+              buttonVariants(),
+              "bg-indigo-500 text-white shadow-[0_0_32px_-6px_rgba(99,102,241,0.7)] transition-transform hover:-translate-y-0.5 hover:bg-indigo-400",
+            )}
           >
             Browse anime
           </Link>
@@ -37,7 +43,7 @@ function Hero() {
             href="/recommendations"
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "border-white/15 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white",
+              "glass border-white/15 text-zinc-100 transition-transform hover:-translate-y-0.5 hover:text-white",
             )}
           >
             Recommendations

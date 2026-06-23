@@ -1,10 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { LogoutButton } from "@/components/logout-button";
 import { useUser } from "@/hooks/use-user";
+import { getDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -21,15 +23,16 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-zinc-950/80 text-zinc-50 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/60">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4 sm:px-6">
-        <Link
-          href="/"
-          aria-label="anime_maniacs"
-          className="flex items-center gap-1.5 font-didot text-lg tracking-tight"
-        >
-          <span>anime</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="" aria-hidden width={28} height={28} className="h-7 w-auto rounded" />
-          <span>maniacs</span>
+        <Link href="/" aria-label="anime_maniacs" className="flex items-center">
+          <Image
+            src="/wordmark.png"
+            alt="anime_maniacs"
+            width={5132}
+            height={832}
+            priority
+            sizes="250px"
+            className="h-9 w-auto"
+          />
         </Link>
 
         <nav className="flex items-center gap-1">
@@ -54,9 +57,9 @@ export function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
-          {user?.email ? (
+          {user ? (
             <span className="hidden text-sm text-zinc-400 sm:inline">
-              {user.email}
+              {getDisplayName(user)}
             </span>
           ) : null}
           <LogoutButton />

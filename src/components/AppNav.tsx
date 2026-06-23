@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { useUser } from "@/hooks/use-user";
 import { createClient } from "@/lib/supabase/client";
+import { getDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -50,21 +52,23 @@ export function AppNav() {
   }
 
   const email = user?.email ?? "";
-  const initial = email ? email[0]!.toUpperCase() : "?";
+  const name = getDisplayName(user);
+  const initial = name && name !== "Account" ? name[0]!.toUpperCase() : "?";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
         {/* Logo / wordmark */}
-        <Link
-          href="/library"
-          aria-label="anime_maniacs"
-          className="flex items-center gap-1.5 font-didot text-lg tracking-tight"
-        >
-          <span>anime</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="" aria-hidden width={28} height={28} className="h-7 w-auto rounded" />
-          <span>maniacs</span>
+        <Link href="/library" aria-label="anime_maniacs" className="flex items-center">
+          <Image
+            src="/wordmark.png"
+            alt="anime_maniacs"
+            width={5132}
+            height={832}
+            priority
+            sizes="250px"
+            className="h-9 w-auto"
+          />
         </Link>
 
         {/* Center links (desktop) */}
@@ -102,8 +106,15 @@ export function AppNav() {
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuLabel className="truncate text-muted-foreground">
-                {email || "Account"}
+              <DropdownMenuLabel className="flex flex-col">
+                <span className="truncate font-medium text-foreground">
+                  {name}
+                </span>
+                {email ? (
+                  <span className="truncate text-xs font-normal text-muted-foreground">
+                    {email}
+                  </span>
+                ) : null}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut}>
@@ -148,10 +159,15 @@ export function AppNav() {
               </nav>
 
               <div className="mt-auto border-t border-border pt-4">
-                {email ? (
-                  <p className="mb-2 truncate px-3 text-xs text-muted-foreground">
-                    {email}
-                  </p>
+                {user ? (
+                  <div className="mb-2 px-3">
+                    <p className="truncate text-sm font-medium">{name}</p>
+                    {email ? (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {email}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 <Button
                   type="button"

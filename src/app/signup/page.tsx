@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { signup } from "@/app/auth/actions";
+import { ImageBackdrop } from "@/components/ImageBackdrop";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,9 +22,20 @@ export default async function SignupPage(props: {
   const { message } = await props.searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
+      <ImageBackdrop src="/auth-bg.png" />
+      <Card className="glass w-full max-w-sm">
         <CardHeader>
+          <div className="relative mb-2 aspect-[11/6] w-full overflow-hidden rounded-lg ring-1 ring-foreground/10">
+            <Image
+              src="/auth-crest.png"
+              alt="anime_maniacs"
+              fill
+              priority
+              sizes="384px"
+              className="object-contain"
+            />
+          </div>
           <CardTitle>Create your account</CardTitle>
           <CardDescription>
             Start tracking the anime you watch.

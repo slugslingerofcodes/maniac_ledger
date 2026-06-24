@@ -59,7 +59,7 @@ export function AppNav() {
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
         {/* Logo / wordmark */}
-        <Link href="/library" aria-label="anime_maniacs" className="flex items-center">
+        <Link href="/" aria-label="anime_maniacs" className="flex items-center">
           <Image
             src="/wordmark.png"
             alt="anime_maniacs"
@@ -117,6 +117,9 @@ export function AppNav() {
                 ) : null}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                Change username
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSignOut}>
                 Sign out
               </DropdownMenuItem>

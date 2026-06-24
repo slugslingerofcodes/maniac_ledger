@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,7 +23,8 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
   const status = WATCH_STATUS_META[item.status];
 
   return (
-    <Card className="group gap-0 overflow-hidden py-0">
+    <Link href={`/anime/${item.id}`} className="block">
+    <Card className="group gap-0 overflow-hidden py-0 transition-shadow hover:ring-2 hover:ring-indigo-500/40">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
@@ -62,5 +64,6 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
         </p>
       </CardContent>
     </Card>
+    </Link>
   );
 }

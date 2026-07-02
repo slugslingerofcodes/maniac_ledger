@@ -268,6 +268,24 @@ export async function getUpcomingSeasons(pages = 2): Promise<JikanAnime[]> {
 }
 
 /**
+ * Top / trending anime (`/top/anime`). Defaults to currently-airing so the set
+ * feels current. Cached in Next's Data Cache for 24h. Used for the library
+ * backdrop poster wall.
+ *
+ * @param limit Max results (Jikan caps the page at 25).
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function getTopAnime(limit = 24): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({
+    filter: "airing",
+    limit: String(limit),
+  });
+  return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/**
  * Fetch a single anime by its MyAnimeList id, using the `/full` endpoint
  * (includes relations, themes, external links, etc.).
  *

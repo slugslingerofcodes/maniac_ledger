@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bookmark, Calendar, Search, User } from "lucide-react";
+import { Bookmark, Calendar, Newspaper, Search, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const TABS = [
   { label: "Library", href: "/library", Icon: Bookmark },
   { label: "Search", href: "/search", Icon: Search },
   { label: "Upcoming", href: "/upcoming", Icon: Calendar },
+  { label: "News", href: "/news", Icon: Newspaper },
   { label: "Profile", href: "/profile", Icon: User },
 ] as const;
 

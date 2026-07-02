@@ -2,11 +2,25 @@ import { Suspense } from "react";
 
 import { LibraryCard } from "@/components/library-card";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { TrendingPostersBackdrop } from "@/components/TrendingPostersBackdrop";
+import { getTopAnime } from "@/lib/jikan";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 import { LibraryGridClient } from "./library-grid-client";
 import { LibraryTabs } from "./library-tabs";
+
+/** Trending poster URLs for the backdrop; best-effort (empty on Jikan failure). */
+async function getTrendingPosters(): Promise<string[]> {
+  try {
+    const { data } = await getTopAnime(24);
+    return data
+      .map((a) => a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url)
+      .filter((url): url is string => Boolean(url));
+  } catch {
+    return [];
+  }
+}
 
 // Tabs shown at the top. "all" is a pseudo-status meaning "no filter".
 const FILTERS = [
@@ -33,9 +47,11 @@ export default async function LibraryPage({
 
   const { status } = await searchParams;
   const filter: FilterValue = isFilterValue(status) ? status : "all";
+  const posters = await getTrendingPosters();
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      <TrendingPostersBackdrop posters={posters} />
       <OfflineBanner />
       <h1 className="text-2xl font-semibold tracking-tight">Your Library</h1>
       <p className="mt-1 text-sm text-muted-foreground">

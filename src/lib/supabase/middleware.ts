@@ -45,14 +45,15 @@ export async function updateSession(request: NextRequest) {
     "/reset-password",
     "/auth",
     "/api/anime/search",
+    "/admin/login",
   ];
-  const isPublicPath = publicPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path),
-  );
+  const { pathname } = request.nextUrl;
+  const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    // Unauthenticated admin routes go to the admin sign-in, not the user one.
+    url.pathname = pathname.startsWith("/admin") ? "/admin/login" : "/login";
     return NextResponse.redirect(url);
   }
 

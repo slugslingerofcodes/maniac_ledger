@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Megaphone, ShieldCheck } from "lucide-react";
 
 import { LogoutButton } from "@/components/logout-button";
 import { UsernameForm } from "@/components/UsernameForm";
-import { requireUser } from "@/lib/supabase/auth";
+import { isAdmin, requireUser } from "@/lib/supabase/auth";
 
 export const metadata: Metadata = { title: "Profile · anime_maniacs" };
 
@@ -27,6 +29,24 @@ export default async function ProfilePage() {
       <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <UsernameForm initialUsername={username} />
       </div>
+
+      <Link
+        href="/announcements"
+        className="mt-4 flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition hover:ring-indigo-500/40"
+      >
+        <Megaphone className="size-5 text-muted-foreground" aria-hidden />
+        <span className="font-medium">Announcements</span>
+      </Link>
+
+      {isAdmin(user) ? (
+        <Link
+          href="/admin"
+          className="mt-4 flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-amber-500/30 transition hover:ring-amber-500/50"
+        >
+          <ShieldCheck className="size-5 text-amber-400" aria-hidden />
+          <span className="font-medium">Admin dashboard</span>
+        </Link>
+      ) : null}
 
       <div className="mt-4">
         <LogoutButton className="w-full" />

@@ -16,8 +16,18 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0007_anime_franchise_id.sql` | `anime.franchise_id` + index |
 | `supabase/migrations/0008_notifications.sql` | `notifications` table + RLS |
 | `supabase/migrations/0010_recommendations.sql` | `recommendations` table + RLS + GRANTs |
+| `supabase/migrations/0011_announcements.sql` | `announcements` table + RLS + `is_admin()` helper |
 
 (`0009` is run in step 3, after the Edge Functions are deployed.)
+
+**Make an administrator** (for the `/admin` dashboard) — after `0011`, flag a user,
+then have them sign out/in so the claim lands in their token:
+
+```sql
+update auth.users
+   set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"is_admin": true}'::jsonb
+ where email = 'you@example.com';
+```
 
 ## 2. Edge Functions (Supabase CLI)
 
@@ -55,6 +65,7 @@ select * from cron.job_run_details order by start_time desc limit 5;
 | `NEXT_PUBLIC_SUPABASE_URL` | **Baked at build time** — changing requires a redeploy |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same; RLS protects the data |
 | `GEMINI_API_KEY` | Server-only; required for `/recommendations` |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only; bypasses RLS.** Used solely by the `/admin` dashboard (`src/lib/supabase/admin.ts`) to list users via the Auth admin API. Also add to `.env.local` for local admin testing. Never expose to the client. |
 
 Resend keys live in Supabase Edge secrets (step 2), **not** Vercel.
 

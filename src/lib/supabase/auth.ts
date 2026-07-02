@@ -30,3 +30,21 @@ export async function requireUser(): Promise<User> {
   }
   return user;
 }
+
+/** True when the user's server-controlled app_metadata flags them an admin. */
+export function isAdmin(user: User | null): boolean {
+  return user?.app_metadata?.is_admin === true;
+}
+
+/**
+ * Route guard for the admin area. Redirects to /admin/login unless the current
+ * user is signed in AND flagged `is_admin` in app_metadata (set via SQL; see
+ * migration 0011). The DB enforces the same via RLS `is_admin()`.
+ */
+export async function requireAdmin(): Promise<User> {
+  const user = await getUser();
+  if (!user || !isAdmin(user)) {
+    redirect("/admin/login");
+  }
+  return user;
+}

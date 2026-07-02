@@ -25,17 +25,29 @@ export default async function AdminPage(props: {
   const admin = await requireAdmin();
   const { message } = await props.searchParams;
 
-  // Every user + their sign-in times (service role → bypasses RLS).
-  const svc = createAdminClient();
-  const { data: userList } = await svc.auth.admin.listUsers({
-    page: 1,
-    perPage: 200,
-  });
-  const users = [...(userList?.users ?? [])].sort(
-    (a, b) =>
-      new Date(b.last_sign_in_at ?? 0).getTime() -
-      new Date(a.last_sign_in_at ?? 0).getTime(),
-  );
+  // Every user + their sign-in times (service role → bypasses RLS). Degrades
+  // to an explanatory message when SUPABASE_SERVICE_ROLE_KEY isn't configured
+  // rather than failing the whole dashboard.
+  let users: Awaited<
+    ReturnType<ReturnType<typeof createAdminClient>["auth"]["admin"]["listUsers"]>
+  >["data"]["users"] = [];
+  let usersError: string | null = null;
+  try {
+    const svc = createAdminClient();
+    const { data: userList, error } = await svc.auth.admin.listUsers({
+      page: 1,
+      perPage: 200,
+    });
+    if (error) throw error;
+    users = [...(userList?.users ?? [])].sort(
+      (a, b) =>
+        new Date(b.last_sign_in_at ?? 0).getTime() -
+        new Date(a.last_sign_in_at ?? 0).getTime(),
+    );
+  } catch (err) {
+    usersError =
+      err instanceof Error ? err.message : "Couldn't load the user list.";
+  }
 
   // Announcements (RLS lets an admin read all).
   const supabase = await createClient();
@@ -143,10 +155,19 @@ export default async function AdminPage(props: {
       <section>
         <h2 className="mb-3 text-lg font-semibold">
           Users{" "}
-          <span className="text-sm font-normal text-muted-foreground">
-            ({users.length})
-          </span>
+          {!usersError ? (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({users.length})
+            </span>
+          ) : null}
         </h2>
+        {usersError ? (
+          <p className="rounded-xl bg-card p-4 text-sm text-destructive ring-1 ring-foreground/10">
+            Couldn&apos;t load users: {usersError}. Set{" "}
+            <code className="rounded bg-muted px-1">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
+            in the environment (see DEPLOY.md) and redeploy.
+          </p>
+        ) : (
         <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
@@ -186,6 +207,7 @@ export default async function AdminPage(props: {
             </tbody>
           </table>
         </div>
+        )}
       </section>
     </div>
   );

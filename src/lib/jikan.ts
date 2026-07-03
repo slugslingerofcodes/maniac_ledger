@@ -58,6 +58,13 @@ export interface JikanAiredDates {
   to: string | null;
 }
 
+/** Promo video (usually YouTube). All fields may be null when none exists. */
+export interface JikanTrailer {
+  youtube_id: string | null;
+  url: string | null;
+  embed_url: string | null;
+}
+
 export interface JikanAnime {
   mal_id: number;
   title: string;
@@ -78,6 +85,8 @@ export interface JikanAnime {
   /** Present on season/schedule endpoints; optional elsewhere. */
   broadcast?: JikanBroadcast;
   aired?: JikanAiredDates;
+  /** Present on the by-id endpoints; optional elsewhere. */
+  trailer?: JikanTrailer;
 }
 
 export interface JikanPagination {
@@ -373,6 +382,37 @@ export function getTopMovies(limit = 24): Promise<JikanSearchResponse> {
   return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
     revalidate: ONE_DAY_SECONDS,
   });
+}
+
+/**
+ * Embeddable trailer URL for an anime, or null when it has none. Uses the
+ * lightweight `/anime/{id}` endpoint (not `/full`) and caches for 24h — called
+ * from the detail page, which only stores catalog data, not trailers.
+ *
+ * Jikan often leaves `youtube_id` null while populating `embed_url`, so prefer
+ * the latter; its `autoplay=1` is stripped so the page never auto-plays audio.
+ */
+export async function getAnimeTrailerEmbedUrl(
+  malId: number,
+): Promise<string | null> {
+  const res = await jikanFetch<JikanByIdResponse>(`/anime/${malId}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+  const trailer = res.data.trailer;
+
+  if (trailer?.embed_url) {
+    try {
+      const url = new URL(trailer.embed_url);
+      url.searchParams.delete("autoplay");
+      return url.toString();
+    } catch {
+      return trailer.embed_url;
+    }
+  }
+  if (trailer?.youtube_id) {
+    return `https://www.youtube-nocookie.com/embed/${trailer.youtube_id}`;
+  }
+  return null;
 }
 
 /**

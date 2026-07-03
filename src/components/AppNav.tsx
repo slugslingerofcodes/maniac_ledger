@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,6 +57,10 @@ export function AppNav() {
   const email = user?.email ?? "";
   const name = getDisplayName(user);
   const initial = name && name !== "Account" ? name[0]!.toUpperCase() : "?";
+  const avatarUrl =
+    typeof user?.user_metadata?.avatar_url === "string"
+      ? user.user_metadata.avatar_url
+      : null;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/70 backdrop-blur-xl">
@@ -105,6 +109,9 @@ export function AppNav() {
               className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Avatar>
+                {avatarUrl ? (
+                  <AvatarImage src={avatarUrl} alt={name} />
+                ) : null}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>

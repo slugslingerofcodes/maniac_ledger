@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ensureEpisodes } from "@/lib/episodes";
+import { getAnimeTrailerEmbedUrl } from "@/lib/jikan";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -149,6 +150,17 @@ export default async function AnimeDetailPage({
     (anime.airing_start ? new Date(anime.airing_start).getFullYear() : null);
   const season = seasonLabel(anime.season, year);
 
+  // Trailer comes live from Jikan (the catalog doesn't store it) — best-effort,
+  // cached 24h; the section is simply hidden when there is none.
+  let trailerEmbedUrl: string | null = null;
+  if (anime.mal_id != null) {
+    try {
+      trailerEmbedUrl = await getAnimeTrailerEmbedUrl(anime.mal_id);
+    } catch {
+      /* no trailer section on failure */
+    }
+  }
+
   return (
     <Shell>
       {/* Hero — full-width backdrop (blurred poster) + dark gradient overlay */}
@@ -272,6 +284,23 @@ export default async function AnimeDetailPage({
             )}
           </aside>
         </div>
+
+        {/* Trailer — embedded YouTube player, hidden when Jikan has none. */}
+        {trailerEmbedUrl ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-base font-semibold">Trailer</h2>
+            <div className="aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
+              <iframe
+                src={trailerEmbedUrl}
+                title={`${anime.title} trailer`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                loading="lazy"
+                className="h-full w-full border-0"
+              />
+            </div>
+          </section>
+        ) : null}
 
         {/* Franchise overview — only when this anime has been grouped. */}
         {anime.franchise_id ? (

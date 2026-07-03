@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
@@ -335,6 +336,14 @@ export default async function AnimeDetailPage({
               No episode list available for this title.
             </p>
           )}
+        </section>
+
+        <Separator className="my-8" />
+
+        {/* Per-anime chat room — live via Realtime (migration 0013). */}
+        <section>
+          <h2 className="mb-3 text-base font-semibold">Discussion</h2>
+          <AnimeChat animeId={anime.id} />
         </section>
       </div>
     </Shell>

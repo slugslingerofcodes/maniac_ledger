@@ -77,6 +77,7 @@ async function topTenItems(window: TopWindow): Promise<TopTenItem[]> {
         a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url ?? null,
       score: a.score,
       type: a.type ?? null,
+      members: a.members ?? null,
     }));
   } catch {
     return [];

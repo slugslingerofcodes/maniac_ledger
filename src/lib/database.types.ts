@@ -334,6 +334,48 @@ export type Database = {
           },
         ];
       };
+      anime_chat_messages: {
+        Row: {
+          id: string;
+          anime_id: string;
+          user_id: string;
+          username: string;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          anime_id: string;
+          user_id?: string;
+          username: string;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          anime_id?: string;
+          user_id?: string;
+          username?: string;
+          body?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "anime_chat_messages_anime_id_fkey";
+            columns: ["anime_id"];
+            isOneToOne: false;
+            referencedRelation: "anime";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "anime_chat_messages_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       anime_watched_count: {

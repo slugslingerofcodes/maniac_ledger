@@ -12,7 +12,11 @@ export type TopTenItem = {
   posterUrl: string | null;
   score: number | null;
   type: string | null;
+  /** MAL members — the viewer count the list is ranked by. */
+  members: number | null;
 };
+
+const COMPACT = new Intl.NumberFormat("en", { notation: "compact" });
 
 const WINDOWS = [
   { key: "weekly", label: "Weekly" },
@@ -98,10 +102,18 @@ export function TopTenShowcase({
                     {item.title}
                   </p>
                   <p className="text-xs text-muted-foreground">
+                    {item.members != null ? (
+                      <span className="text-sky-300">
+                        👥 {COMPACT.format(item.members)} viewers
+                      </span>
+                    ) : null}
+                    {item.members != null && item.score != null ? " · " : null}
                     {item.score != null ? (
                       <span className="text-amber-400">★ {item.score}</span>
                     ) : null}
-                    {item.score != null && item.type ? " · " : null}
+                    {(item.members != null || item.score != null) && item.type
+                      ? " · "
+                      : null}
                     {item.type ?? null}
                   </p>
                 </div>

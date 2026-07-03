@@ -75,6 +75,8 @@ export interface JikanAnime {
   episodes: number | null;
   score: number | null;
   scored_by: number | null;
+  /** How many MAL users have the title in their list — the "viewers" metric. */
+  members?: number | null;
   /** e.g. "Finished Airing"; widened to string for forward-compatibility. */
   status: JikanAiringStatus | string;
   season: JikanSeason | null;
@@ -297,24 +299,32 @@ export function getTopAnime(limit = 24): Promise<JikanSearchResponse> {
 }
 
 /**
- * Ranking window for the home-page Top-10 lists. Jikan/MAL has no literal
- * week/month/year charts, so each maps to the closest real endpoint:
- *  - weekly  → top currently-airing (what's hot right now)
- *  - monthly → this season's best by score
- *  - yearly  → this calendar year's best by score
+ * Ranking window for the home-page Top-10 lists, ranked by **viewers** (MAL
+ * `members` — how many users have the title in their list). Jikan/MAL has no
+ * literal week/month/year charts, so each maps to the closest real slice:
+ *  - weekly  → currently-airing, most viewers
+ *  - monthly → this season, most viewers
+ *  - yearly  → this calendar year, most viewers
  */
 export type TopWindow = "weekly" | "monthly" | "yearly";
 
 export async function getTopTen(window: TopWindow): Promise<JikanAnime[]> {
   let path: string;
   if (window === "weekly") {
-    path = "/top/anime?filter=airing&limit=10";
+    const params = new URLSearchParams({
+      order_by: "members",
+      sort: "desc",
+      status: "airing",
+      limit: "10",
+      sfw: "true",
+    });
+    path = `/anime?${params.toString()}`;
   } else if (window === "monthly") {
     path = "/seasons/now?limit=25&sfw=true";
   } else {
     const year = new Date().getFullYear();
     const params = new URLSearchParams({
-      order_by: "score",
+      order_by: "members",
       sort: "desc",
       start_date: `${year}-01-01`,
       end_date: `${year}-12-31`,
@@ -328,16 +338,15 @@ export async function getTopTen(window: TopWindow): Promise<JikanAnime[]> {
     revalidate: ONE_DAY_SECONDS,
   });
 
-  // Dedupe (Jikan can repeat ids) and, for the season feed, rank by score.
+  // Dedupe (Jikan can repeat ids) and rank by viewer count — the seasonal feed
+  // arrives unordered for our purposes, and it costs nothing for the others.
   const seen = new Set<number>();
   const unique = res.data.filter((a) => {
     if (seen.has(a.mal_id)) return false;
     seen.add(a.mal_id);
     return true;
   });
-  if (window === "monthly") {
-    unique.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  }
+  unique.sort((a, b) => (b.members ?? 0) - (a.members ?? 0));
   return unique.slice(0, 10);
 }
 

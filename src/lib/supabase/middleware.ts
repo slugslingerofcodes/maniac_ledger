@@ -46,6 +46,9 @@ export async function updateSession(request: NextRequest) {
     "/auth",
     "/api/anime/search",
     "/admin/login",
+    // PWA assets — must be fetchable without a session or install/offline breaks.
+    "/manifest.webmanifest",
+    "/sw.js",
   ];
   const { pathname } = request.nextUrl;
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));

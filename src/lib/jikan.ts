@@ -63,6 +63,8 @@ export interface JikanAnime {
   title: string;
   title_english: string | null;
   synopsis: string | null;
+  /** Media kind, e.g. "TV", "Movie", "OVA". Widened to string for forward-compat. */
+  type?: string | null;
   episodes: number | null;
   score: number | null;
   scored_by: number | null;
@@ -280,6 +282,94 @@ export function getTopAnime(limit = 24): Promise<JikanSearchResponse> {
     filter: "airing",
     limit: String(limit),
   });
+  return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/**
+ * Ranking window for the home-page Top-10 lists. Jikan/MAL has no literal
+ * week/month/year charts, so each maps to the closest real endpoint:
+ *  - weekly  → top currently-airing (what's hot right now)
+ *  - monthly → this season's best by score
+ *  - yearly  → this calendar year's best by score
+ */
+export type TopWindow = "weekly" | "monthly" | "yearly";
+
+export async function getTopTen(window: TopWindow): Promise<JikanAnime[]> {
+  let path: string;
+  if (window === "weekly") {
+    path = "/top/anime?filter=airing&limit=10";
+  } else if (window === "monthly") {
+    path = "/seasons/now?limit=25&sfw=true";
+  } else {
+    const year = new Date().getFullYear();
+    const params = new URLSearchParams({
+      order_by: "score",
+      sort: "desc",
+      start_date: `${year}-01-01`,
+      end_date: `${year}-12-31`,
+      limit: "10",
+      sfw: "true",
+    });
+    path = `/anime?${params.toString()}`;
+  }
+
+  const res = await jikanFetch<JikanSearchResponse>(path, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+
+  // Dedupe (Jikan can repeat ids) and, for the season feed, rank by score.
+  const seen = new Set<number>();
+  const unique = res.data.filter((a) => {
+    if (seen.has(a.mal_id)) return false;
+    seen.add(a.mal_id);
+    return true;
+  });
+  if (window === "monthly") {
+    unique.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  }
+  return unique.slice(0, 10);
+}
+
+/** Six hours — the airing schedule shifts more often than the top charts. */
+const SIX_HOURS_SECONDS = 21_600;
+
+/**
+ * Currently-airing anime with their weekly broadcast slot (`/schedules`),
+ * concatenated across pages and deduped by `mal_id`. Each record's
+ * `broadcast.day`/`broadcast.time` is the JST air slot the schedule page and
+ * next-episode countdowns are built from.
+ */
+export async function getSchedules(pages = 3): Promise<JikanAnime[]> {
+  const seen = new Set<number>();
+  const all: JikanAnime[] = [];
+  for (let page = 1; page <= pages; page++) {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: "25",
+      sfw: "true",
+      kids: "false",
+    });
+    const res = await jikanFetch<JikanSearchResponse>(
+      `/schedules?${params.toString()}`,
+      { revalidate: SIX_HOURS_SECONDS },
+    );
+    for (const a of res.data) {
+      if (seen.has(a.mal_id)) continue;
+      seen.add(a.mal_id);
+      all.push(a);
+    }
+    if (!res.pagination.has_next_page) break;
+  }
+  return all;
+}
+
+/**
+ * Top anime movies (`/top/anime?type=movie`). Cached 24h. Powers the Movies tab.
+ */
+export function getTopMovies(limit = 24): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({ type: "movie", limit: String(limit) });
   return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
     revalidate: ONE_DAY_SECONDS,
   });

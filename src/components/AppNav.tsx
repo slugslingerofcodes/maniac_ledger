@@ -30,7 +30,9 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { label: "Library", href: "/library" },
   { label: "Search", href: "/search" },
+  { label: "Schedule", href: "/schedule" },
   { label: "Upcoming", href: "/upcoming" },
+  { label: "Movies", href: "/movies" },
   { label: "News", href: "/news" },
   { label: "Recommendations", href: "/recommendations" },
 ] as const;

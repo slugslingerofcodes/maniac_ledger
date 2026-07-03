@@ -6,7 +6,9 @@ import { AuroraBackdrop } from "@/components/AuroraBackdrop";
 import { ContinueWatching } from "@/components/anime/ContinueWatching";
 import { LibraryGrid } from "@/components/library-grid";
 import { SiteHeader } from "@/components/site-header";
+import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import { buttonVariants } from "@/components/ui/button";
+import { getTopTen, type TopWindow } from "@/lib/jikan";
 import { cn } from "@/lib/utils";
 
 function Hero() {
@@ -64,6 +66,33 @@ function GridSkeleton() {
   );
 }
 
+/** One ranking window, mapped for the showcase; best-effort (empty on failure). */
+async function topTenItems(window: TopWindow): Promise<TopTenItem[]> {
+  try {
+    const list = await getTopTen(window);
+    return list.map((a) => ({
+      malId: a.mal_id,
+      title: a.title,
+      posterUrl:
+        a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url ?? null,
+      score: a.score,
+      type: a.type ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Server section: fetches all three charts, renders the tabbed Top 10. */
+async function TopTen() {
+  const [weekly, monthly, yearly] = await Promise.all([
+    topTenItems("weekly"),
+    topTenItems("monthly"),
+    topTenItems("yearly"),
+  ]);
+  return <TopTenShowcase weekly={weekly} monthly={monthly} yearly={yearly} />;
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -71,9 +100,12 @@ export default function Home() {
       <Hero />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         <Suspense fallback={null}>
+          <TopTen />
+        </Suspense>
+        <Suspense fallback={null}>
           <ContinueWatching />
         </Suspense>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 mt-8 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">Your Library</h2>
         </div>
         <Suspense fallback={<GridSkeleton />}>

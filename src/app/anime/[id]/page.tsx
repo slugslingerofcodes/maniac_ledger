@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ensureEpisodes } from "@/lib/episodes";
-import { getAnimeTrailerEmbedUrl } from "@/lib/jikan";
+import { getAnimeExtras } from "@/lib/jikan";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -151,14 +151,27 @@ export default async function AnimeDetailPage({
     (anime.airing_start ? new Date(anime.airing_start).getFullYear() : null);
   const season = seasonLabel(anime.season, year);
 
-  // Trailer comes live from Jikan (the catalog doesn't store it) — best-effort,
-  // cached 24h; the section is simply hidden when there is none.
+  // Trailer + genres come live from Jikan (best-effort, cached 24h). Genres
+  // lazily backfill the catalog row (pre-0014 rows fill in as they're viewed),
+  // which is what feeds the library's genre filter.
   let trailerEmbedUrl: string | null = null;
+  let genres: string[] = anime.genres ?? [];
   if (anime.mal_id != null) {
     try {
-      trailerEmbedUrl = await getAnimeTrailerEmbedUrl(anime.mal_id);
+      const extras = await getAnimeExtras(anime.mal_id);
+      trailerEmbedUrl = extras.trailerEmbedUrl;
+      if (genres.length === 0 && extras.genres.length > 0) {
+        genres = extras.genres;
+        if (user) {
+          // Best-effort backfill; ignore failures (e.g. 0014 not applied yet).
+          await supabase
+            .from("anime")
+            .update({ genres: extras.genres })
+            .eq("id", anime.id);
+        }
+      }
     } catch {
-      /* no trailer section on failure */
+      /* no trailer/genres on failure */
     }
   }
 
@@ -236,6 +249,16 @@ export default async function AnimeDetailPage({
                 {anime.studio ? <span>{anime.studio}</span> : null}
                 {season ? <span>{season}</span> : null}
               </div>
+
+              {genres.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {genres.slice(0, 6).map((g) => (
+                    <Badge key={g} variant="outline">
+                      {g}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

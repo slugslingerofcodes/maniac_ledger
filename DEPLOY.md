@@ -19,6 +19,7 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0011_announcements.sql` | `announcements` table + RLS + `is_admin()` helper |
 | `supabase/migrations/0012_avatars.sql` | public `avatars` storage bucket + per-user RLS (profile pictures) |
 | `supabase/migrations/0013_anime_chat.sql` | `anime_chat_messages` table + RLS + Realtime publication (per-anime chat) |
+| `supabase/migrations/0014_anime_genres.sql` | `anime.genres text[]` + GIN index (library genre filter; backfills on add/view) |
 
 (`0009` is run in step 3, after the Edge Functions are deployed.)
 

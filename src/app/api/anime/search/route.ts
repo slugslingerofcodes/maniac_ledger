@@ -4,22 +4,38 @@ import { z } from "zod";
 import { JikanError, searchAnime, type JikanAnime } from "@/lib/jikan";
 
 /**
- * GET /api/anime/search?q=naruto&page=1
+ * GET /api/anime/search?q=naruto&page=1&genres=1,22
  *
  * Proxies the Jikan v4 search through our typed client (which rate-limits to
  * stay inside Jikan's ~3 req/sec budget) and edge-caches responses for an hour.
+ * `genres` is a comma-separated list of MAL genre ids; with genres present,
+ * `q` may be omitted (pure genre browse).
  */
 
-// q: at least 2 chars. page: optional positive integer, defaults to 1.
-const QuerySchema = z.object({
-  q: z.string().trim().min(2, "Query must be at least 2 characters."),
-  page: z.coerce
-    .number()
-    .int("Page must be an integer.")
-    .positive("Page must be a positive integer.")
-    .optional()
-    .default(1),
-});
+// q: at least 2 chars when present. page: optional positive integer.
+// genres: comma-separated positive ints, max 8. At least one of q/genres.
+const QuerySchema = z
+  .object({
+    q: z
+      .string()
+      .trim()
+      .min(2, "Query must be at least 2 characters.")
+      .optional(),
+    page: z.coerce
+      .number()
+      .int("Page must be an integer.")
+      .positive("Page must be a positive integer.")
+      .optional()
+      .default(1),
+    genres: z
+      .string()
+      .regex(/^\d+(,\d+)*$/, "genres must be comma-separated ids.")
+      .transform((s) => s.split(",").map(Number).slice(0, 8))
+      .optional(),
+  })
+  .refine((v) => v.q != null || (v.genres?.length ?? 0) > 0, {
+    message: "Provide a query or at least one genre.",
+  });
 
 export interface AnimeSearchResponse {
   results: JikanAnime[];
@@ -32,6 +48,7 @@ export async function GET(request: NextRequest) {
   const parsed = QuerySchema.safeParse({
     q: searchParams.get("q") ?? undefined,
     page: searchParams.get("page") ?? undefined,
+    genres: searchParams.get("genres") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -44,10 +61,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { q, page } = parsed.data;
+  const { q, page, genres } = parsed.data;
 
   try {
-    const { data, pagination } = await searchAnime(q, page);
+    const { data, pagination } = await searchAnime(q ?? "", page, genres ?? []);
 
     return NextResponse.json(
       { results: data, pagination } satisfies AnimeSearchResponse,

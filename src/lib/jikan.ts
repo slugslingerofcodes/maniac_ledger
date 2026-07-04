@@ -230,22 +230,37 @@ async function jikanFetch<T>(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Search anime by title. SFW results only.
+ * Search anime by title and/or MAL genre ids. SFW results only.
  *
- * @param query Free-text title query (e.g. "Frieren").
- * @param page  1-based page number (Jikan returns 25 results/page).
+ * With an empty query but genres set, this becomes a genre browse — Jikan
+ * supports `/anime?genres=…` without `q`, so results are ordered by member
+ * count to surface well-known titles first.
+ *
+ * @param query    Free-text title query (e.g. "Frieren"); may be empty when
+ *                 `genreIds` is non-empty.
+ * @param page     1-based page number (Jikan returns 25 results/page).
+ * @param genreIds MAL genre/theme/demographic ids to require (AND semantics).
  * @returns The matching anime plus pagination metadata.
  * @throws {JikanError} On any non-2xx response (e.g. 429 when rate limited).
  */
 export function searchAnime(
   query: string,
   page = 1,
+  genreIds: number[] = [],
 ): Promise<JikanSearchResponse> {
   const params = new URLSearchParams({
-    q: query,
     sfw: "true",
     page: String(page),
   });
+  if (query) params.set("q", query);
+  if (genreIds.length > 0) {
+    params.set("genres", genreIds.join(","));
+    if (!query) {
+      // Pure genre browse: rank by popularity, not Jikan's default id order.
+      params.set("order_by", "members");
+      params.set("sort", "desc");
+    }
+  }
   return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`);
 }
 
@@ -394,34 +409,40 @@ export function getTopMovies(limit = 24): Promise<JikanSearchResponse> {
 }
 
 /**
- * Embeddable trailer URL for an anime, or null when it has none. Uses the
- * lightweight `/anime/{id}` endpoint (not `/full`) and caches for 24h — called
- * from the detail page, which only stores catalog data, not trailers.
+ * Detail-page extras the catalog doesn't store: the trailer embed URL and the
+ * genre names (used to lazily backfill `anime.genres`). One lightweight
+ * `/anime/{id}` call, cached 24h.
  *
- * Jikan often leaves `youtube_id` null while populating `embed_url`, so prefer
- * the latter; its `autoplay=1` is stripped so the page never auto-plays audio.
+ * Jikan often leaves `trailer.youtube_id` null while populating `embed_url`,
+ * so prefer the latter; its `autoplay=1` is stripped so the page never
+ * auto-plays audio.
  */
-export async function getAnimeTrailerEmbedUrl(
-  malId: number,
-): Promise<string | null> {
+export async function getAnimeExtras(malId: number): Promise<{
+  trailerEmbedUrl: string | null;
+  genres: string[];
+}> {
   const res = await jikanFetch<JikanByIdResponse>(`/anime/${malId}`, {
     revalidate: ONE_DAY_SECONDS,
   });
   const trailer = res.data.trailer;
 
+  let trailerEmbedUrl: string | null = null;
   if (trailer?.embed_url) {
     try {
       const url = new URL(trailer.embed_url);
       url.searchParams.delete("autoplay");
-      return url.toString();
+      trailerEmbedUrl = url.toString();
     } catch {
-      return trailer.embed_url;
+      trailerEmbedUrl = trailer.embed_url;
     }
+  } else if (trailer?.youtube_id) {
+    trailerEmbedUrl = `https://www.youtube-nocookie.com/embed/${trailer.youtube_id}`;
   }
-  if (trailer?.youtube_id) {
-    return `https://www.youtube-nocookie.com/embed/${trailer.youtube_id}`;
-  }
-  return null;
+
+  return {
+    trailerEmbedUrl,
+    genres: (res.data.genres ?? []).map((g) => g.name),
+  };
 }
 
 /**

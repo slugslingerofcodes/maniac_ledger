@@ -36,6 +36,7 @@ export type Database = {
           season: Database["public"]["Enums"]["anime_season"] | null;
           year: number | null;
           type: Database["public"]["Enums"]["anime_type"];
+          genres: string[];
           created_at: string;
           updated_at: string;
         };
@@ -57,6 +58,7 @@ export type Database = {
           season?: Database["public"]["Enums"]["anime_season"] | null;
           year?: number | null;
           type?: Database["public"]["Enums"]["anime_type"];
+          genres?: string[];
           created_at?: string;
           updated_at?: string;
         };
@@ -78,6 +80,7 @@ export type Database = {
           season?: Database["public"]["Enums"]["anime_season"] | null;
           year?: number | null;
           type?: Database["public"]["Enums"]["anime_type"];
+          genres?: string[];
           created_at?: string;
           updated_at?: string;
         };

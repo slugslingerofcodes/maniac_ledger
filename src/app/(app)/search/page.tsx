@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
+import { GENRE_OPTIONS } from "@/lib/genres";
+import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -34,7 +36,15 @@ export default function SearchPage() {
   const [status, setStatus] = useState<Status>("idle");
   // The query that produced the current `results`, for the no-results message.
   const [resolvedQuery, setResolvedQuery] = useState("");
+  // Selected MAL genre ids (AND semantics); works with or without a query.
+  const [genreIds, setGenreIds] = useState<number[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  function toggleGenre(id: number) {
+    setGenreIds((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
+    );
+  }
 
   // Shares the same cache as the /library grid (persisted to IndexedDB), so we
   // can show "Added ✓" for results already in the library.
@@ -61,12 +71,14 @@ export default function SearchPage() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const q = debouncedQuery.trim();
+    const hasQuery = q.length >= 2;
+    const hasGenres = genreIds.length > 0;
 
-    // Cancel any in-flight request whenever the debounced query changes.
+    // Cancel any in-flight request whenever the inputs change.
     abortRef.current?.abort();
 
-    // The API requires q >= 2 chars; treat anything shorter as the idle prompt.
-    if (q.length < 2) {
+    // Need a >=2-char query and/or at least one genre; otherwise idle prompt.
+    if (!hasQuery && !hasGenres) {
       setStatus("idle");
       setResults([]);
       setResolvedQuery("");
@@ -77,7 +89,11 @@ export default function SearchPage() {
     abortRef.current = controller;
     setStatus("loading");
 
-    fetch(`/api/anime/search?q=${encodeURIComponent(q)}`, {
+    const params = new URLSearchParams();
+    if (hasQuery) params.set("q", q);
+    if (hasGenres) params.set("genres", genreIds.join(","));
+
+    fetch(`/api/anime/search?${params.toString()}`, {
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -92,7 +108,7 @@ export default function SearchPage() {
           return true;
         });
         setResults(unique);
-        setResolvedQuery(q);
+        setResolvedQuery(hasQuery ? q : "the selected genres");
         setStatus("success");
       })
       .catch((err: unknown) => {
@@ -101,13 +117,13 @@ export default function SearchPage() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery]);
+  }, [debouncedQuery, genreIds]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
       {/* Centered search input */}
-      <div className="mx-auto mb-10 max-w-xl">
+      <div className="mx-auto mb-6 max-w-xl">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -117,8 +133,40 @@ export default function SearchPage() {
           />
         </div>
 
+        {/* Genre / tag filter chips — combine with the query, or browse alone. */}
+        <div className="mx-auto mb-10 flex max-w-3xl flex-wrap justify-center gap-1.5">
+          {GENRE_OPTIONS.map((g) => {
+            const active = genreIds.includes(g.id);
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => toggleGenre(g.id)}
+                aria-pressed={active}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  active
+                    ? "bg-indigo-500 text-white"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {g.name}
+              </button>
+            );
+          })}
+          {genreIds.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setGenreIds([])}
+              className="rounded-full px-3 py-1 text-xs font-medium text-destructive hover:underline"
+            >
+              Clear ✕
+            </button>
+          ) : null}
+        </div>
+
         {status === "idle" ? (
-          <Hint>Start typing to discover anime…</Hint>
+          <Hint>Start typing or pick a genre to discover anime…</Hint>
         ) : null}
 
         {status === "loading" ? <SkeletonGrid /> : null}

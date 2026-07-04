@@ -21,6 +21,8 @@ export type LibraryEntryItem = {
   episodesWatched: number;
   totalEpisodes: number | null;
   score: number | null;
+  /** Genre names for the library filter; empty until backfilled. */
+  genres: string[];
 };
 
 /**
@@ -32,12 +34,26 @@ export type LibraryEntryItem = {
 export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("user_progress")
     .select(
-      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
+      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes, genres)",
     )
     .order("updated_at", { ascending: false });
+
+  // Migration 0014 not applied yet → retry without genres so the library
+  // still loads (the genre filter just has nothing to offer). The cast is safe:
+  // the mapper checks `"genres" in row.anime` before reading it.
+  if (error && /genres/i.test(error.message)) {
+    const retry = await supabase
+      .from("user_progress")
+      .select(
+        "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
+      )
+      .order("updated_at", { ascending: false });
+    data = retry.data as unknown as typeof data;
+    error = retry.error;
+  }
   if (error) throw new Error(error.message);
 
   const { data: counts } = await supabase
@@ -58,6 +74,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
     episodesWatched: countMap.get(row.anime.id) ?? row.episodes_watched,
     totalEpisodes: row.anime.total_episodes,
     score: row.score,
+    genres: "genres" in row.anime ? (row.anime.genres ?? []) : [],
   }));
 }
 

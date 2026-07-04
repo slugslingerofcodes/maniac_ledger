@@ -31,25 +31,48 @@ export async function upsertCatalogAnime(
   supabase: ServerClient,
   jikanAnime: JikanAnime,
 ): Promise<string> {
-  const { data, error } = await supabase
+  const row = {
+    mal_id: jikanAnime.mal_id,
+    title: jikanAnime.title,
+    title_english: jikanAnime.title_english,
+    synopsis: jikanAnime.synopsis,
+    total_episodes: jikanAnime.episodes,
+    poster_url: posterOf(jikanAnime),
+    score: jikanAnime.score,
+    status: JIKAN_STATUS_TO_AIRING[jikanAnime.status] ?? "finished_airing",
+    year: jikanAnime.year,
+    studio: jikanAnime.studios?.[0]?.name ?? null,
+    genres: (jikanAnime.genres ?? []).map((g) => g.name),
+  };
+
+  let { data, error } = await supabase
     .from("anime")
-    .upsert(
-      {
-        mal_id: jikanAnime.mal_id,
-        title: jikanAnime.title,
-        title_english: jikanAnime.title_english,
-        synopsis: jikanAnime.synopsis,
-        total_episodes: jikanAnime.episodes,
-        poster_url: posterOf(jikanAnime),
-        score: jikanAnime.score,
-        status: JIKAN_STATUS_TO_AIRING[jikanAnime.status] ?? "finished_airing",
-        year: jikanAnime.year,
-        studio: jikanAnime.studios?.[0]?.name ?? null,
-      },
-      { onConflict: "mal_id" },
-    )
+    .upsert(row, { onConflict: "mal_id" })
     .select("id")
     .single();
+
+  // Migration 0014 not applied yet → retry without the genres column so adds
+  // keep working; genres simply stay empty until the migration runs.
+  if (error && /genres/i.test(error.message)) {
+    const { genres: _genres, ...withoutGenres } = row;
+    ({ data, error } = await supabase
+      .from("anime")
+      .upsert(withoutGenres, { onConflict: "mal_id" })
+      .select("id")
+      .single());
+  }
+
+  // Row already cataloged and the UPDATE policy (0014) isn't in place → the
+  // upsert's conflict-update path is RLS-denied. The add itself only needs the
+  // id, so fall back to reading the existing row; metadata refresh is skipped.
+  if (error && /row-level security/i.test(error.message)) {
+    const { data: existing } = await supabase
+      .from("anime")
+      .select("id")
+      .eq("mal_id", jikanAnime.mal_id)
+      .maybeSingle();
+    if (existing) return existing.id;
+  }
 
   if (error || !data) {
     throw new Error(error?.message ?? "Could not save this anime to the catalog.");

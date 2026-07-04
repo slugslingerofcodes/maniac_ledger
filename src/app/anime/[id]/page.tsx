@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
+import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,12 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ensureEpisodes } from "@/lib/episodes";
-import { getAnimeExtras } from "@/lib/jikan";
+import {
+  getAnimeExtras,
+  getAnimeRecommendations,
+  type RelatedAnime,
+  type SimilarAnime,
+} from "@/lib/jikan";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -151,15 +157,22 @@ export default async function AnimeDetailPage({
     (anime.airing_start ? new Date(anime.airing_start).getFullYear() : null);
   const season = seasonLabel(anime.season, year);
 
-  // Trailer + genres come live from Jikan (best-effort, cached 24h). Genres
-  // lazily backfill the catalog row (pre-0014 rows fill in as they're viewed),
-  // which is what feeds the library's genre filter.
+  // Trailer, genres, broadcast slot, and the season list come live from Jikan
+  // (best-effort, cached 24h). Genres lazily backfill the catalog row
+  // (pre-0014 rows fill in as they're viewed), feeding the library's filter.
   let trailerEmbedUrl: string | null = null;
   let genres: string[] = anime.genres ?? [];
+  let related: RelatedAnime[] = [];
+  let broadcastDay: string | null = null;
+  let broadcastTime: string | null = null;
+  let similar: SimilarAnime[] = [];
   if (anime.mal_id != null) {
     try {
       const extras = await getAnimeExtras(anime.mal_id);
       trailerEmbedUrl = extras.trailerEmbedUrl;
+      related = extras.related;
+      broadcastDay = extras.broadcastDay;
+      broadcastTime = extras.broadcastTime;
       if (genres.length === 0 && extras.genres.length > 0) {
         genres = extras.genres;
         if (user) {
@@ -171,7 +184,12 @@ export default async function AnimeDetailPage({
         }
       }
     } catch {
-      /* no trailer/genres on failure */
+      /* no extras on failure */
+    }
+    try {
+      similar = await getAnimeRecommendations(anime.mal_id, 3);
+    } catch {
+      /* no similar section on failure */
     }
   }
 
@@ -259,6 +277,13 @@ export default async function AnimeDetailPage({
                   ))}
                 </div>
               ) : null}
+
+              {/* Live countdown to the next episode for ongoing titles. */}
+              {anime.status === "currently_airing" ? (
+                <div>
+                  <NextEpisodeBadge day={broadcastDay} time={broadcastTime} />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -322,6 +347,64 @@ export default async function AnimeDetailPage({
                 loading="lazy"
                 className="h-full w-full border-0"
               />
+            </div>
+          </section>
+        ) : null}
+
+        {/* Season list — prequels/sequels/side stories from MAL relations. */}
+        {related.length > 0 ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-base font-semibold">Seasons &amp; related</h2>
+            <div className="flex flex-col gap-2">
+              {related.slice(0, 10).map((r) => (
+                <Link
+                  key={`${r.relation}-${r.malId}`}
+                  href={`/anime/mal/${r.malId}`}
+                  className="group flex items-center gap-3 rounded-lg bg-card p-3 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-indigo-500/40"
+                >
+                  <Badge variant="outline" className="w-28 shrink-0 justify-center">
+                    {r.relation}
+                  </Badge>
+                  <span className="min-w-0 truncate text-sm font-medium group-hover:text-indigo-300">
+                    {r.title}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {/* Community "users also liked" picks. */}
+        {similar.length > 0 ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-base font-semibold">More like this</h2>
+            <div className="grid grid-cols-3 gap-4">
+              {similar.map((s) => (
+                <Link
+                  key={s.malId}
+                  href={`/anime/mal/${s.malId}`}
+                  className="group flex flex-col gap-2"
+                >
+                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-indigo-500/40">
+                    {s.posterUrl ? (
+                      <Image
+                        src={s.posterUrl}
+                        alt={s.title}
+                        fill
+                        sizes="(max-width: 640px) 33vw, 200px"
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                  <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-indigo-300">
+                    {s.title}
+                  </p>
+                </Link>
+              ))}
             </div>
           </section>
         ) : null}

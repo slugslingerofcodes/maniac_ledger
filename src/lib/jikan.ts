@@ -89,6 +89,14 @@ export interface JikanAnime {
   aired?: JikanAiredDates;
   /** Present on the by-id endpoints; optional elsewhere. */
   trailer?: JikanTrailer;
+  /** Present on the `/full` endpoint: prequels, sequels, side stories, etc. */
+  relations?: JikanRelationGroup[];
+}
+
+/** One group of related entries, e.g. `{ relation: "Sequel", entry: [...] }`. */
+export interface JikanRelationGroup {
+  relation: string;
+  entry: JikanNamedEntity[];
 }
 
 export interface JikanPagination {
@@ -408,23 +416,49 @@ export function getTopMovies(limit = 24): Promise<JikanSearchResponse> {
   });
 }
 
+/** A related anime, flattened from Jikan's relation groups. */
+export type RelatedAnime = {
+  relation: string;
+  malId: number;
+  title: string;
+};
+
+export type AnimeExtras = {
+  trailerEmbedUrl: string | null;
+  genres: string[];
+  /** Weekly JST broadcast slot, when the title is airing. */
+  broadcastDay: string | null;
+  broadcastTime: string | null;
+  /** Prequels/sequels/side stories — the "season list". Anime entries only. */
+  related: RelatedAnime[];
+};
+
+/** Relation kinds shown in the "Seasons & related" list, in display order. */
+const RELATION_KINDS = [
+  "Prequel",
+  "Sequel",
+  "Parent Story",
+  "Side Story",
+  "Spin-Off",
+  "Alternative Version",
+] as const;
+
 /**
- * Detail-page extras the catalog doesn't store: the trailer embed URL and the
- * genre names (used to lazily backfill `anime.genres`). One lightweight
- * `/anime/{id}` call, cached 24h.
+ * Detail-page extras the catalog doesn't store — trailer embed URL, genre
+ * names (used to lazily backfill `anime.genres`), the broadcast slot for the
+ * next-episode countdown, and related seasons. One `/anime/{id}/full` call,
+ * cached 24h.
  *
  * Jikan often leaves `trailer.youtube_id` null while populating `embed_url`,
  * so prefer the latter; its `autoplay=1` is stripped so the page never
  * auto-plays audio.
  */
-export async function getAnimeExtras(malId: number): Promise<{
-  trailerEmbedUrl: string | null;
-  genres: string[];
-}> {
-  const res = await jikanFetch<JikanByIdResponse>(`/anime/${malId}`, {
+export async function getAnimeExtras(malId: number): Promise<AnimeExtras> {
+  const res = await jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`, {
     revalidate: ONE_DAY_SECONDS,
   });
-  const trailer = res.data.trailer;
+  const anime = res.data;
+  const trailer = anime.trailer;
 
   let trailerEmbedUrl: string | null = null;
   if (trailer?.embed_url) {
@@ -439,10 +473,64 @@ export async function getAnimeExtras(malId: number): Promise<{
     trailerEmbedUrl = `https://www.youtube-nocookie.com/embed/${trailer.youtube_id}`;
   }
 
+  const related: RelatedAnime[] = RELATION_KINDS.flatMap((kind) =>
+    (anime.relations ?? [])
+      .filter((g) => g.relation === kind)
+      .flatMap((g) =>
+        g.entry
+          .filter((e) => e.type === "anime")
+          .map((e) => ({ relation: kind, malId: e.mal_id, title: e.name })),
+      ),
+  );
+
   return {
     trailerEmbedUrl,
-    genres: (res.data.genres ?? []).map((g) => g.name),
+    genres: (anime.genres ?? []).map((g) => g.name),
+    broadcastDay: anime.broadcast?.day ?? null,
+    broadcastTime: anime.broadcast?.time ?? null,
+    related,
   };
+}
+
+/** A community "users also liked" recommendation for an anime. */
+export type SimilarAnime = {
+  malId: number;
+  title: string;
+  posterUrl: string | null;
+};
+
+interface JikanRecsResponse {
+  data: { entry: { mal_id: number; title: string; images: JikanImages } }[];
+}
+
+/**
+ * Top community recommendations for an anime (`/anime/{id}/recommendations`,
+ * already ranked by votes). Cached 24h.
+ */
+export async function getAnimeRecommendations(
+  malId: number,
+  limit = 3,
+): Promise<SimilarAnime[]> {
+  const res = await jikanFetch<JikanRecsResponse>(
+    `/anime/${malId}/recommendations`,
+    { revalidate: ONE_DAY_SECONDS },
+  );
+  const seen = new Set<number>();
+  const out: SimilarAnime[] = [];
+  for (const { entry } of res.data) {
+    if (seen.has(entry.mal_id)) continue;
+    seen.add(entry.mal_id);
+    out.push({
+      malId: entry.mal_id,
+      title: entry.title,
+      posterUrl:
+        entry.images?.jpg?.large_image_url ??
+        entry.images?.jpg?.image_url ??
+        null,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /**

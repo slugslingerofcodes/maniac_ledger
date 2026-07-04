@@ -24,9 +24,40 @@ const ONE_DAY_MS = 24 * 60 * 60_000;
  * renders from cache while offline. Status filtering is done client-side off the
  * cached list, so switching tabs never refetches.
  */
+const SORT_OPTIONS = [
+  { value: "recent", label: "Recently updated" },
+  { value: "title", label: "Title A–Z" },
+  { value: "rating", label: "My rating" },
+  { value: "genre", label: "Genre" },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]["value"];
+
+/** Order the (already filtered) items for the chosen sort. */
+function sortItems<T extends { title: string; score: number | null; genres: string[] }>(
+  items: T[],
+  sort: SortValue,
+): T[] {
+  if (sort === "recent") return items; // server order: updated_at desc
+  const sorted = [...items];
+  if (sort === "title") {
+    sorted.sort((a, b) => a.title.localeCompare(b.title));
+  } else if (sort === "rating") {
+    sorted.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  } else {
+    // Genre: alphabetical by first genre, so like-genres group together;
+    // entries without genres sink to the end.
+    sorted.sort((a, b) =>
+      (a.genres[0] ?? "￿").localeCompare(b.genres[0] ?? "￿"),
+    );
+  }
+  return sorted;
+}
+
 export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const queryClient = useQueryClient();
   const [genre, setGenre] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortValue>("recent");
   const { data, isPending, isError } = useQuery({
     queryKey: LIBRARY_QUERY_KEY,
     queryFn: () => getUserLibrary(),
@@ -57,30 +88,51 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
       </p>
     );
   } else {
-    const items = (data ?? []).filter(
-      (i) =>
-        (filter === "all" || i.status === filter) &&
-        (genre === null || i.genres.includes(genre)),
+    const items = sortItems(
+      (data ?? []).filter(
+        (i) =>
+          (filter === "all" || i.status === filter) &&
+          (genre === null || i.genres.includes(genre)),
+      ),
+      sort,
     );
     content = (
       <>
-        {genreOptions.length > 0 ? (
-          <div className="mb-4 flex flex-wrap gap-1.5">
-            <GenreChip
-              label="All genres"
-              active={genre === null}
-              onClick={() => setGenre(null)}
-            />
-            {genreOptions.map((g) => (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          {genreOptions.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
               <GenreChip
-                key={g}
-                label={g}
-                active={genre === g}
-                onClick={() => setGenre(genre === g ? null : g)}
+                label="All genres"
+                active={genre === null}
+                onClick={() => setGenre(null)}
               />
-            ))}
-          </div>
-        ) : null}
+              {genreOptions.map((g) => (
+                <GenreChip
+                  key={g}
+                  label={g}
+                  active={genre === g}
+                  onClick={() => setGenre(genre === g ? null : g)}
+                />
+              ))}
+            </div>
+          ) : (
+            <span />
+          )}
+          <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortValue)}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {items.length === 0 ? (
           genre !== null ? (
             <p className="py-8 text-center text-sm text-muted-foreground">

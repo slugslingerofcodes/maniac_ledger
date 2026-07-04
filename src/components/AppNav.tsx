@@ -61,6 +61,8 @@ export function AppNav() {
     typeof user?.user_metadata?.avatar_url === "string"
       ? user.user_metadata.avatar_url
       : null;
+  // Inline (not lib/supabase/auth's isAdmin) — that module is server-only.
+  const isAdminUser = user?.app_metadata?.is_admin === true;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/70 backdrop-blur-xl">
@@ -127,6 +129,14 @@ export function AppNav() {
                 ) : null}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {isAdminUser ? (
+                <DropdownMenuItem
+                  onClick={() => router.push("/admin")}
+                  className="text-amber-400 data-[highlighted]:text-amber-300"
+                >
+                  🛡 Admin dashboard
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onClick={() => router.push("/profile")}>
                 Change username
               </DropdownMenuItem>
@@ -181,6 +191,18 @@ export function AppNav() {
                       </p>
                     ) : null}
                   </div>
+                ) : null}
+                {isAdminUser ? (
+                  <SheetClose
+                    render={
+                      <Link
+                        href="/admin"
+                        className="mb-2 block rounded-md px-3 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-muted hover:text-amber-300"
+                      >
+                        🛡 Admin dashboard
+                      </Link>
+                    }
+                  />
                 ) : null}
                 <Button
                   type="button"

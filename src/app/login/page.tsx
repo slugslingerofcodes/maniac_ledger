@@ -93,7 +93,7 @@ export default async function LoginPage(props: {
           <GoogleSignInButton />
         </CardContent>
 
-        <CardFooter>
+        <CardFooter className="flex-col items-stretch gap-2">
           <p className="text-sm text-muted-foreground">
             New here?{" "}
             <Link
@@ -101,6 +101,14 @@ export default async function LoginPage(props: {
               className="font-medium text-foreground hover:underline"
             >
               Create an account
+            </Link>
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <Link
+              href="/admin/login"
+              className="inline-flex items-center gap-1.5 font-medium text-amber-400/90 hover:text-amber-300 hover:underline"
+            >
+              <span aria-hidden>🛡</span> Login as admin
             </Link>
           </p>
         </CardFooter>

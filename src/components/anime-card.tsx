@@ -23,8 +23,17 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
   const status = WATCH_STATUS_META[item.status];
 
   return (
-    <Link href={`/anime/${item.id}`} className="block">
-    <Card className="group gap-0 overflow-hidden py-0 transition-shadow hover:ring-2 hover:ring-indigo-500/40">
+    <Link href={`/anime/${item.id}`} className="group relative isolate block">
+    {/* Ambient glow: the poster itself, blurred, spilling past the card. */}
+    {item.posterUrl ? (
+      <div
+        aria-hidden
+        className="absolute inset-x-3 top-3 -z-10 aspect-[2/3] scale-105 opacity-40 blur-2xl transition-opacity duration-300 group-hover:opacity-70"
+      >
+        <Image src={item.posterUrl} alt="" fill sizes="200px" className="object-cover" />
+      </div>
+    ) : null}
+    <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image

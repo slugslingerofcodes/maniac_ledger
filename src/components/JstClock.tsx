@@ -33,7 +33,7 @@ export function JstClock() {
 
   return (
     <div className="flex flex-col items-center gap-1 text-center">
-      <span className="text-xs font-medium uppercase tracking-[0.2em] text-indigo-300/80">
+      <span className="text-xs font-medium uppercase tracking-[0.2em] text-primary/80">
         Japan Standard Time
       </span>
       <span className="font-mono text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl">

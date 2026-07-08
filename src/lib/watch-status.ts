@@ -18,7 +18,7 @@ export const WATCH_STATUS_META: Record<
   },
   plan_to_watch: {
     label: "Plan to Watch",
-    className: "bg-zinc-500/20 text-zinc-300 border-zinc-500/25",
+    className: "bg-violet-500/15 text-violet-300 border-violet-500/20",
   },
   on_hold: {
     label: "On Hold",

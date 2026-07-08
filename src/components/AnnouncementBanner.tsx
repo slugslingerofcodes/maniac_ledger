@@ -48,7 +48,7 @@ export function AnnouncementBanner() {
   }
 
   return (
-    <div className="border-b border-indigo-500/20 bg-indigo-500/10">
+    <div className="pattern-seigaiha border-b border-primary/20 bg-primary/10">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-2 text-sm sm:px-6">
         <span aria-hidden>📢</span>
         <p className="min-w-0 flex-1 truncate">
@@ -57,7 +57,7 @@ export function AnnouncementBanner() {
         </p>
         <Link
           href="/announcements"
-          className="shrink-0 text-xs font-medium text-indigo-300 hover:underline"
+          className="shrink-0 text-xs font-medium text-primary hover:underline"
         >
           View all
         </Link>

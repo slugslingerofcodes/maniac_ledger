@@ -22,7 +22,7 @@ export function NewsCard({ post }: { post: RedditPost }) {
       href={post.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex gap-4 rounded-xl bg-card p-4 shadow-[0_8px_30px_-16px_oklch(0_0_0/0.7)] ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-indigo-500/40"
+      className="group flex gap-4 rounded-xl bg-card p-4 shadow-[0_8px_30px_-16px_oklch(0_0_0/0.7)] ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-primary/40"
     >
       {post.thumbnail ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -38,13 +38,13 @@ export function NewsCard({ post }: { post: RedditPost }) {
         <Badge variant="outline" className="mb-1.5">
           r/anime
         </Badge>
-        <h3 className="line-clamp-2 text-sm font-medium leading-snug transition-colors group-hover:text-indigo-300">
+        <h3 className="line-clamp-2 text-sm font-medium leading-snug transition-colors group-hover:text-primary">
           {post.title}
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {post.author ? <span className="truncate">u/{post.author}</span> : null}
           <span>{timeAgo(post.createdUtc)}</span>
-          <span className="text-indigo-300/80 group-hover:underline">
+          <span className="text-primary/80 group-hover:underline">
             Read thread ↗
           </span>
         </div>

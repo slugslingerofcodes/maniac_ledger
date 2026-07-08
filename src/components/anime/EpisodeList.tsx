@@ -18,6 +18,20 @@ type Props = {
   animeId: string;
 };
 
+/** Toast + confetti burst when the final episode of a series is marked. */
+async function celebrateCompletion() {
+  toast.success("Series complete — every episode watched! 🎉");
+  // Skip the burst (and loading its chunk at all) under reduced motion.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const confetti = (await import("canvas-confetti")).default;
+  confetti({
+    particleCount: 130,
+    spread: 75,
+    origin: { y: 0.7 },
+    disableForReducedMotion: true,
+  });
+}
+
 export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   // Confirmed server state. Seeded once from props; updated when an action
   // succeeds. (Note: the episodes table has no runtime column, so runtime is
@@ -51,12 +65,18 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
         return;
       }
 
+      // Compute completion off the confirmed set (not the optimistic layer) so
+      // a failed action can never celebrate.
+      let completedAll = false;
       setWatched((prev) => {
         const next = new Set(prev);
         if (target) next.add(episodeId);
         else next.delete(episodeId);
+        completedAll =
+          target && episodes.length > 0 && next.size === episodes.length;
         return next;
       });
+      if (completedAll) void celebrateCompletion();
 
       if (target) {
         track("episode_marked_watched", { animeId, episodeId });
@@ -183,7 +203,7 @@ function NextEpisodeSwipeCard({
         }}
         className="relative flex cursor-grab touch-pan-y items-center gap-3 bg-card px-4 py-3.5 active:cursor-grabbing"
       >
-        <span className="shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+        <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
           Next
         </span>
         <span className="w-8 shrink-0 tabular-nums text-muted-foreground">

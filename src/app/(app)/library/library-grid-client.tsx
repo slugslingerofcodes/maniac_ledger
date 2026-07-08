@@ -3,13 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { getUserLibrary } from "@/app/actions/library";
+import { genreChipStyle } from "@/lib/genre-color";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { SlimeIllustration } from "@/components/SlimeIllustration";
+import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
 
@@ -56,6 +61,8 @@ function sortItems<T extends { title: string; score: number | null; genres: stri
 
 export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const [titleLang] = useTitleLanguage();
   const [genre, setGenre] = useState<string | null>(null);
   const [sort, setSort] = useState<SortValue>("recent");
   const { data, isPending, isError } = useQuery({
@@ -88,12 +95,19 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
       </p>
     );
   } else {
+    // Swap in the preferred display title BEFORE sorting so "Title A–Z"
+    // follows what the user actually sees.
     const items = sortItems(
-      (data ?? []).filter(
-        (i) =>
-          (filter === "all" || i.status === filter) &&
-          (genre === null || i.genres.includes(genre)),
-      ),
+      (data ?? [])
+        .filter(
+          (i) =>
+            (filter === "all" || i.status === filter) &&
+            (genre === null || i.genres.includes(genre)),
+        )
+        .map((i) => ({
+          ...i,
+          title: displayTitle(titleLang, i.title, i.titleEnglish),
+        })),
       sort,
     );
     content = (
@@ -118,7 +132,9 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           ) : (
             <span />
           )}
-          <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="ml-auto flex items-center gap-3">
+          <TitleLanguageToggle />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Sort
             <select
               value={sort}
@@ -132,6 +148,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
               ))}
             </select>
           </label>
+          </div>
         </div>
         {items.length === 0 ? (
           genre !== null ? (
@@ -143,9 +160,33 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           )
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {items.map((item) => (
-              <LibraryCard key={item.id} item={item} />
-            ))}
+            {/* Staggered entrance on load; popLayout pops leavers out of flow
+                on filter changes and layout glides survivors on sort. */}
+            <AnimatePresence mode="popLayout">
+              {items.map((item, i) => (
+                <motion.div
+                  key={item.id}
+                  layout={reduce ? false : "position"}
+                  initial={reduce ? false : { opacity: 0, y: 12 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    transition: {
+                      delay: reduce ? 0 : Math.min(i * 0.04, 0.4),
+                      duration: 0.3,
+                      ease: "easeOut",
+                    },
+                  }}
+                  exit={
+                    reduce
+                      ? { opacity: 0, transition: { duration: 0.1 } }
+                      : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
+                  }
+                >
+                  <LibraryCard item={item} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </>
@@ -170,11 +211,12 @@ function GenreChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+        "rounded-full px-3 py-1 text-xs font-medium transition",
         active
-          ? "bg-indigo-500 text-white"
-          : "bg-muted text-muted-foreground hover:text-foreground",
+          ? "bg-primary text-primary-foreground"
+          : "hover:brightness-125",
       )}
+      style={active ? undefined : genreChipStyle(label)}
     >
       {label}
     </button>
@@ -193,8 +235,9 @@ function GridSkeleton() {
 
 function EmptyState({ isAll }: { isAll: boolean }) {
   return (
-    <Card className="border border-dashed border-border bg-transparent">
+    <Card className="pattern-seigaiha border border-dashed border-border bg-transparent">
       <CardContent className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+        <SlimeIllustration className="w-40" />
         <p className="max-w-sm text-sm text-muted-foreground">
           {isAll
             ? "Your library is empty — start by searching for an anime."

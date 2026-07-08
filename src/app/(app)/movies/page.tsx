@@ -50,7 +50,7 @@ export default async function MoviesPage() {
               href={`/anime/mal/${movie.mal_id}`}
               className="group flex flex-col gap-2"
             >
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-indigo-500/40">
+              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                 {poster ? (
                   <Image
                     src={poster}
@@ -73,7 +73,7 @@ export default async function MoviesPage() {
                   </Badge>
                 ) : null}
               </div>
-              <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-indigo-300">
+              <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                 {movie.title_english ?? movie.title}
               </p>
             </Link>

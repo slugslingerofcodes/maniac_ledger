@@ -53,7 +53,7 @@ export default async function LibraryPage({
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <TrendingPostersBackdrop posters={posters} />
       <OfflineBanner />
-      <h1 className="text-2xl font-semibold tracking-tight">Your Library</h1>
+      <h1 className="text-gradient text-2xl font-semibold tracking-tight">Your Library</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Everything you&apos;re tracking, most recently updated first.
       </p>

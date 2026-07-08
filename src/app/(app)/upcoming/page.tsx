@@ -142,7 +142,7 @@ export default async function UpcomingPage() {
 function Header() {
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Upcoming Anime</h1>
+      <h1 className="text-gradient text-2xl font-semibold tracking-tight">Upcoming Anime</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Grouped by season. Tap the bell to be reminded when one airs.
       </p>

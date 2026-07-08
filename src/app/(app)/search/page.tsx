@@ -6,17 +6,25 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { SlimeIllustration } from "@/components/SlimeIllustration";
+import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
+import { genreChipStyle } from "@/lib/genre-color";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+  displayTitle,
+  useTitleLanguage,
+  type TitleLanguage,
+} from "@/hooks/use-title-language";
 import type { JikanAnime } from "@/lib/jikan";
 
 type Status = "idle" | "loading" | "success" | "error";
@@ -30,6 +38,7 @@ function posterOf(anime: JikanAnime): string | null {
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [titleLang] = useTitleLanguage();
   const debouncedQuery = useDebounce(query, 400);
 
   const [results, setResults] = useState<JikanAnime[]>([]);
@@ -122,6 +131,11 @@ export default function SearchPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
+      {/* Title language preference — applies to results here and the library. */}
+      <div className="mb-4 flex justify-center">
+        <TitleLanguageToggle />
+      </div>
+
       {/* Centered search input */}
       <div className="mx-auto mb-6 max-w-xl">
           <Input
@@ -144,11 +158,12 @@ export default function SearchPage() {
                 onClick={() => toggleGenre(g.id)}
                 aria-pressed={active}
                 className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  "rounded-full px-3 py-1 text-xs font-medium transition",
                   active
-                    ? "bg-indigo-500 text-white"
-                    : "bg-muted text-muted-foreground hover:text-foreground",
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:brightness-125",
                 )}
+                style={active ? undefined : genreChipStyle(g.name)}
               >
                 {g.name}
               </button>
@@ -166,7 +181,12 @@ export default function SearchPage() {
         </div>
 
         {status === "idle" ? (
-          <Hint>Start typing or pick a genre to discover anime…</Hint>
+          <div className="flex flex-col items-center gap-4 py-16 text-center">
+            <SlimeIllustration className="w-44" />
+            <p className="text-sm text-muted-foreground">
+              Start typing or pick a genre to discover anime…
+            </p>
+          </div>
         ) : null}
 
         {status === "loading" ? <SkeletonGrid /> : null}
@@ -185,6 +205,7 @@ export default function SearchPage() {
               <PosterCard
                 key={anime.mal_id}
                 anime={anime}
+                titleLang={titleLang}
                 alreadyInLibrary={libraryMalIds.has(anime.mal_id)}
               />
             ))}
@@ -224,20 +245,31 @@ function Hint({ children }: { children: React.ReactNode }) {
 
 function PosterCard({
   anime,
+  titleLang,
   alreadyInLibrary,
 }: {
   anime: JikanAnime;
+  titleLang: TitleLanguage;
   alreadyInLibrary: boolean;
 }) {
   const poster = posterOf(anime);
-  const title = anime.title_english ?? anime.title;
+  const title = displayTitle(titleLang, anime.title, anime.title_english);
 
   return (
-    <div className="group flex flex-col gap-2">
+    <div className="group relative isolate flex flex-col gap-2">
+      {/* Ambient glow: the poster itself, blurred, spilling past the card. */}
+      {poster ? (
+        <div
+          aria-hidden
+          className="absolute inset-x-3 top-3 -z-10 aspect-[2/3] scale-105 opacity-40 blur-2xl transition-opacity duration-300 group-hover:opacity-70"
+        >
+          <Image src={poster} alt="" fill sizes="200px" className="object-cover" />
+        </div>
+      ) : null}
       <Link
         href={`/anime/mal/${anime.mal_id}`}
         aria-label={`View details for ${title}`}
-        className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-indigo-500/40"
+        className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
       >
         {poster ? (
           <Image

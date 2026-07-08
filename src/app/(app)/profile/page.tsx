@@ -4,14 +4,52 @@ import { Megaphone, ShieldCheck } from "lucide-react";
 
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
+import {
+  ProfileStats,
+  type ProfileProgressRow,
+} from "@/components/profile/ProfileStats";
 import { UsernameForm } from "@/components/UsernameForm";
 import { isAdmin, requireUser } from "@/lib/supabase/auth";
+import { createClient } from "@/lib/supabase/server";
 import { getDisplayName } from "@/lib/user";
 
 export const metadata: Metadata = { title: "Profile · anime_maniacs" };
 
+const HEATMAP_DAYS = 24 * 7;
+
+/** Library rows + recent episode activity for the stats dashboard (RLS-scoped). */
+async function getStats(): Promise<{
+  progress: ProfileProgressRow[];
+  activity: string[];
+}> {
+  const supabase = await createClient();
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - HEATMAP_DAYS);
+
+  const [progressRes, activityRes] = await Promise.all([
+    supabase
+      .from("user_progress")
+      .select("episodes_watched, status, score, anime:anime_id (genres)"),
+    supabase
+      .from("episode_progress")
+      .select("watched_at")
+      .gte("watched_at", since.toISOString()),
+  ]);
+
+  return {
+    progress: (progressRes.data ?? []).map((r) => ({
+      episodesWatched: r.episodes_watched,
+      status: r.status,
+      score: r.score,
+      genres: r.anime?.genres ?? [],
+    })),
+    activity: (activityRes.data ?? []).map((r) => r.watched_at),
+  };
+}
+
 export default async function ProfilePage() {
   const user = await requireUser();
+  const stats = await getStats();
   const username =
     typeof user.user_metadata?.username === "string"
       ? user.user_metadata.username
@@ -24,8 +62,10 @@ export default async function ProfilePage() {
   const initial = name && name !== "Account" ? name[0]!.toUpperCase() : "?";
 
   return (
-    <main className="mx-auto w-full max-w-md flex-1 px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
+    <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6">
+      <h1 className="text-gradient text-2xl font-semibold tracking-tight">Profile</h1>
+
+      <ProfileStats progress={stats.progress} activity={stats.activity} />
 
       <div className="mt-6 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <AvatarUpload
@@ -48,7 +88,7 @@ export default async function ProfilePage() {
 
       <Link
         href="/announcements"
-        className="mt-4 flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition hover:ring-indigo-500/40"
+        className="mt-4 flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition hover:ring-primary/40"
       >
         <Megaphone className="size-5 text-muted-foreground" aria-hidden />
         <span className="font-medium">Announcements</span>

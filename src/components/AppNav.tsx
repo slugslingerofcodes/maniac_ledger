@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export function AppNav() {
   const router = useRouter();
   const { user } = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const reduce = useReducedMotion();
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -65,7 +67,7 @@ export function AppNav() {
   const isAdminUser = user?.app_metadata?.is_admin === true;
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/70 backdrop-blur-xl">
+    <header className="glass sticky top-0 z-40 w-full border-b border-border">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
         {/* Logo / wordmark */}
         <Link href="/" aria-label="anime_maniacs" className="flex items-center">
@@ -90,13 +92,24 @@ export function AppNav() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   active
-                    ? "bg-muted text-foreground"
+                    ? "text-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {item.label}
+                {active ? (
+                  <motion.span
+                    layoutId="desktop-nav-pill"
+                    transition={
+                      reduce
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 400, damping: 32 }
+                    }
+                    className="absolute inset-0 rounded-md bg-muted"
+                  />
+                ) : null}
+                <span className="relative">{item.label}</span>
               </Link>
             );
           })}

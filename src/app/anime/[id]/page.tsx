@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, ViewTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,6 +8,7 @@ import { EpisodeList } from "@/components/anime/EpisodeList";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
+import { ScoreRing } from "@/components/ScoreRing";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -205,7 +206,7 @@ export default async function AnimeDetailPage({
             fill
             priority
             sizes="100vw"
-            className="scale-110 object-cover opacity-30 blur-2xl"
+            className="ken-burns scale-110 object-cover opacity-30 blur-2xl"
           />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/40" />
@@ -219,7 +220,9 @@ export default async function AnimeDetailPage({
           </Link>
 
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-end">
-            {/* Poster floating on the left */}
+            {/* Poster floating on the left; shares a view-transition name with
+                the library card so navigation morphs the poster into place. */}
+            <ViewTransition name={`poster-${anime.id}`}>
             <div className="relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
                 <Image
@@ -236,6 +239,7 @@ export default async function AnimeDetailPage({
                 </div>
               )}
             </div>
+            </ViewTransition>
 
             {/* Title / score / studio / season */}
             <div className="flex min-w-0 flex-col gap-3">
@@ -260,9 +264,11 @@ export default async function AnimeDetailPage({
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                 {anime.score != null ? (
-                  <span className="flex items-center gap-1 font-medium text-amber-400">
-                    ★ {anime.score.toFixed(2)}
-                  </span>
+                  <ScoreRing
+                    score={anime.score}
+                    size={36}
+                    color="oklch(0.83 0.14 85)"
+                  />
                 ) : null}
                 {anime.studio ? <span>{anime.studio}</span> : null}
                 {season ? <span>{season}</span> : null}
@@ -360,12 +366,12 @@ export default async function AnimeDetailPage({
                 <Link
                   key={`${r.relation}-${r.malId}`}
                   href={`/anime/mal/${r.malId}`}
-                  className="group flex items-center gap-3 rounded-lg bg-card p-3 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-indigo-500/40"
+                  className="group flex items-center gap-3 rounded-lg bg-card p-3 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-primary/40"
                 >
                   <Badge variant="outline" className="w-28 shrink-0 justify-center">
                     {r.relation}
                   </Badge>
-                  <span className="min-w-0 truncate text-sm font-medium group-hover:text-indigo-300">
+                  <span className="min-w-0 truncate text-sm font-medium group-hover:text-primary">
                     {r.title}
                   </span>
                 </Link>
@@ -385,7 +391,7 @@ export default async function AnimeDetailPage({
                   href={`/anime/mal/${s.malId}`}
                   className="group flex flex-col gap-2"
                 >
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-indigo-500/40">
+                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                     {s.posterUrl ? (
                       <Image
                         src={s.posterUrl}
@@ -400,7 +406,7 @@ export default async function AnimeDetailPage({
                       </div>
                     )}
                   </div>
-                  <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-indigo-300">
+                  <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                     {s.title}
                   </p>
                 </Link>

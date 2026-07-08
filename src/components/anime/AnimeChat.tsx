@@ -196,7 +196,7 @@ export function AnimeChat({ animeId }: { animeId: string }) {
                   className={cn(
                     "whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm",
                     mine
-                      ? "rounded-br-sm bg-indigo-500/90 text-white"
+                      ? "rounded-br-sm bg-primary/90 text-primary-foreground"
                       : "rounded-bl-sm bg-muted",
                   )}
                 >

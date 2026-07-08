@@ -56,7 +56,7 @@ export function TopTenShowcase({
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 window === key
-                  ? "bg-indigo-500 text-white"
+                  ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground",
               )}
             >
@@ -76,8 +76,18 @@ export function TopTenShowcase({
             <li key={item.malId}>
               <Link
                 href={`/anime/mal/${item.malId}`}
-                className="group flex items-center gap-3 rounded-xl bg-card p-2.5 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-indigo-500/40"
+                className="group relative isolate flex items-center gap-3 overflow-hidden rounded-xl bg-card p-2.5 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-primary/40"
               >
+                {/* Editorial ghost rank behind the row (outline-only type). */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "text-ghost-outline pointer-events-none absolute -right-1 -top-4 -z-10 font-didot text-7xl font-bold leading-none select-none",
+                    i < 3 && "text-ghost-outline-amber",
+                  )}
+                >
+                  {i + 1}
+                </span>
                 <span
                   className={cn(
                     "w-8 shrink-0 text-center font-didot text-2xl",
@@ -98,7 +108,7 @@ export function TopTenShowcase({
                   ) : null}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="line-clamp-1 text-sm font-medium group-hover:text-indigo-300">
+                  <p className="line-clamp-1 text-sm font-medium group-hover:text-primary">
                     {item.title}
                   </p>
                   <p className="text-xs text-muted-foreground">

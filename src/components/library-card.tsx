@@ -1,6 +1,8 @@
+import { ViewTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { ScoreRing } from "@/components/ScoreRing";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -28,8 +30,18 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
     : 0;
 
   return (
-    <Link href={`/anime/${item.id}`} className="block">
-    <Card className="group gap-0 overflow-hidden py-0 transition-shadow hover:ring-2 hover:ring-indigo-500/40">
+    <Link href={`/anime/${item.id}`} className="group relative isolate block">
+    {/* Ambient glow: the poster itself, blurred, spilling past the card. */}
+    {item.posterUrl ? (
+      <div
+        aria-hidden
+        className="absolute inset-x-3 top-3 -z-10 aspect-[2/3] scale-105 opacity-40 blur-2xl transition-opacity duration-300 group-hover:opacity-70"
+      >
+        <Image src={item.posterUrl} alt="" fill sizes="200px" className="object-cover" />
+      </div>
+    ) : null}
+    <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
+      <ViewTransition name={`poster-${item.id}`}>
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
@@ -47,7 +59,24 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
         <Badge className={cn("absolute left-2 top-2 border", status.className)}>
           {status.label}
         </Badge>
+        {/* Hover reveal: progress at a glance without leaving the grid. */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/25 to-transparent p-2.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <p className="text-xs font-medium text-white">
+            {hasTotal
+              ? `${item.episodesWatched} / ${item.totalEpisodes} episodes`
+              : `${item.episodesWatched} ep watched`}
+          </p>
+          {hasTotal ? (
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
+      </ViewTransition>
 
       <CardContent className="flex flex-col gap-2.5 p-3">
         <h3
@@ -70,10 +99,9 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="text-amber-400">★</span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {item.score != null ? (
-              <span className="font-medium text-foreground">{item.score}/10</span>
+              <ScoreRing score={item.score} size={28} />
             ) : (
               <span>Not rated</span>
             )}

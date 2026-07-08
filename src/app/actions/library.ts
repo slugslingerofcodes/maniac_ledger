@@ -15,6 +15,8 @@ export type LibraryEntryItem = {
   /** MyAnimeList id — used to match search results against the library. */
   malId: number | null;
   title: string;
+  /** English title, when MAL has one — for the title-language preference. */
+  titleEnglish: string | null;
   posterUrl: string | null;
   type: AnimeType | null;
   status: WatchStatus;
@@ -37,7 +39,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
   let { data, error } = await supabase
     .from("user_progress")
     .select(
-      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes, genres)",
+      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, title_english, poster_url, type, total_episodes, genres)",
     )
     .order("updated_at", { ascending: false });
 
@@ -48,7 +50,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
     const retry = await supabase
       .from("user_progress")
       .select(
-        "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
+        "episodes_watched, status, score, anime:anime_id (id, mal_id, title, title_english, poster_url, type, total_episodes)",
       )
       .order("updated_at", { ascending: false });
     data = retry.data as unknown as typeof data;
@@ -68,6 +70,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
     id: row.anime.id,
     malId: row.anime.mal_id,
     title: row.anime.title,
+    titleEnglish: row.anime.title_english,
     posterUrl: row.anime.poster_url,
     type: row.anime.type,
     status: row.status,

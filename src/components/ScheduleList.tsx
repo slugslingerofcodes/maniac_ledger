@@ -93,7 +93,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 active
-                  ? "bg-indigo-500 text-white"
+                  ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground",
               )}
             >
@@ -115,7 +115,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
             <Link
               key={item.malId}
               href={`/anime/mal/${item.malId}`}
-              className="group flex gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-indigo-500/40"
+              className="group flex gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-primary/40"
             >
               <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md bg-muted">
                 {item.posterUrl ? (
@@ -129,7 +129,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
                 ) : null}
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-indigo-300">
+                <h3 className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                   {item.title}
                 </h3>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">

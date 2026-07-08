@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Shared-element morphs (library poster → detail hero) via React's
+    // <ViewTransition>. Degrades to an instant swap where unsupported.
+    viewTransition: true,
+  },
   images: {
     // Serve modern formats; the browser picks avif → webp → original.
     formats: ["image/avif", "image/webp"],

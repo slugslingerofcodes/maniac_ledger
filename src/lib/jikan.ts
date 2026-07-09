@@ -458,6 +458,68 @@ export function getJustFinished(limit = 8): Promise<JikanSearchResponse> {
 }
 
 /**
+ * The full weekly airing board for the schedule page. Two sources are merged so
+ * long-runners and shows *continuing from a previous season* aren't dropped:
+ *
+ *  1. `/schedules` — the broadcast grid, fetched across **all** pages (the old
+ *     3-page cap silently truncated ~half the currently-airing set).
+ *  2. `/seasons/now` — this season's simulcasts, which reliably include
+ *     continuing series; any with a broadcast slot that `/schedules` missed are
+ *     folded in.
+ *
+ * Deduped by `mal_id` (schedule entry wins). Cached 6h. Best-effort on the
+ * season merge — a failure there still returns the schedule set.
+ */
+export async function getAiringSchedule(): Promise<JikanAnime[]> {
+  const seen = new Set<number>();
+  const all: JikanAnime[] = [];
+  const add = (list: JikanAnime[]) => {
+    for (const a of list) {
+      if (seen.has(a.mal_id)) continue;
+      seen.add(a.mal_id);
+      all.push(a);
+    }
+  };
+
+  // 1) Whole broadcast grid — loop until the last page (cap 12 as a safety net).
+  for (let page = 1; page <= 12; page++) {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: "25",
+      sfw: "true",
+      kids: "false",
+    });
+    const res = await jikanFetch<JikanSearchResponse>(
+      `/schedules?${params.toString()}`,
+      { revalidate: SIX_HOURS_SECONDS },
+    );
+    add(res.data);
+    if (!res.pagination.has_next_page) break;
+  }
+
+  // 2) Merge this season's continuing shows that carry a broadcast slot.
+  try {
+    for (let page = 1; page <= 4; page++) {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: "25",
+        sfw: "true",
+      });
+      const res = await jikanFetch<JikanSearchResponse>(
+        `/seasons/now?${params.toString()}`,
+        { revalidate: SIX_HOURS_SECONDS },
+      );
+      add(res.data.filter((a) => a.broadcast?.day && a.broadcast?.time));
+      if (!res.pagination.has_next_page) break;
+    }
+  } catch {
+    /* best-effort merge — the schedule grid alone is still useful */
+  }
+
+  return all;
+}
+
+/**
  * Top anime movies (`/top/anime?type=movie`). Cached 24h. Powers the Movies tab.
  */
 export function getTopMovies(limit = 24): Promise<JikanSearchResponse> {

@@ -264,6 +264,26 @@ html:not(.dark) .text-gradient {
   animation-direction: reverse;
 }
 
+/* Shōji sliding-door panels: warm washi paper with a wood kumiko lattice.
+   Two of these (left/right halves) slide together to mask a schedule day swap. */
+.shoji-panel {
+  background-color: oklch(0.9 0.03 85);
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      oklch(0.36 0.03 55) 0 2px,
+      transparent 2px 25%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      oklch(0.36 0.03 55) 0 2px,
+      transparent 2px 20%
+    );
+  box-shadow:
+    inset 0 0 60px oklch(0.78 0.04 85 / 0.7),
+    0 0 30px oklch(0 0 0 / 0.35);
+}
+
 /* Loading placeholders: gradient sweep over the accent base (ui/skeleton). */
 @keyframes skeleton-shimmer {
   from {

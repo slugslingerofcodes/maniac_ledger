@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Menu, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,13 +17,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { useUser } from "@/hooks/use-user";
 import { createClient } from "@/lib/supabase/client";
 import { getDisplayName } from "@/lib/user";
@@ -47,8 +41,21 @@ export function AppNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useUser();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const reduce = useReducedMotion();
+
+  // Close the drawer whenever the route changes, and on Escape.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -69,7 +76,19 @@ export function AppNav() {
 
   return (
     <header className="glass sticky top-0 z-40 w-full border-b border-border">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+        {/* Options button — reveals the nav drawer (hidden by default). */}
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={drawerOpen}
+          className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Menu className="size-5" aria-hidden />
+          <span className="hidden sm:inline">Menu</span>
+        </button>
+
         {/* Logo / wordmark */}
         <Link href="/" aria-label="anime_maniacs" className="flex items-center">
           <Image
@@ -83,51 +102,15 @@ export function AppNav() {
           />
         </Link>
 
-        {/* Center links (desktop) */}
-        <nav className="ml-6 hidden items-center gap-1 md:flex">
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  active
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {active ? (
-                  <motion.span
-                    layoutId="desktop-nav-pill"
-                    transition={
-                      reduce
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 400, damping: 32 }
-                    }
-                    className="absolute inset-0 rounded-md bg-muted"
-                  />
-                ) : null}
-                <span className="relative">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Right side */}
+        {/* Right side — account */}
         <div className="ml-auto flex items-center gap-1">
-          {/* Avatar dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="Account menu"
               className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Avatar>
-                {avatarUrl ? (
-                  <AvatarImage src={avatarUrl} alt={name} />
-                ) : null}
+                {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
@@ -159,38 +142,62 @@ export function AppNav() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+      </div>
 
-          {/* Mobile hamburger */}
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger
-              aria-label="Open menu"
-              className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+      {/* Slide-out navigation drawer */}
+      <AnimatePresence>
+        {drawerOpen ? (
+          <>
+            <motion.div
+              key="scrim"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduce ? 0 : 0.2 }}
+              onClick={() => setDrawerOpen(false)}
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.aside
+              key="panel"
+              initial={{ x: reduce ? 0 : "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: reduce ? 0 : "-100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 38 }}
+              className="glass fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-border p-4"
+              aria-label="Primary navigation"
             >
-              <MenuIcon />
-            </SheetTrigger>
-            <SheetContent side="right" className="w-72">
-              <SheetTitle>Menu</SheetTitle>
-              <nav className="mt-2 flex flex-col gap-1">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Browse
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label="Close navigation"
+                  className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="size-5" aria-hidden />
+                </button>
+              </div>
+
+              <nav className="flex flex-col gap-1">
                 {NAV_ITEMS.map((item) => {
                   const active = isActive(pathname, item.href);
                   return (
-                    <SheetClose
+                    <Link
                       key={item.href}
-                      render={
-                        <Link
-                          href={item.href}
-                          aria-current={active ? "page" : undefined}
-                          className={cn(
-                            "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                            active
-                              ? "bg-muted text-foreground"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                          )}
-                        >
-                          {item.label}
-                        </Link>
-                      }
-                    />
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {item.label}
+                    </Link>
                   );
                 })}
               </nav>
@@ -207,16 +214,12 @@ export function AppNav() {
                   </div>
                 ) : null}
                 {isAdminUser ? (
-                  <SheetClose
-                    render={
-                      <Link
-                        href="/admin"
-                        className="mb-2 block rounded-md px-3 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-muted hover:text-amber-300"
-                      >
-                        🛡 Admin dashboard
-                      </Link>
-                    }
-                  />
+                  <Link
+                    href="/admin"
+                    className="mb-2 block rounded-md px-3 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-muted hover:text-amber-300"
+                  >
+                    🛡 Admin dashboard
+                  </Link>
                 ) : null}
                 <Button
                   type="button"
@@ -227,29 +230,10 @@ export function AppNav() {
                   Sign out
                 </Button>
               </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
+            </motion.aside>
+          </>
+        ) : null}
+      </AnimatePresence>
     </header>
-  );
-}
-
-function MenuIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="18" x2="21" y2="18" />
-    </svg>
   );
 }

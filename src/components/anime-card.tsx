@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { ScoreRing } from "@/components/ScoreRing";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -49,9 +50,9 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
           </div>
         )}
         {item.score != null ? (
-          <Badge className="absolute right-2 top-2 border-transparent bg-black/70 text-white backdrop-blur">
-            ★ {item.score}
-          </Badge>
+          <span className="absolute right-2 top-2 grid place-items-center rounded-full bg-black/70 p-1 backdrop-blur">
+            <ScoreRing score={item.score} size={26} />
+          </span>
         ) : null}
       </div>
 

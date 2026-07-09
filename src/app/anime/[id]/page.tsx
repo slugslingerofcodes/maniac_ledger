@@ -2,6 +2,7 @@ import { Suspense, ViewTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Music2 } from "lucide-react";
 
 import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
@@ -167,6 +168,9 @@ export default async function AnimeDetailPage({
   let broadcastDay: string | null = null;
   let broadcastTime: string | null = null;
   let similar: SimilarAnime[] = [];
+  let synonyms: string[] = [];
+  let openings: string[] = [];
+  let endings: string[] = [];
   if (anime.mal_id != null) {
     try {
       const extras = await getAnimeExtras(anime.mal_id);
@@ -174,6 +178,9 @@ export default async function AnimeDetailPage({
       related = extras.related;
       broadcastDay = extras.broadcastDay;
       broadcastTime = extras.broadcastTime;
+      synonyms = extras.synonyms;
+      openings = extras.openings;
+      endings = extras.endings;
       if (genres.length === 0 && extras.genres.length > 0) {
         genres = extras.genres;
         if (user) {
@@ -259,6 +266,14 @@ export default async function AnimeDetailPage({
               {anime.title_english && anime.title_english !== anime.title ? (
                 <p className="text-sm text-muted-foreground">
                   {anime.title_english}
+                </p>
+              ) : null}
+              {synonyms.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground/70">
+                    Also known as:
+                  </span>{" "}
+                  {synonyms.slice(0, 6).join(" · ")}
                 </p>
               ) : null}
 
@@ -353,6 +368,57 @@ export default async function AnimeDetailPage({
                 loading="lazy"
                 className="h-full w-full border-0"
               />
+            </div>
+          </section>
+        ) : null}
+
+        {/* Theme songs — OP/ED credits from MAL; "Listen" opens the player. */}
+        {openings.length > 0 || endings.length > 0 ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold">Theme songs</h2>
+              {anime.mal_id != null ? (
+                <Link
+                  href={`/songs?mal=${anime.mal_id}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/25"
+                >
+                  <Music2 className="size-3.5" aria-hidden />
+                  Listen
+                </Link>
+              ) : null}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["Openings", openings],
+                  ["Endings", endings],
+                ] as const
+              ).map(([label, list]) =>
+                list.length > 0 ? (
+                  <div
+                    key={label}
+                    className="rounded-xl bg-card p-4 ring-1 ring-foreground/10"
+                  >
+                    <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      {label}
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {list.slice(0, 8).map((line) => (
+                        <li
+                          key={line}
+                          className="flex items-baseline gap-2 text-sm leading-snug"
+                        >
+                          <Music2
+                            className="size-3.5 shrink-0 translate-y-0.5 text-primary"
+                            aria-hidden
+                          />
+                          <span className="min-w-0">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null,
+              )}
             </div>
           </section>
         ) : null}

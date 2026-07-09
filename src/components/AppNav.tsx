@@ -35,6 +35,7 @@ const NAV_ITEMS = [
   { label: "Upcoming", href: "/upcoming" },
   { label: "Movies", href: "/movies" },
   { label: "News", href: "/news" },
+  { label: "Songs", href: "/songs" },
   { label: "Recommendations", href: "/recommendations" },
 ] as const;
 

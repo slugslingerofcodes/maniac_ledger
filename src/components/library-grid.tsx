@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AnimeCard } from "@/components/anime-card";
+import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { buttonVariants } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,8 @@ export async function LibraryGrid() {
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+      <div className="pattern-seigaiha flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+        <SlimeIllustration className="w-40" />
         <p className="text-sm text-muted-foreground">
           Your library is empty. Find something to watch.
         </p>

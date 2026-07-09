@@ -1,12 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { Progress } from "@/components/ui/progress";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * "Continue Watching" row for the home page: the user's in-progress anime,
+ * "Watch History" row for the home page: the user's in-progress anime as large
+ * landscape thumbnails (poster art center-cropped to 16:9 with an overlay),
  * most-recently-watched first. Renders nothing when signed out or when there's
  * nothing in progress. RLS scopes `user_progress` to the current user.
  */
@@ -27,9 +27,10 @@ export async function ContinueWatching() {
   if (error || !data || data.length === 0) return null;
 
   return (
-    <section className="mb-8">
-      <h2 className="mb-4 text-lg font-semibold tracking-tight">
-        Continue Watching
+    <section className="mb-10">
+      <p className="text-sm text-muted-foreground">Your Watchlist</p>
+      <h2 className="text-gradient mb-4 text-2xl font-bold tracking-tight">
+        Watch History
       </h2>
       <div className="flex gap-4 overflow-x-auto pb-2">
         {data.map((row) => {
@@ -49,15 +50,15 @@ export async function ContinueWatching() {
             <Link
               key={anime.id}
               href={`/anime/${anime.id}#ep-${nextEp}`}
-              className="group w-40 shrink-0"
+              className="group w-72 shrink-0 sm:w-80"
             >
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
+              <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
                 {anime.poster_url ? (
                   <Image
                     src={anime.poster_url}
                     alt={anime.title}
                     fill
-                    sizes="160px"
+                    sizes="320px"
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
@@ -65,21 +66,28 @@ export async function ContinueWatching() {
                     No image
                   </div>
                 )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-3">
+                  <h3
+                    className="line-clamp-1 text-sm font-semibold text-white"
+                    title={anime.title}
+                  >
+                    {anime.title}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-zinc-300">
+                    Episode {nextEp}
+                    {hasTotal ? ` of ${total}` : ""}
+                  </p>
+                  {hasTotal ? (
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
-
-              <h3
-                className="mt-2 line-clamp-1 text-sm font-medium"
-                title={anime.title}
-              >
-                {anime.title}
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Episode {nextEp}
-                {hasTotal ? ` of ${total}` : ""}
-              </p>
-              {hasTotal ? (
-                <Progress value={percent} className="mt-1.5 h-1" />
-              ) : null}
             </Link>
           );
         })}

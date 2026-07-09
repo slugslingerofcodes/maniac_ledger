@@ -45,7 +45,9 @@ export function TopTenShowcase({
   return (
     <section className="mt-2">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Top 10 Anime</h2>
+        <h2 className="text-gradient text-lg font-semibold tracking-tight">
+          Top 10 Anime
+        </h2>
         <div className="flex gap-1.5">
           {WINDOWS.map(({ key, label }) => (
             <button

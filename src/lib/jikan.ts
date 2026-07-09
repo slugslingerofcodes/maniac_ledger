@@ -69,9 +69,13 @@ export interface JikanAnime {
   mal_id: number;
   title: string;
   title_english: string | null;
+  /** Alternative titles and fan nicknames (e.g. "AoT", "SnK"). */
+  title_synonyms?: string[];
   synopsis: string | null;
   /** Media kind, e.g. "TV", "Movie", "OVA". Widened to string for forward-compat. */
   type?: string | null;
+  /** Human string like "24 min per ep"; present on most list endpoints. */
+  duration?: string | null;
   episodes: number | null;
   score: number | null;
   scored_by: number | null;
@@ -91,6 +95,8 @@ export interface JikanAnime {
   trailer?: JikanTrailer;
   /** Present on the `/full` endpoint: prequels, sequels, side stories, etc. */
   relations?: JikanRelationGroup[];
+  /** OP/ED credits as display strings, e.g. `1: "Song" by Artist (eps 1–12)`. */
+  theme?: { openings: string[]; endings: string[] };
 }
 
 /** One group of related entries, e.g. `{ relation: "Sequel", entry: [...] }`. */
@@ -406,6 +412,51 @@ export async function getSchedules(pages = 3): Promise<JikanAnime[]> {
   return all;
 }
 
+/** This season's simulcasts (`/seasons/now`). Cached 24h. */
+export function getSeasonNow(limit = 18): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({ limit: String(limit), sfw: "true" });
+  return jikanFetch<JikanSearchResponse>(`/seasons/now?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/** Most-popular anime by MAL member count (`/top/anime?filter=bypopularity`). Cached 24h. */
+export function getTopByPopularity(limit = 18): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({
+    filter: "bypopularity",
+    limit: String(limit),
+  });
+  return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/** All-time highest-rated anime (`/top/anime`, MAL rank order). Cached 24h. */
+export function getTopRated(limit = 18): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/**
+ * Recently finished shows: completed anime, newest end date first, with a
+ * score floor so the list isn't shovelware. Cached 24h.
+ */
+export function getJustFinished(limit = 8): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({
+    status: "complete",
+    order_by: "end_date",
+    sort: "desc",
+    min_score: "6",
+    sfw: "true",
+    limit: String(limit),
+  });
+  return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
 /**
  * Top anime movies (`/top/anime?type=movie`). Cached 24h. Powers the Movies tab.
  */
@@ -431,6 +482,11 @@ export type AnimeExtras = {
   broadcastTime: string | null;
   /** Prequels/sequels/side stories — the "season list". Anime entries only. */
   related: RelatedAnime[];
+  /** Alternative titles / fan nicknames ("AoT", "SnK", …). */
+  synonyms: string[];
+  /** OP/ED credits as MAL display strings. */
+  openings: string[];
+  endings: string[];
 };
 
 /** Relation kinds shown in the "Seasons & related" list, in display order. */
@@ -489,6 +545,9 @@ export async function getAnimeExtras(malId: number): Promise<AnimeExtras> {
     broadcastDay: anime.broadcast?.day ?? null,
     broadcastTime: anime.broadcast?.time ?? null,
     related,
+    synonyms: anime.title_synonyms ?? [],
+    openings: anime.theme?.openings ?? [],
+    endings: anime.theme?.endings ?? [],
   };
 }
 

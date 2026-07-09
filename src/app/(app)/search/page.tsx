@@ -2,7 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -36,7 +44,17 @@ function posterOf(anime: JikanAnime): string | null {
   );
 }
 
+/** useSearchParams requires a Suspense boundary on statically rendered pages. */
 export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+function SearchPageInner() {
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [titleLang] = useTitleLanguage();
   const debouncedQuery = useDebounce(query, 400);
@@ -46,7 +64,16 @@ export default function SearchPage() {
   // The query that produced the current `results`, for the no-results message.
   const [resolvedQuery, setResolvedQuery] = useState("");
   // Selected MAL genre ids (AND semantics); works with or without a query.
-  const [genreIds, setGenreIds] = useState<number[]>([]);
+  // Seeded from ?genres=<ids> so the home genre ribbon can deep-link here.
+  const [genreIds, setGenreIds] = useState<number[]>(() => {
+    const raw = searchParams.get("genres");
+    if (!raw) return [];
+    const valid = new Set(GENRE_OPTIONS.map((g) => g.id));
+    return raw
+      .split(",")
+      .map(Number)
+      .filter((id) => valid.has(id));
+  });
   const abortRef = useRef<AbortController | null>(null);
 
   function toggleGenre(id: number) {
@@ -297,6 +324,11 @@ function PosterCard({
           <p className="line-clamp-3 text-sm font-medium leading-snug text-foreground">
             {title}
           </p>
+          {anime.title_synonyms && anime.title_synonyms.length > 0 ? (
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+              aka {anime.title_synonyms.slice(0, 3).join(" · ")}
+            </p>
+          ) : null}
         </div>
       </Link>
 

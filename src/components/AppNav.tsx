@@ -107,8 +107,13 @@ export function AppNav() {
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="Account menu"
-              className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
+              {name && name !== "Account" ? (
+                <span className="hidden max-w-32 truncate text-sm font-medium text-foreground sm:inline">
+                  {name}
+                </span>
+              ) : null}
               <Avatar>
                 {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
                 <AvatarFallback>{initial}</AvatarFallback>

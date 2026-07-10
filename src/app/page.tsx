@@ -10,7 +10,7 @@ import { ShareBanner } from "@/components/home/ShareBanner";
 import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList";
 import { LibraryGrid } from "@/components/library-grid";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
-import { RaphaelBackdrop } from "@/components/RaphaelBackdrop";
+import { VortexBackdrop } from "@/components/VortexBackdrop";
 import { SiteHeader } from "@/components/site-header";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import {
@@ -272,10 +272,10 @@ async function SchedulePanel() {
 
 export default function Home() {
   return (
-    // No bg-background here: the fixed "Great Sage" backdrop sits at -z-10
-    // and an opaque page background would cover it. The hero paints its own.
+    // No bg-background here: the fixed vortex backdrop sits at -z-10 and an
+    // opaque page background would cover it. The hero paints its own.
     <div className="relative flex min-h-screen flex-col">
-      <RaphaelBackdrop />
+      <VortexBackdrop />
       <SiteHeader />
       <Suspense fallback={<HeroFallback />}>
         <HeroSection />

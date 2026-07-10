@@ -64,6 +64,62 @@ export async function toggleEpisode(
 }
 
 /**
+ * Marks the given episode **and every earlier episode of the same anime**
+ * watched in one go — so checking episode 7 fills in 1–6 as well (you can't
+ * have watched a later episode without the earlier ones). Idempotent: episodes
+ * already marked are left alone via `ignoreDuplicates`.
+ */
+export async function markEpisodesUpTo(
+  episodeId: string,
+): Promise<ToggleEpisodeResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to track episodes." };
+  }
+
+  // Resolve the target's anime + episode number.
+  const { data: target } = await supabase
+    .from("episodes")
+    .select("anime_id, number")
+    .eq("id", episodeId)
+    .maybeSingle();
+  if (!target?.anime_id) {
+    return { ok: false, error: "Episode not found." };
+  }
+
+  // Every episode of this anime up to and including the target.
+  const { data: earlier, error: listErr } = await supabase
+    .from("episodes")
+    .select("id")
+    .eq("anime_id", target.anime_id)
+    .lte("number", target.number);
+  if (listErr) return { ok: false, error: listErr.message };
+
+  const rows = (earlier ?? []).map((e) => ({
+    user_id: user.id,
+    episode_id: e.id,
+  }));
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from("episode_progress")
+      .upsert(rows, {
+        onConflict: "user_id,episode_id",
+        ignoreDuplicates: true,
+      });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath(`/anime/${target.anime_id}`);
+  revalidatePath("/library");
+
+  return { ok: true, watched: true };
+}
+
+/**
  * Patch shape for a user_progress row. Every field is optional so callers can
  * send just what changed; upsert leaves unspecified columns untouched. `.strict()`
  * rejects unknown keys so a malformed client patch can't write arbitrary columns.

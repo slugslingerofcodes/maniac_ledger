@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
-import { toggleEpisode } from "@/app/actions/progress";
+import { markEpisodesUpTo, toggleEpisode } from "@/app/actions/progress";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/types/anime";
@@ -92,8 +92,41 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
     });
   }
 
-  function onToggle(episodeId: string) {
-    commitToggle(episodeId, !watched.has(episodeId));
+  /**
+   * Marking an episode watched cascades to every earlier episode (you can't
+   * have seen ep 7 without 1–6). Optimistically flips all not-yet-watched
+   * episodes up to the target, then persists them in one server call.
+   */
+  function commitMarkThrough(target: Episode) {
+    startTransition(async () => {
+      const toAdd = episodes.filter(
+        (e) => e.number <= target.number && !watched.has(e.id),
+      );
+      if (toAdd.length === 0) return;
+      for (const e of toAdd) applyOptimistic(e.id);
+
+      const res = await markEpisodesUpTo(target.id);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+
+      let completedAll = false;
+      setWatched((prev) => {
+        const next = new Set(prev);
+        for (const e of episodes) if (e.number <= target.number) next.add(e.id);
+        completedAll = episodes.length > 0 && next.size === episodes.length;
+        return next;
+      });
+      if (completedAll) void celebrateCompletion();
+      track("episode_marked_watched", { animeId, episodeId: target.id });
+    });
+  }
+
+  function onToggle(ep: Episode) {
+    // Checking cascades backward; unchecking only clears that one episode.
+    if (watched.has(ep.id)) commitToggle(ep.id, false);
+    else commitMarkThrough(ep);
   }
 
   const watchedCount = optimisticWatched.size;
@@ -107,7 +140,7 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
         <NextEpisodeSwipeCard
           key={nextUnwatched.id}
           episode={nextUnwatched}
-          onMark={() => commitToggle(nextUnwatched.id, true)}
+          onMark={() => commitMarkThrough(nextUnwatched)}
         />
       ) : null}
 
@@ -134,7 +167,7 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
                 type="checkbox"
                 checked={isWatched}
                 disabled={isPending}
-                onChange={() => onToggle(ep.id)}
+                onChange={() => onToggle(ep)}
                 className="size-4 shrink-0 accent-primary disabled:opacity-60"
               />
               <span className="w-10 shrink-0 tabular-nums text-muted-foreground">

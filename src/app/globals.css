@@ -284,6 +284,88 @@ html:not(.dark) .text-gradient {
     0 0 30px oklch(0 0 0 / 0.35);
 }
 
+/* Temporal rune vortex backdrop: a golden mandala of concentric rotating
+   rune rings around a pulsing core, with radiating light spokes. Pure CSS
+   (conic gradients + radial masks), no assets. */
+@keyframes vortex-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes vortex-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes vortex-pulse {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.95;
+  }
+}
+.vortex-core {
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    oklch(0.99 0.1 92 / 0.95) 0%,
+    oklch(0.86 0.16 78 / 0.65) 20%,
+    oklch(0.62 0.15 62 / 0.28) 42%,
+    transparent 70%
+  );
+  filter: blur(3px);
+  animation: vortex-pulse 6.5s ease-in-out infinite;
+}
+.vortex-rays {
+  background: repeating-conic-gradient(
+    from 0deg,
+    oklch(0.86 0.14 82 / 0.16) 0deg 2deg,
+    transparent 2deg 9deg
+  );
+  -webkit-mask: radial-gradient(circle, #000 0 52%, transparent 74%);
+  mask: radial-gradient(circle, #000 0 52%, transparent 74%);
+  animation: vortex-spin 100s linear infinite;
+}
+.vortex-ring {
+  border-radius: 9999px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    oklch(0.83 0.13 84 / 0.55) 0deg 0.7deg,
+    transparent 0.7deg 4deg
+  );
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent 0 var(--r-in),
+    #000 var(--r-in) var(--r-out),
+    transparent var(--r-out)
+  );
+  mask: radial-gradient(
+    circle,
+    transparent 0 var(--r-in),
+    #000 var(--r-in) var(--r-out),
+    transparent var(--r-out)
+  );
+}
+.vortex-ring-1 {
+  --r-in: 55%;
+  --r-out: 61%;
+  animation: vortex-spin 55s linear infinite;
+}
+.vortex-ring-2 {
+  --r-in: 68%;
+  --r-out: 73%;
+  animation: vortex-spin-rev 80s linear infinite;
+}
+.vortex-ring-3 {
+  --r-in: 82%;
+  --r-out: 87%;
+  animation: vortex-spin 130s linear infinite;
+}
+
 /* Loading placeholders: gradient sweep over the accent base (ui/skeleton). */
 @keyframes skeleton-shimmer {
   from {
@@ -448,6 +530,13 @@ html:not(.dark) .text-gradient {
     opacity: 0.4; /* keyframes start at 0 — keep motes faintly visible */
   }
   .marquee-track {
+    animation: none;
+  }
+  .vortex-core,
+  .vortex-rays,
+  .vortex-ring-1,
+  .vortex-ring-2,
+  .vortex-ring-3 {
     animation: none;
   }
   /* Route-change view transitions (poster morphs) snap instead of animating. */

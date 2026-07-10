@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 
-import { RaphaelBackdrop } from "@/components/RaphaelBackdrop";
+import { VortexBackdrop } from "@/components/VortexBackdrop";
 
 /**
  * The app-wide backdrop behind the (app) tabs. Path-aware: on /library it
@@ -14,5 +14,5 @@ export function AppBackdrop() {
   if (pathname === "/library" || pathname.startsWith("/library/")) {
     return null;
   }
-  return <RaphaelBackdrop />;
+  return <VortexBackdrop />;
 }

@@ -481,8 +481,9 @@ export async function getAiringSchedule(): Promise<JikanAnime[]> {
     }
   };
 
-  // 1) Whole broadcast grid — loop until the last page (cap 12 as a safety net).
-  for (let page = 1; page <= 12; page++) {
+  // 1) Whole broadcast grid — loop until the last page (cap 8 to bound the
+  //    serial rate-limited fetch well under the serverless function timeout).
+  for (let page = 1; page <= 8; page++) {
     const params = new URLSearchParams({
       page: String(page),
       limit: "25",
@@ -499,7 +500,7 @@ export async function getAiringSchedule(): Promise<JikanAnime[]> {
 
   // 2) Merge this season's continuing shows that carry a broadcast slot.
   try {
-    for (let page = 1; page <= 4; page++) {
+    for (let page = 1; page <= 3; page++) {
       const params = new URLSearchParams({
         page: String(page),
         limit: "25",

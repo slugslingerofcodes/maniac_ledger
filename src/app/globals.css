@@ -366,27 +366,26 @@ html:not(.dark) .text-gradient {
   animation: vortex-spin 130s linear infinite;
 }
 
-/* Actual vortex artwork (public/vortex.png), animated: an oversized square
-   layer slowly rotates while a breathing inner layer zooms, so the still image
-   becomes a living backdrop. If the file is absent the layer is transparent and
-   the CSS mandala above shows through. */
-@keyframes vortex-img-breathe {
+/* Actual vortex artwork (public/vortex.png), animated: a viewport-filling cover
+   layer slowly zooms + drifts + sways (Ken Burns) so the still image becomes a
+   living backdrop. The scale floor keeps the small sway from ever revealing an
+   edge. If the file is absent the layer is transparent and the CSS mandala
+   behind it shows through. */
+@keyframes vortex-kenburns {
   0%,
   100% {
-    transform: scale(1.02);
+    transform: scale(1.06) rotate(0deg) translate(0, 0);
   }
   50% {
-    transform: scale(1.12);
+    transform: scale(1.16) rotate(2.5deg) translate(-1.5%, 1%);
   }
-}
-.vortex-spin-layer {
-  animation: vortex-spin 140s linear infinite;
 }
 .vortex-img {
   background-image: url("/vortex.png");
   background-size: cover;
   background-position: center;
-  animation: vortex-img-breathe 16s ease-in-out infinite;
+  animation: vortex-kenburns 44s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* Loading placeholders: gradient sweep over the accent base (ui/skeleton). */
@@ -560,7 +559,6 @@ html:not(.dark) .text-gradient {
   .vortex-ring-1,
   .vortex-ring-2,
   .vortex-ring-3,
-  .vortex-spin-layer,
   .vortex-img {
     animation: none;
   }

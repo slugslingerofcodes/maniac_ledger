@@ -38,17 +38,14 @@ export function VortexBackdrop() {
         <div className="vortex-core absolute inset-[30%]" />
       </div>
 
-      {/* Actual vortex artwork: oversized so rotation never reveals corners. */}
-      <div className="absolute left-1/2 top-1/2 h-[170vmax] w-[170vmax] -translate-x-1/2 -translate-y-1/2">
-        <div className="vortex-spin-layer absolute inset-0">
-          <div className="vortex-img absolute inset-0" />
-        </div>
-      </div>
+      {/* Actual vortex artwork, filling the viewport with a slow Ken Burns
+          drift. Covers the CSS mandala when public/vortex.png is present. */}
+      <div className="vortex-img absolute inset-0" />
 
       {/* Readability veil — content sits on top of this. Kept light enough to
-          let the gold read through, dark enough to keep text legible. */}
-      <div className="absolute inset-0 bg-background/55" />
-      <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-background/55" />
+          let the artwork read through, dark enough to keep text legible. */}
+      <div className="absolute inset-0 bg-background/40" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-background/45" />
     </div>
   );
 }

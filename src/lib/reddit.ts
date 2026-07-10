@@ -2,11 +2,11 @@
  * Reader for the r/anime "hot" feed. Reddit blocks its `.json` endpoints for
  * server/datacenter requests (403), but the **RSS/Atom** feed is served (200),
  * so we fetch and parse that. RSS carries title/author/date/link/thumbnail but
- * not score or comment counts. Cached in Next's Data Cache (~15 min).
+ * not score or comment counts. Fetched fresh on every request — the news page
+ * reloads each time it's visited.
  */
 
 const REDDIT_RSS_URL = "https://www.reddit.com/r/anime/hot/.rss?limit=40";
-const FIFTEEN_MIN_SECONDS = 900;
 
 export interface RedditPost {
   id: string;
@@ -43,7 +43,7 @@ export async function getAnimeHotPosts(limit = 30): Promise<RedditPost[]> {
       "User-Agent": "Mozilla/5.0 anime_maniacs/1.0 (+news tab)",
       Accept: "application/atom+xml, application/xml, text/xml",
     },
-    next: { revalidate: FIFTEEN_MIN_SECONDS },
+    cache: "no-store",
   });
   if (!res.ok) {
     throw new Error(`Reddit request failed (${res.status})`);
@@ -68,7 +68,13 @@ export async function getAnimeHotPosts(limit = 30): Promise<RedditPost[]> {
       firstMatch(/<published>([\s\S]*?)<\/published>/, entry);
     const content =
       firstMatch(/<content[^>]*>([\s\S]*?)<\/content>/, entry) ?? "";
-    const thumb = firstMatch(/<img[^>]+src="([^"]+)"/, decodeEntities(content));
+    // Prefer the Atom <media:thumbnail> (reliable, direct CDN URL); fall back
+    // to the first <img> embedded in the post's HTML content. Entity-decode
+    // both — Reddit escapes "&" in query strings, which breaks the URL as-is.
+    const mediaThumb = firstMatch(/<media:thumbnail[^>]+url="([^"]+)"/, entry);
+    const thumb = mediaThumb
+      ? decodeEntities(mediaThumb)
+      : firstMatch(/<img[^>]+src="([^"]+)"/, decodeEntities(content));
 
     posts.push({
       id,

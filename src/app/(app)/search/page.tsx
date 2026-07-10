@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Fragment,
   Suspense,
   useEffect,
   useMemo,
@@ -76,10 +77,23 @@ function SearchPageInner() {
   });
   const abortRef = useRef<AbortController | null>(null);
 
+  // 1-based app page (≤50 results each) + totals from the API.
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState<{
+    totalPages: number;
+    totalItems: number;
+  } | null>(null);
+
   function toggleGenre(id: number) {
+    setPage(1);
     setGenreIds((prev) =>
       prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
     );
+  }
+
+  function goToPage(n: number) {
+    setPage(n);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // Shares the same cache as the /library grid (persisted to IndexedDB), so we
@@ -128,6 +142,7 @@ function SearchPageInner() {
     const params = new URLSearchParams();
     if (hasQuery) params.set("q", q);
     if (hasGenres) params.set("genres", genreIds.join(","));
+    params.set("page", String(page));
 
     fetch(`/api/anime/search?${params.toString()}`, {
       signal: controller.signal,
@@ -144,6 +159,10 @@ function SearchPageInner() {
           return true;
         });
         setResults(unique);
+        setPageInfo({
+          totalPages: body.totalPages ?? 1,
+          totalItems: body.totalItems ?? unique.length,
+        });
         setResolvedQuery(hasQuery ? q : "the selected genres");
         setStatus("success");
       })
@@ -153,7 +172,7 @@ function SearchPageInner() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, genreIds]);
+  }, [debouncedQuery, genreIds, page]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
@@ -167,7 +186,10 @@ function SearchPageInner() {
       <div className="mx-auto mb-6 max-w-xl">
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search anime…"
             aria-label="Search anime"
             className="h-11 rounded-xl text-center text-base"
@@ -227,16 +249,31 @@ function SearchPageInner() {
         ) : null}
 
         {status === "success" && results.length > 0 ? (
-          <Grid>
-            {results.map((anime) => (
-              <PosterCard
-                key={anime.mal_id}
-                anime={anime}
-                titleLang={titleLang}
-                alreadyInLibrary={libraryMalIds.has(anime.mal_id)}
+          <>
+            {pageInfo ? (
+              <p className="mb-4 text-center text-xs text-muted-foreground">
+                Page {page} of {pageInfo.totalPages} ·{" "}
+                {pageInfo.totalItems.toLocaleString()} matches
+              </p>
+            ) : null}
+            <Grid>
+              {results.map((anime) => (
+                <PosterCard
+                  key={anime.mal_id}
+                  anime={anime}
+                  titleLang={titleLang}
+                  alreadyInLibrary={libraryMalIds.has(anime.mal_id)}
+                />
+              ))}
+            </Grid>
+            {pageInfo ? (
+              <Pagination
+                page={page}
+                totalPages={pageInfo.totalPages}
+                onPage={goToPage}
               />
-            ))}
-          </Grid>
+            ) : null}
+          </>
         ) : null}
     </main>
   );
@@ -267,6 +304,78 @@ function SkeletonGrid() {
 function Hint({ children }: { children: React.ReactNode }) {
   return (
     <p className="py-24 text-center text-sm text-muted-foreground">{children}</p>
+  );
+}
+
+/**
+ * Numbered pager: first/last always visible, a ±2 window around the current
+ * page, ellipses for the gaps. Windowed so a 200-page result set stays tidy.
+ */
+function Pagination({
+  page,
+  totalPages,
+  onPage,
+}: {
+  page: number;
+  totalPages: number;
+  onPage: (n: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  const nums = new Set<number>([1, totalPages]);
+  for (let n = page - 2; n <= page + 2; n++) {
+    if (n >= 1 && n <= totalPages) nums.add(n);
+  }
+  const list = [...nums].sort((a, b) => a - b);
+
+  const navBtn =
+    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-40";
+
+  return (
+    <nav
+      aria-label="Search result pages"
+      className="mt-8 flex flex-wrap items-center justify-center gap-1.5"
+    >
+      <button
+        type="button"
+        onClick={() => onPage(page - 1)}
+        disabled={page === 1}
+        className={cn(navBtn, "bg-muted text-muted-foreground hover:text-foreground")}
+      >
+        ‹ Prev
+      </button>
+      {list.map((n, i) => (
+        <Fragment key={n}>
+          {i > 0 && n - list[i - 1]! > 1 ? (
+            <span aria-hidden className="px-1 text-muted-foreground">
+              …
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onPage(n)}
+            aria-current={n === page ? "page" : undefined}
+            className={cn(
+              navBtn,
+              "tabular-nums",
+              n === page
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {n}
+          </button>
+        </Fragment>
+      ))}
+      <button
+        type="button"
+        onClick={() => onPage(page + 1)}
+        disabled={page === totalPages}
+        className={cn(navBtn, "bg-muted text-muted-foreground hover:text-foreground")}
+      >
+        Next ›
+      </button>
+    </nav>
   );
 }
 

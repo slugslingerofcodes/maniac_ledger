@@ -120,10 +120,14 @@ export default async function AnimeDetailPage({
   }
   if (!anime) notFound();
 
-  // Populate the episode catalog from Jikan on first view (best-effort; needs a
-  // signed-in session per the episodes INSERT policy from migration 0005).
-  // Must finish before we read the episodes table below.
-  await ensureEpisodes(anime.id, anime.mal_id);
+  // Populate the episode catalog from Jikan on first view — and top it up on
+  // every view while the show is airing, so newly aired episodes appear as
+  // soon as MAL lists them (best-effort; needs a signed-in session per the
+  // episodes INSERT policy from migration 0005). Must finish before we read
+  // the episodes table below.
+  await ensureEpisodes(anime.id, anime.mal_id, {
+    airing: anime.status === "currently_airing",
+  });
 
   // Episodes and the user's progress row don't depend on each other.
   const [{ data: episodes }, { data: progress }] = await Promise.all([
@@ -181,6 +185,41 @@ export default async function AnimeDetailPage({
       synonyms = extras.synonyms;
       openings = extras.openings;
       endings = extras.endings;
+
+      // Keep the cached catalog row current: episode totals, synopsis, status
+      // and score drift on MAL while a show airs. Patch the in-memory row so
+      // THIS render is fresh, and write back best-effort for everyone else.
+      const patch: Partial<typeof anime> = {};
+      if (
+        extras.totalEpisodes != null &&
+        extras.totalEpisodes !== anime.total_episodes
+      ) {
+        patch.total_episodes = extras.totalEpisodes;
+      }
+      if (extras.synopsis && extras.synopsis !== anime.synopsis) {
+        patch.synopsis = extras.synopsis;
+      }
+      const freshStatus =
+        extras.airingStatus === "Currently Airing"
+          ? "currently_airing"
+          : extras.airingStatus === "Finished Airing"
+            ? "finished_airing"
+            : extras.airingStatus === "Not yet aired"
+              ? "not_yet_aired"
+              : null;
+      if (freshStatus && freshStatus !== anime.status) {
+        patch.status = freshStatus;
+      }
+      if (extras.score != null && extras.score !== anime.score) {
+        patch.score = extras.score;
+      }
+      if (Object.keys(patch).length > 0) {
+        Object.assign(anime, patch);
+        if (user) {
+          // Best-effort write-back; RLS allows authenticated catalog updates.
+          await supabase.from("anime").update(patch).eq("id", anime.id);
+        }
+      }
       if (genres.length === 0 && extras.genres.length > 0) {
         genres = extras.genres;
         if (user) {

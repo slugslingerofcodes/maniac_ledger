@@ -37,9 +37,15 @@ const QuerySchema = z
     message: "Provide a query or at least one genre.",
   });
 
+/** Results per app page: two 25-result Jikan pages stitched together. */
+const JIKAN_PAGES_PER_APP_PAGE = 2;
+
 export interface AnimeSearchResponse {
   results: JikanAnime[];
-  pagination: Awaited<ReturnType<typeof searchAnime>>["pagination"];
+  /** 1-based app page (≤50 results each). */
+  page: number;
+  totalPages: number;
+  totalItems: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -64,10 +70,34 @@ export async function GET(request: NextRequest) {
   const { q, page, genres } = parsed.data;
 
   try {
-    const { data, pagination } = await searchAnime(q ?? "", page, genres ?? []);
+    // Stitch two Jikan pages (25 results each) into one ≤50-result app page,
+    // so callers get everything matching the query with page numbers.
+    const firstJikanPage = (page - 1) * JIKAN_PAGES_PER_APP_PAGE + 1;
+    const first = await searchAnime(q ?? "", firstJikanPage, genres ?? []);
+    let results = first.data;
+    if (first.pagination.has_next_page) {
+      const second = await searchAnime(
+        q ?? "",
+        firstJikanPage + 1,
+        genres ?? [],
+      );
+      results = results.concat(second.data);
+    }
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(
+        first.pagination.last_visible_page / JIKAN_PAGES_PER_APP_PAGE,
+      ),
+    );
 
     return NextResponse.json(
-      { results: data, pagination } satisfies AnimeSearchResponse,
+      {
+        results,
+        page,
+        totalPages,
+        totalItems: first.pagination.items.total,
+      } satisfies AnimeSearchResponse,
       {
         headers: {
           // Cache at the edge for 1 hour; serve stale up to a day while

@@ -2,39 +2,44 @@ import { getAllAnimeEpisodes } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Ensures the shared `episodes` catalog is populated for an anime so per-episode
- * tracking has rows to reference.
+ * Ensures the shared `episodes` catalog is populated — and, for currently
+ * airing anime, **topped up** — so per-episode tracking has rows to reference.
  *
- * No-op if the anime already has episodes or has no `mal_id`. Otherwise fetches
- * the episode list from Jikan and inserts it, deduped by (anime_id, number).
- * Best-effort: swallows Jikan failures so the detail page still renders.
+ * Finished shows: no-op once rows exist (their episode list never changes).
+ * Airing shows: re-fetches the list from Jikan on every detail view (the
+ * episodes endpoint is uncached) and inserts any newly aired episodes, so the
+ * count stays exact as new episodes drop.
  *
- * Requires migration 0005 (authenticated INSERT policy on `episodes`) and runs
- * under the caller's session.
+ * No-op without a `mal_id`. Best-effort: swallows Jikan failures so the detail
+ * page still renders. Requires migration 0005 (authenticated INSERT policy on
+ * `episodes`) and runs under the caller's session.
  */
 export async function ensureEpisodes(
   animeId: string,
   malId: number | null,
+  opts: { airing?: boolean } = {},
 ): Promise<void> {
   if (malId == null) return;
 
   const supabase = await createClient();
 
-  // Already populated? Skip the network call.
   const { count } = await supabase
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("anime_id", animeId);
+  const existing = count ?? 0;
 
-  if ((count ?? 0) > 0) return;
+  // Finished + already populated → the list can't have changed.
+  if (existing > 0 && !opts.airing) return;
 
   let episodes;
   try {
     episodes = await getAllAnimeEpisodes(malId);
   } catch {
-    return; // Jikan unavailable / rate limited — leave the catalog empty.
+    return; // Jikan unavailable / rate limited — keep what we have.
   }
-  if (episodes.length === 0) return;
+  // Nothing new to write (also covers Jikan briefly returning fewer rows).
+  if (episodes.length === 0 || episodes.length <= existing) return;
 
   const rows = episodes.map((ep) => ({
     anime_id: animeId,

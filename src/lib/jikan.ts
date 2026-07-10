@@ -550,6 +550,12 @@ export type AnimeExtras = {
   /** OP/ED credits as MAL display strings. */
   openings: string[];
   endings: string[];
+  /** Fresh catalog fields, for keeping the local `anime` row up to date. */
+  synopsis: string | null;
+  totalEpisodes: number | null;
+  /** Raw Jikan status string, e.g. "Currently Airing". */
+  airingStatus: string;
+  score: number | null;
 };
 
 /** Relation kinds shown in the "Seasons & related" list, in display order. */
@@ -573,8 +579,10 @@ const RELATION_KINDS = [
  * auto-plays audio.
  */
 export async function getAnimeExtras(malId: number): Promise<AnimeExtras> {
+  // 1h (not 24h): synopsis/episode-count/status changes for airing shows
+  // should reach detail pages the same day MAL updates them.
   const res = await jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`, {
-    revalidate: ONE_DAY_SECONDS,
+    revalidate: 3600,
   });
   const anime = res.data;
   const trailer = anime.trailer;
@@ -611,6 +619,10 @@ export async function getAnimeExtras(malId: number): Promise<AnimeExtras> {
     synonyms: anime.title_synonyms ?? [],
     openings: anime.theme?.openings ?? [],
     endings: anime.theme?.endings ?? [],
+    synopsis: anime.synopsis,
+    totalEpisodes: anime.episodes,
+    airingStatus: anime.status,
+    score: anime.score,
   };
 }
 
@@ -665,6 +677,18 @@ export async function getAnimeRecommendations(
  */
 export function getAnimeById(malId: number): Promise<JikanAnime> {
   return jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`).then(
+    (r) => r.data,
+  );
+}
+
+/**
+ * A random SFW anime (`/random/anime`). Deliberately uncached — every call
+ * should roll a fresh pick. Powers the recommendations "Surprise me" button.
+ *
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function getRandomAnime(): Promise<JikanAnime> {
+  return jikanFetch<JikanByIdResponse>("/random/anime?sfw=true").then(
     (r) => r.data,
   );
 }

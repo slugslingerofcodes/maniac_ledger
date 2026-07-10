@@ -1,9 +1,11 @@
 /**
- * Ambient app backdrop: the vortex artwork (public/vortex.png) as a living
- * layer — an oversized square slowly rotates while an inner layer breathes.
- * Behind it, a CSS "temporal rune vortex" (rotating rune rings + pulsing core +
- * teal/gold bokeh) acts as a graceful fallback so the backdrop still animates
- * if the image file is missing. Fixed, behind everything, dimmed by a veil.
+ * Ambient app backdrop: the vortex artwork (public/vortex.png) filling the
+ * viewport with a slow Ken Burns drift, with the animated CSS "temporal rune
+ * vortex" (rotating rune rings + light spokes + pulsing core) layered on top in
+ * `screen` blend — so its golden light *adds* onto the photo and spins
+ * independently, giving the still image live rotational motion. The teal/gold
+ * bokeh + the same CSS vortex behind the image also serve as a graceful
+ * fallback if the file is missing. Fixed, behind everything, dimmed by a veil.
  */
 export function VortexBackdrop() {
   return (
@@ -11,10 +13,10 @@ export function VortexBackdrop() {
       aria-hidden
       className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
     >
-      {/* Warm-dark void. */}
+      {/* Warm-dark void (fallback base). */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,oklch(0.2_0.04_78),oklch(0.12_0.02_60)_58%,oklch(0.08_0.01_50))]" />
 
-      {/* Drifting bokeh — teal + green edges, gold glow (reuses aurora drift). */}
+      {/* Drifting bokeh — shows through if the artwork is missing. */}
       <div
         className="aurora-blob aurora-blob-1 left-[8%] top-[18%] size-[42vmin]"
         style={{ backgroundColor: "oklch(0.6 0.13 195 / 0.45)" }}
@@ -28,19 +30,21 @@ export function VortexBackdrop() {
         style={{ backgroundColor: "oklch(0.72 0.16 78 / 0.4)" }}
       />
 
-      {/* CSS mandala fallback: light spokes + three rune rings + pulsing core.
-          Covered by the artwork layer below when public/vortex.png exists. */}
-      <div className="absolute left-1/2 top-1/2 size-[min(96vmin,820px)] -translate-x-1/2 -translate-y-1/2">
-        <div className="vortex-rays absolute inset-0" />
-        <div className="vortex-ring vortex-ring-3 absolute inset-0" />
-        <div className="vortex-ring vortex-ring-2 absolute inset-0" />
-        <div className="vortex-ring vortex-ring-1 absolute inset-0" />
-        <div className="vortex-core absolute inset-[30%]" />
-      </div>
-
-      {/* Actual vortex artwork, filling the viewport with a slow Ken Burns
-          drift. Covers the CSS mandala when public/vortex.png is present. */}
+      {/* Vortex artwork, filling the viewport with a slow Ken Burns drift. */}
       <div className="vortex-img absolute inset-0" />
+
+      {/* Animated CSS vortex overlaid in `screen` blend: its rune rings, light
+          spokes and pulsing core add glowing gold over the photo and rotate on
+          their own, so the composite has layered, living motion. */}
+      <div className="absolute inset-0 [mix-blend-mode:screen]">
+        <div className="absolute left-1/2 top-1/2 size-[min(96vmin,820px)] -translate-x-1/2 -translate-y-1/2">
+          <div className="vortex-rays absolute inset-0" />
+          <div className="vortex-ring vortex-ring-3 absolute inset-0" />
+          <div className="vortex-ring vortex-ring-2 absolute inset-0" />
+          <div className="vortex-ring vortex-ring-1 absolute inset-0" />
+          <div className="vortex-core absolute inset-[34%]" />
+        </div>
+      </div>
 
       {/* Readability veil — content sits on top of this. Kept light enough to
           let the artwork read through, dark enough to keep text legible. */}

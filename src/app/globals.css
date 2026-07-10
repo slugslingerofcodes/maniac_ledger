@@ -366,6 +366,29 @@ html:not(.dark) .text-gradient {
   animation: vortex-spin 130s linear infinite;
 }
 
+/* Actual vortex artwork (public/vortex.png), animated: an oversized square
+   layer slowly rotates while a breathing inner layer zooms, so the still image
+   becomes a living backdrop. If the file is absent the layer is transparent and
+   the CSS mandala above shows through. */
+@keyframes vortex-img-breathe {
+  0%,
+  100% {
+    transform: scale(1.02);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+.vortex-spin-layer {
+  animation: vortex-spin 140s linear infinite;
+}
+.vortex-img {
+  background-image: url("/vortex.png");
+  background-size: cover;
+  background-position: center;
+  animation: vortex-img-breathe 16s ease-in-out infinite;
+}
+
 /* Loading placeholders: gradient sweep over the accent base (ui/skeleton). */
 @keyframes skeleton-shimmer {
   from {
@@ -536,7 +559,9 @@ html:not(.dark) .text-gradient {
   .vortex-rays,
   .vortex-ring-1,
   .vortex-ring-2,
-  .vortex-ring-3 {
+  .vortex-ring-3,
+  .vortex-spin-layer,
+  .vortex-img {
     animation: none;
   }
   /* Route-change view transitions (poster morphs) snap instead of animating. */

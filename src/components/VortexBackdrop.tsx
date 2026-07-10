@@ -1,9 +1,9 @@
 /**
- * Ambient app backdrop: a golden "temporal rune vortex" — a pulsing core
- * ringed by concentric, counter-rotating rune bands and radiating light
- * spokes, over a warm-dark void with drifting teal/gold bokeh. Pure CSS
- * (conic gradients + radial masks + the aurora keyframes); no image assets.
- * Decorative only: fixed, behind everything, dimmed by a readability veil.
+ * Ambient app backdrop: the vortex artwork (public/vortex.png) as a living
+ * layer — an oversized square slowly rotates while an inner layer breathes.
+ * Behind it, a CSS "temporal rune vortex" (rotating rune rings + pulsing core +
+ * teal/gold bokeh) acts as a graceful fallback so the backdrop still animates
+ * if the image file is missing. Fixed, behind everything, dimmed by a veil.
  */
 export function VortexBackdrop() {
   return (
@@ -28,13 +28,21 @@ export function VortexBackdrop() {
         style={{ backgroundColor: "oklch(0.72 0.16 78 / 0.4)" }}
       />
 
-      {/* The mandala: light spokes + three rune rings + a pulsing core. */}
+      {/* CSS mandala fallback: light spokes + three rune rings + pulsing core.
+          Covered by the artwork layer below when public/vortex.png exists. */}
       <div className="absolute left-1/2 top-1/2 size-[min(96vmin,820px)] -translate-x-1/2 -translate-y-1/2">
         <div className="vortex-rays absolute inset-0" />
         <div className="vortex-ring vortex-ring-3 absolute inset-0" />
         <div className="vortex-ring vortex-ring-2 absolute inset-0" />
         <div className="vortex-ring vortex-ring-1 absolute inset-0" />
         <div className="vortex-core absolute inset-[30%]" />
+      </div>
+
+      {/* Actual vortex artwork: oversized so rotation never reveals corners. */}
+      <div className="absolute left-1/2 top-1/2 h-[170vmax] w-[170vmax] -translate-x-1/2 -translate-y-1/2">
+        <div className="vortex-spin-layer absolute inset-0">
+          <div className="vortex-img absolute inset-0" />
+        </div>
       </div>
 
       {/* Readability veil — content sits on top of this. Kept light enough to

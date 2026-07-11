@@ -7,7 +7,12 @@
  *   - same-origin static assets (script/style/image/font): cache-first
  *   - everything else (cross-origin: Jikan, MAL posters, Supabase): untouched
  */
-const CACHE = "anitrack-v1";
+// Bump this version to purge every client's cache-first asset store on the
+// next visit (the `activate` handler deletes any cache whose key != CACHE).
+// v2: evict the stale placeholder icon-192.png that early visitors cached
+// before the AM monogram replaced it (the Anime Times masthead served the old
+// blue-circle copy from cache).
+const CACHE = "anitrack-v2";
 const ASSET_DESTINATIONS = ["style", "script", "image", "font"];
 
 self.addEventListener("install", () => {

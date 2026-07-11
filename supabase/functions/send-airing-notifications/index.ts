@@ -10,19 +10,34 @@
 //   4. Stamp notified_at = now() on the rows that were successfully sent.
 //
 // Secrets (Project → Edge Functions → Secrets, or `supabase secrets set`):
-//   RESEND_API_KEY   — required
-//   RESEND_FROM      — optional, e.g. "anime_maniacs <alerts@yourdomain.com>"
+//   RESEND_API_KEY    — required
+//   RESEND_FROM       — optional, e.g. "anime_maniacs <alerts@yourdomain.com>"
+//   VAPID_PUBLIC_KEY  — optional; enables Web Push (with the two below)
+//   VAPID_PRIVATE_KEY — optional
+//   VAPID_SUBJECT     — optional, e.g. "mailto:alerts@yourdomain.com"
+//   APP_URL           — optional, deep-link base (default the Vercel prod URL)
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 //
 // Deploy:  supabase functions deploy send-airing-notifications
 // Invoked daily by pg_cron + pg_net (see migration 0009).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import webpush from "npm:web-push@3.6.7";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "anime_maniacs <onboarding@resend.dev>";
+const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY");
+const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY");
+const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") ?? "mailto:alerts@example.com";
+const APP_URL = Deno.env.get("APP_URL") ?? "https://my-app-teal-psi-80.vercel.app";
+
+// Web Push is optional: only active when the VAPID pair is configured.
+const pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (pushEnabled) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!);
+}
 
 type NotificationRow = {
   id: string;
@@ -99,6 +114,16 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // Best-effort Web Push to each of the user's devices (never blocks the
+    // email path or the notified_at stamp).
+    if (pushEnabled) {
+      try {
+        await sendWebPush(supabase, userId, items);
+      } catch (e) {
+        failures.push(`push failed for ${userId}: ${asMessage(e)}`);
+      }
+    }
+
     // 4. Mark this user's rows sent (only after a successful send).
     const ids = items.map((i) => i.id);
     const { error: updErr } = await supabase
@@ -119,6 +144,58 @@ Deno.serve(async (req) => {
 
 function asMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+
+type ServiceClient = ReturnType<typeof createClient>;
+
+/**
+ * Pushes the digest to every subscription the user has (migration 0018).
+ * Dead subscriptions (404/410 from the push service) are deleted so the
+ * table self-heals as browsers expire endpoints.
+ */
+async function sendWebPush(
+  supabase: ServiceClient,
+  userId: string,
+  items: NotificationRow[],
+) {
+  const { data: subs } = await supabase
+    .from("push_subscriptions")
+    .select("endpoint, p256dh, auth")
+    .eq("user_id", userId);
+  if (!subs || subs.length === 0) return;
+
+  const payload = JSON.stringify({
+    title:
+      items.length === 1
+        ? `${items[0].anime_title} airs today`
+        : `${items.length} anime air today`,
+    body:
+      items.length === 1
+        ? "New episode day — tap to open your library."
+        : items.map((i) => i.anime_title).slice(0, 3).join(" · "),
+    url: `${APP_URL}/library`,
+    icon: items[0].poster_url ?? undefined,
+  });
+
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint as string,
+          keys: { p256dh: sub.p256dh as string, auth: sub.auth as string },
+        },
+        payload,
+      );
+    } catch (e) {
+      const status = (e as { statusCode?: number }).statusCode;
+      if (status === 404 || status === 410) {
+        await supabase
+          .from("push_subscriptions")
+          .delete()
+          .eq("endpoint", sub.endpoint as string);
+      }
+    }
+  }
 }
 
 async function sendDigest(to: string, items: NotificationRow[]) {

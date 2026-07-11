@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
+import { NaturalSearchBox } from "@/components/anime/NaturalSearchBox";
 import { Pagination } from "@/components/anime/Pagination";
 import {
   SearchFilters,
@@ -23,6 +24,19 @@ import {
   filtersToSearchParams,
   type SearchFilterState,
 } from "@/components/anime/SearchFilters";
+import type { ParsedNlFilters } from "@/app/actions/nl-search";
+import {
+  EPISODES_MAX,
+  YEAR_MAX,
+  YEAR_MIN,
+  type CountryValue,
+  type FormatValue,
+  type Season,
+  type SourceValue,
+  type StatusValue,
+  type StreamingValue,
+  type TagValue,
+} from "@/lib/search-filters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -180,6 +194,27 @@ function SearchPageInner() {
       <div className="mb-4 flex justify-center">
         <TitleLanguageToggle />
       </div>
+
+      {/* AI mode: describe it in plain words → filters below get filled in. */}
+      <NaturalSearchBox
+        onApply={(f: ParsedNlFilters) => {
+          setQuery(f.query);
+          setFilters({
+            ...createDefaultFilters(f.genreIds),
+            tags: f.tags as TagValue[],
+            year: f.year,
+            season: f.season as Season | null,
+            format: f.format as FormatValue | null,
+            status: f.status as StatusValue | null,
+            streaming: f.streaming as StreamingValue | null,
+            country: f.country as CountryValue | null,
+            source: f.source as SourceValue | null,
+            yearRange: [f.minYear ?? YEAR_MIN, f.maxYear ?? YEAR_MAX],
+            episodes: [f.minEpisodes ?? 0, f.maxEpisodes ?? EPISODES_MAX],
+          });
+          setPage(1);
+        }}
+      />
 
       {/* Filter bar: search, genres, year, season, format + advanced panel. */}
       <SearchFilters

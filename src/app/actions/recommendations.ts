@@ -61,9 +61,10 @@ async function getSuggestions(
 ): Promise<z.infer<typeof SuggestionsSchema>> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    // gemini-1.5-* is legacy and has a free-tier quota of 0 (429 RESOURCE_EXHAUSTED
-    // on the first call). 2.0-flash is the current free-tier flash model.
-    model: "gemini-2.0-flash",
+    // Pinned flash models keep getting their free-tier quota zeroed on
+    // deprecation (1.5 → 2.0 → 2.5 all did, each as a 429/404 in prod); the
+    // rolling alias tracks whatever the current free-tier flash model is.
+    model: "gemini-flash-latest",
     // Ask for raw JSON up front — the biggest lever against malformed output.
     generationConfig: { responseMimeType: "application/json", temperature: 0.9 },
   });

@@ -1,11 +1,16 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, Star } from "lucide-react";
 import { toast } from "sonner";
 
-import { markEpisodesUpTo, toggleEpisode } from "@/app/actions/progress";
+import {
+  getEpisodeRatings,
+  markEpisodesUpTo,
+  rateEpisode,
+  toggleEpisode,
+} from "@/app/actions/progress";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/types/anime";
@@ -52,6 +57,39 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   );
 
   const [isPending, startTransition] = useTransition();
+
+  // Per-episode 1–5 star ratings (migration 0017). null → feature unavailable
+  // (column missing), so the star row is hidden entirely.
+  const [ratings, setRatings] = useState<Record<string, number> | null>(null);
+  const [ratingsReady, setRatingsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getEpisodeRatings(animeId).then((r) => {
+      if (cancelled) return;
+      setRatings(r);
+      setRatingsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [animeId]);
+
+  function commitRating(episodeId: string, value: number) {
+    const prev = ratings ?? {};
+    // Clicking the current rating clears it.
+    const next = prev[episodeId] === value ? null : value;
+    setRatings({ ...prev, ...(next == null ? {} : { [episodeId]: next }) });
+    if (next == null) {
+      const { [episodeId]: _cleared, ...rest } = prev;
+      setRatings(rest);
+    }
+    void rateEpisode(episodeId, next).then((res) => {
+      if (!res.ok) {
+        setRatings(prev);
+        toast.error(res.error);
+      }
+    });
+  }
 
   function commitToggle(episodeId: string, target: boolean) {
     startTransition(async () => {
@@ -182,6 +220,35 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
               >
                 {ep.title ?? `Episode ${ep.number}`}
               </label>
+              {isWatched && ratingsReady && ratings != null ? (
+                <span
+                  className="hidden shrink-0 items-center gap-0.5 sm:flex"
+                  role="radiogroup"
+                  aria-label={`Rate episode ${ep.number}`}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const filled = (ratings[ep.id] ?? 0) >= n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={ratings[ep.id] === n}
+                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                        onClick={() => commitRating(ep.id, n)}
+                        className="text-muted-foreground/40 transition-colors hover:text-amber-300"
+                      >
+                        <Star
+                          className={cn(
+                            "size-3",
+                            filled && "fill-amber-400 text-amber-400",
+                          )}
+                        />
+                      </button>
+                    );
+                  })}
+                </span>
+              ) : null}
               {ep.aired_date ? (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {new Date(ep.aired_date).toLocaleDateString()}

@@ -5,6 +5,8 @@ import { Megaphone, ShieldCheck } from "lucide-react";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
 import { ImportExportCard } from "@/components/profile/ImportExportCard";
+import { PushToggle } from "@/components/profile/PushToggle";
+import { SocialSettingsCard } from "@/components/profile/SocialSettingsCard";
 import {
   ProfileStats,
   type ProfileProgressRow,
@@ -87,7 +89,11 @@ export default async function ProfilePage() {
         <UsernameForm initialUsername={username} />
       </div>
 
+      <SocialSettingsCard suggestedUsername={username || name} />
+
       <ImportExportCard />
+
+      <PushToggle />
 
       <Link
         href="/announcements"

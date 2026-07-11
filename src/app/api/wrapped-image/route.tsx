@@ -55,11 +55,25 @@ export async function GET(request: NextRequest) {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 30, letterSpacing: 6, color: "#a1a1aa" }}>
+          <div
+            style={{
+              display: "flex",
+              fontSize: 30,
+              letterSpacing: 6,
+              color: "#a1a1aa",
+            }}
+          >
             ANIME WRAPPED
           </div>
-          <div style={{ fontSize: 120, fontWeight: 700, lineHeight: 1.1 }}>
-            {year}
+          <div
+            style={{
+              display: "flex",
+              fontSize: 120,
+              fontWeight: 700,
+              lineHeight: 1.1,
+            }}
+          >
+            {String(year)}
           </div>
         </div>
 
@@ -73,12 +87,15 @@ export async function GET(request: NextRequest) {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {topGenres.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 24, color: "#a1a1aa" }}>Top genres</div>
+              <div style={{ display: "flex", fontSize: 24, color: "#a1a1aa" }}>
+                Top genres
+              </div>
               <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
                 {topGenres.map((g) => (
                   <div
                     key={g.name}
                     style={{
+                      display: "flex",
                       padding: "10px 26px",
                       borderRadius: 999,
                       background: "#3f3f46",
@@ -93,12 +110,12 @@ export async function GET(request: NextRequest) {
           ) : null}
           {stats.topRated ? (
             <div style={{ display: "flex", fontSize: 28, color: "#d4d4d8" }}>
-              Favorite: {stats.topRated.title} (★{stats.topRated.score})
+              {`Favorite: ${stats.topRated.title} (★${stats.topRated.score})`}
             </div>
           ) : null}
           {stats.longestStreak > 1 ? (
             <div style={{ display: "flex", fontSize: 28, color: "#d4d4d8" }}>
-              Longest streak: {stats.longestStreak} days straight
+              {`Longest streak: ${stats.longestStreak} days straight`}
             </div>
           ) : null}
           <div
@@ -128,10 +145,12 @@ export async function GET(request: NextRequest) {
 function Big({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ fontSize: 72, fontWeight: 700 }}>
+      <div style={{ display: "flex", fontSize: 72, fontWeight: 700 }}>
         {value.toLocaleString("en-US")}
       </div>
-      <div style={{ fontSize: 24, color: "#a1a1aa" }}>{label}</div>
+      <div style={{ display: "flex", fontSize: 24, color: "#a1a1aa" }}>
+        {label}
+      </div>
     </div>
   );
 }

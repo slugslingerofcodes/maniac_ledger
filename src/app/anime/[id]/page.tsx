@@ -9,7 +9,9 @@ import { EpisodeList } from "@/components/anime/EpisodeList";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
+import { RewatchButton } from "@/components/anime/RewatchButton";
 import { WatchOrder } from "@/components/anime/WatchOrder";
+import { AddToListButton } from "@/components/lists/AddToListButton";
 import { ScoreRing } from "@/components/ScoreRing";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -381,6 +383,10 @@ export default async function AnimeDetailPage({
                     score: progress?.score ?? null,
                   }}
                 />
+                <AddToListButton animeId={anime.id} />
+                {progress?.status === "completed" ? (
+                  <RewatchButton animeId={anime.id} />
+                ) : null}
               </>
             ) : (
               <Card>

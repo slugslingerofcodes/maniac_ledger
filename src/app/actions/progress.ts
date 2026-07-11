@@ -145,6 +145,111 @@ export type UpsertProgressResult = { ok: true } | { ok: false; error: string };
  * the library and later calls edit it. The Zod patch is validated server-side;
  * RLS scopes the write to the current user.
  */
+/**
+ * The viewer's rewatch count for an anime, or null when the entry doesn't
+ * exist or migration 0017 (rewatch_count) hasn't been applied — callers hide
+ * the rewatch UI in that case instead of erroring.
+ */
+export async function getRewatchCount(
+  animeId: string,
+): Promise<number | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("user_progress")
+    .select("rewatch_count")
+    .eq("anime_id", animeId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.rewatch_count ?? 0;
+}
+
+/** +1 rewatch on a completed entry (also re-marks it completed). */
+export async function incrementRewatch(
+  animeId: string,
+): Promise<UpsertProgressResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const { data: current, error: readErr } = await supabase
+    .from("user_progress")
+    .select("rewatch_count")
+    .eq("anime_id", animeId)
+    .maybeSingle();
+  if (readErr || !current) {
+    return { ok: false, error: "Rewatch tracking isn't available yet." };
+  }
+
+  const { error } = await supabase
+    .from("user_progress")
+    .update({
+      rewatch_count: (current.rewatch_count ?? 0) + 1,
+      status: "completed",
+    })
+    .eq("anime_id", animeId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/anime/${animeId}`);
+  revalidatePath("/library");
+  return { ok: true };
+}
+
+/**
+ * Rates a watched episode 1–5 (or clears with null). No-op error when
+ * migration 0017 (episode_progress.rating) isn't applied yet.
+ */
+export async function rateEpisode(
+  episodeId: string,
+  rating: number | null,
+): Promise<UpsertProgressResult> {
+  const parsed = z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .nullable()
+    .safeParse(rating);
+  if (!parsed.success) return { ok: false, error: "Invalid rating." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const { error } = await supabase
+    .from("episode_progress")
+    .update({ rating: parsed.data })
+    .eq("user_id", user.id)
+    .eq("episode_id", episodeId);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true };
+}
+
+/**
+ * The viewer's episode ratings for an anime as { episodeId: rating }. Returns
+ * null when migration 0017 isn't applied (callers hide the rating UI).
+ */
+export async function getEpisodeRatings(
+  animeId: string,
+): Promise<Record<string, number> | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("episode_progress")
+    .select("episode_id, rating, episode:episode_id!inner(anime_id)")
+    .eq("episode.anime_id", animeId);
+  if (error) return null;
+
+  const out: Record<string, number> = {};
+  for (const row of data ?? []) {
+    if (row.rating != null) out[row.episode_id] = row.rating;
+  }
+  return out;
+}
+
 /** Bulk status change for the library's multi-select mode. Max 100 per call. */
 export async function bulkUpdateStatus(
   animeIds: string[],

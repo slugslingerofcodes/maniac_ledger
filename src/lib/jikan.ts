@@ -281,17 +281,29 @@ async function jikanFetch<T>(
 /* Public API                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/** Extra `/anime` search filters Jikan can express natively. */
+export type JikanSearchOptions = {
+  /** Media kind: tv / movie / ova / ona / special / music. */
+  type?: string;
+  /** Airing status: airing / complete / upcoming. */
+  status?: string;
+  /** Premiere window, YYYY-MM-DD (maps year / year-range filters). */
+  startDate?: string;
+  endDate?: string;
+};
+
 /**
- * Search anime by title and/or MAL genre ids. SFW results only.
+ * Search anime by title, MAL genre ids, and/or extra filters. SFW results only.
  *
- * With an empty query but genres set, this becomes a genre browse — Jikan
- * supports `/anime?genres=…` without `q`, so results are ordered by member
- * count to surface well-known titles first.
+ * With an empty query but genres/filters set, this becomes a browse — Jikan
+ * supports `/anime` without `q`, so results are ordered by member count to
+ * surface well-known titles first.
  *
  * @param query    Free-text title query (e.g. "Frieren"); may be empty when
- *                 `genreIds` is non-empty.
+ *                 `genreIds` or `opts` filters are non-empty.
  * @param page     1-based page number (Jikan returns 25 results/page).
  * @param genreIds MAL genre/theme/demographic ids to require (AND semantics).
+ * @param opts     Format / airing status / premiere-date-window filters.
  * @returns The matching anime plus pagination metadata.
  * @throws {JikanError} On any non-2xx response (e.g. 429 when rate limited).
  */
@@ -299,19 +311,25 @@ export function searchAnime(
   query: string,
   page = 1,
   genreIds: number[] = [],
+  opts: JikanSearchOptions = {},
 ): Promise<JikanSearchResponse> {
   const params = new URLSearchParams({
     sfw: "true",
     page: String(page),
   });
   if (query) params.set("q", query);
-  if (genreIds.length > 0) {
-    params.set("genres", genreIds.join(","));
-    if (!query) {
-      // Pure genre browse: rank by popularity, not Jikan's default id order.
-      params.set("order_by", "members");
-      params.set("sort", "desc");
-    }
+  if (genreIds.length > 0) params.set("genres", genreIds.join(","));
+  if (opts.type) params.set("type", opts.type);
+  if (opts.status) params.set("status", opts.status);
+  if (opts.startDate) params.set("start_date", opts.startDate);
+  if (opts.endDate) params.set("end_date", opts.endDate);
+  const hasFilters =
+    genreIds.length > 0 ||
+    Boolean(opts.type || opts.status || opts.startDate || opts.endDate);
+  if (!query && hasFilters) {
+    // Pure browse: rank by popularity, not Jikan's default id order.
+    params.set("order_by", "members");
+    params.set("sort", "desc");
   }
   // Cached 1h: repeat queries are instant, and cached queries keep working
   // (served stale) through MAL outages.

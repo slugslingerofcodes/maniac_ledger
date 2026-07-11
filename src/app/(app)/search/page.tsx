@@ -17,13 +17,17 @@ import { toast } from "sonner";
 
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
+import {
+  SearchFilters,
+  createDefaultFilters,
+  filtersToSearchParams,
+  type SearchFilterState,
+} from "@/components/anime/SearchFilters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
-import { genreChipStyle } from "@/lib/genre-color";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/analytics";
@@ -64,16 +68,18 @@ function SearchPageInner() {
   const [status, setStatus] = useState<Status>("idle");
   // The query that produced the current `results`, for the no-results message.
   const [resolvedQuery, setResolvedQuery] = useState("");
-  // Selected MAL genre ids (AND semantics); works with or without a query.
-  // Seeded from ?genres=<ids> so the home genre ribbon can deep-link here.
-  const [genreIds, setGenreIds] = useState<number[]>(() => {
+  // Filter bar state. Genre ids are seeded from ?genres=<ids> so the home
+  // genre ribbon can deep-link here.
+  const [filters, setFilters] = useState<SearchFilterState>(() => {
     const raw = searchParams.get("genres");
-    if (!raw) return [];
     const valid = new Set(GENRE_OPTIONS.map((g) => g.id));
-    return raw
-      .split(",")
-      .map(Number)
-      .filter((id) => valid.has(id));
+    const seeded = raw
+      ? raw
+          .split(",")
+          .map(Number)
+          .filter((id) => valid.has(id))
+      : [];
+    return createDefaultFilters(seeded);
   });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -83,15 +89,10 @@ function SearchPageInner() {
     totalPages: number;
     totalItems: number;
   } | null>(null);
-  // True when MAL was down and results came from the local catalog.
+  // Which engine served the results: "mal" | "anilist" | "catalog".
+  const [source, setSource] = useState<string>("mal");
+  // True when live APIs were down and results came from the local catalog.
   const [degraded, setDegraded] = useState(false);
-
-  function toggleGenre(id: number) {
-    setPage(1);
-    setGenreIds((prev) =>
-      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
-    );
-  }
 
   function goToPage(n: number) {
     setPage(n);
@@ -124,13 +125,13 @@ function SearchPageInner() {
   useEffect(() => {
     const q = debouncedQuery.trim();
     const hasQuery = q.length >= 2;
-    const hasGenres = genreIds.length > 0;
 
     // Cancel any in-flight request whenever the inputs change.
     abortRef.current?.abort();
 
-    // Need a >=2-char query and/or at least one genre; otherwise idle prompt.
-    if (!hasQuery && !hasGenres) {
+    // Need a >=2-char query and/or at least one active filter; else idle.
+    const params = filtersToSearchParams(filters, q, page);
+    if (!params) {
       setStatus("idle");
       setResults([]);
       setResolvedQuery("");
@@ -140,11 +141,6 @@ function SearchPageInner() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus("loading");
-
-    const params = new URLSearchParams();
-    if (hasQuery) params.set("q", q);
-    if (hasGenres) params.set("genres", genreIds.join(","));
-    params.set("page", String(page));
 
     fetch(`/api/anime/search?${params.toString()}`, {
       signal: controller.signal,
@@ -165,8 +161,9 @@ function SearchPageInner() {
           totalPages: body.totalPages ?? 1,
           totalItems: body.totalItems ?? unique.length,
         });
+        setSource(body.source ?? "mal");
         setDegraded(Boolean(body.degraded));
-        setResolvedQuery(hasQuery ? q : "the selected genres");
+        setResolvedQuery(hasQuery ? q : "the selected filters");
         setStatus("success");
       })
       .catch((err: unknown) => {
@@ -175,7 +172,7 @@ function SearchPageInner() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, genreIds, page]);
+  }, [debouncedQuery, filters, page]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
@@ -185,58 +182,25 @@ function SearchPageInner() {
         <TitleLanguageToggle />
       </div>
 
-      {/* Centered search input */}
-      <div className="mx-auto mb-6 max-w-xl">
-          <Input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search anime…"
-            aria-label="Search anime"
-            className="h-11 rounded-xl text-center text-base"
-          />
-        </div>
-
-        {/* Genre / tag filter chips — combine with the query, or browse alone. */}
-        <div className="mx-auto mb-10 flex max-w-3xl flex-wrap justify-center gap-1.5">
-          {GENRE_OPTIONS.map((g) => {
-            const active = genreIds.includes(g.id);
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => toggleGenre(g.id)}
-                aria-pressed={active}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:brightness-125",
-                )}
-                style={active ? undefined : genreChipStyle(g.name)}
-              >
-                {g.name}
-              </button>
-            );
-          })}
-          {genreIds.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setGenreIds([])}
-              className="rounded-full px-3 py-1 text-xs font-medium text-destructive hover:underline"
-            >
-              Clear ✕
-            </button>
-          ) : null}
-        </div>
+      {/* Filter bar: search, genres, year, season, format + advanced panel. */}
+      <SearchFilters
+          query={query}
+          onQueryChange={(q) => {
+            setQuery(q);
+            setPage(1);
+          }}
+          value={filters}
+          onChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
+        />
 
         {status === "idle" ? (
           <div className="flex flex-col items-center gap-4 py-16 text-center">
             <SlimeIllustration className="w-44" />
             <p className="text-sm text-muted-foreground">
-              Start typing or pick a genre to discover anime…
+              Start typing or pick a filter to discover anime…
             </p>
           </div>
         ) : null}
@@ -253,8 +217,14 @@ function SearchPageInner() {
 
         {status === "success" && degraded ? (
           <p className="mx-auto mb-4 max-w-xl rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-300">
-            Live MAL search is unreachable — showing matches from the local
+            Live search is unreachable — showing matches from the local
             catalog until it recovers.
+          </p>
+        ) : null}
+
+        {status === "success" && source === "anilist" ? (
+          <p className="mb-4 text-center text-[11px] text-muted-foreground">
+            Results via AniList
           </p>
         ) : null}
 

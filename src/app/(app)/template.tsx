@@ -23,13 +23,13 @@ export default function AppTemplate({ children }: { children: ReactNode }) {
           <motion.div
             initial={{ x: 0 }}
             animate={{ x: "-101%" }}
-            transition={{ duration: 0.55, ease: "easeInOut", delay: 0.05 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
             className="shoji-panel h-full w-1/2 border-r-2 border-[oklch(0.32_0.03_60)]"
           />
           <motion.div
             initial={{ x: 0 }}
             animate={{ x: "101%" }}
-            transition={{ duration: 0.55, ease: "easeInOut", delay: 0.05 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
             className="shoji-panel h-full w-1/2 border-l-2 border-[oklch(0.32_0.03_60)]"
           />
         </div>

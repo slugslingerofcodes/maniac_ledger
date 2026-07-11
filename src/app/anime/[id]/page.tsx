@@ -179,8 +179,16 @@ export default async function AnimeDetailPage({
   let openings: string[] = [];
   let endings: string[] = [];
   if (anime.mal_id != null) {
-    try {
-      const extras = await getAnimeExtras(anime.mal_id);
+    // Both are independent MAL calls; run them concurrently so a slow/timed-out
+    // MAL (each request can hang ~10s during an outage) doesn't add up serially.
+    const [extrasRes, similarRes] = await Promise.allSettled([
+      getAnimeExtras(anime.mal_id),
+      getAnimeRecommendations(anime.mal_id, 3),
+    ]);
+    if (similarRes.status === "fulfilled") similar = similarRes.value;
+
+    if (extrasRes.status === "fulfilled") {
+      const extras = extrasRes.value;
       trailerEmbedUrl = extras.trailerEmbedUrl;
       related = extras.related;
       broadcastDay = extras.broadcastDay;
@@ -233,13 +241,6 @@ export default async function AnimeDetailPage({
             .eq("id", anime.id);
         }
       }
-    } catch {
-      /* no extras on failure */
-    }
-    try {
-      similar = await getAnimeRecommendations(anime.mal_id, 3);
-    } catch {
-      /* no similar section on failure */
     }
   }
 

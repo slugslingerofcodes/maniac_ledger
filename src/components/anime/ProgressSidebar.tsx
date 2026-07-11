@@ -142,7 +142,11 @@ export function ProgressSidebar({
           onValueChange={(value) => onStatusChange(value as WatchStatus)}
         >
           <SelectTrigger id="status-select" className="w-full" disabled={isPending}>
-            <SelectValue placeholder="Select status" />
+            <SelectValue placeholder="Select status">
+              {(value: WatchStatus | null) =>
+                value ? WATCH_STATUS_META[value].label : "Select status"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {STATUSES.map((s) => (

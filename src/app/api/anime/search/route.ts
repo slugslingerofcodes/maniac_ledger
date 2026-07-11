@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { searchCatalog } from "@/lib/catalog-fallback";
 import { JikanError, searchAnime, type JikanAnime } from "@/lib/jikan";
 
 /**
@@ -46,6 +47,8 @@ export interface AnimeSearchResponse {
   page: number;
   totalPages: number;
   totalItems: number;
+  /** True when MAL was unreachable and results came from the local catalog. */
+  degraded?: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -110,13 +113,30 @@ export async function GET(request: NextRequest) {
     // Log the real cause server-side, but never leak it to the client.
     console.error("[/api/anime/search] upstream failure:", err);
 
-    // Pass through Jikan's rate-limit signal so clients can back off; everything
-    // else collapses to a generic 500.
+    // Pass through Jikan's rate-limit signal so clients can back off.
     if (err instanceof JikanError && err.status === 429) {
       return NextResponse.json(
         { error: "Rate limited by the upstream anime service. Try again shortly." },
         { status: 429 },
       );
+    }
+
+    // MAL is down — fall back to the local catalog so search keeps working
+    // for known titles. Never edge-cached, so recovery isn't masked.
+    try {
+      const results = await searchCatalog(q ?? "", genres ?? []);
+      return NextResponse.json(
+        {
+          results,
+          page: 1,
+          totalPages: 1,
+          totalItems: results.length,
+          degraded: true,
+        } satisfies AnimeSearchResponse,
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    } catch (fallbackErr) {
+      console.error("[/api/anime/search] catalog fallback failed:", fallbackErr);
     }
 
     return NextResponse.json(

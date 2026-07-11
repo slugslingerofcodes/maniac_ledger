@@ -52,6 +52,7 @@ export function RecommendationsView({
 
   // "Surprise me": one click rolls a completely random anime and shows it.
   const [randomPick, setRandomPick] = useState<JikanAnime | null>(null);
+  const [randomDegraded, setRandomDegraded] = useState(false);
   const [rolling, setRolling] = useState(false);
 
   async function rollRandom() {
@@ -59,8 +60,12 @@ export function RecommendationsView({
     try {
       const res = await fetch("/api/anime/random");
       if (!res.ok) throw new Error();
-      const body = (await res.json()) as { anime: JikanAnime };
+      const body = (await res.json()) as {
+        anime: JikanAnime;
+        degraded?: boolean;
+      };
       setRandomPick(body.anime);
+      setRandomDegraded(Boolean(body.degraded));
     } catch {
       toast.error("Couldn't roll a random anime — try again.");
     } finally {
@@ -131,7 +136,9 @@ export function RecommendationsView({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
-                Random roll
+                {randomDegraded
+                  ? "Random roll · from your catalog (MAL offline)"
+                  : "Random roll"}
               </p>
               <h2 className="mt-0.5 line-clamp-1 text-lg font-semibold">
                 {randomPick.title_english ?? randomPick.title}

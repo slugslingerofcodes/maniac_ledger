@@ -205,37 +205,75 @@ export function debounce<Args extends unknown[]>(
 /* Core fetch                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Last successful payload per path — served when Jikan/MAL is down so features
+ * degrade to stale data instead of erroring. In-memory (helps warm serverless
+ * instances and dev); Next's Data Cache provides the durable layer on top via
+ * `revalidate` (expired entries are served stale while background revalidation
+ * fails). `/random/*` is excluded: a "random" that repeats isn't random.
+ */
+const LAST_GOOD_MAX = 500;
+const lastGood = new Map<string, unknown>();
+
+function rememberLastGood(path: string, value: unknown) {
+  if (lastGood.has(path)) lastGood.delete(path);
+  lastGood.set(path, value);
+  if (lastGood.size > LAST_GOOD_MAX) {
+    const oldest = lastGood.keys().next().value;
+    if (oldest != null) lastGood.delete(oldest);
+  }
+}
+
 async function jikanFetch<T>(
   path: string,
   // Opt into Next's Data Cache for endpoints that change slowly (e.g. the
   // upcoming season). Omitted → default fetch behavior.
   opts?: { revalidate?: number },
 ): Promise<T> {
+  const fallbackEligible = !path.startsWith("/random");
   return rateLimited(async () => {
-    const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
-      headers: { Accept: "application/json" },
-      ...(opts?.revalidate != null
-        ? { next: { revalidate: opts.revalidate } }
-        : {}),
-    });
+    try {
+      const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
+        headers: { Accept: "application/json" },
+        ...(opts?.revalidate != null
+          ? { next: { revalidate: opts.revalidate } }
+          : {}),
+      });
 
-    if (!res.ok) {
-      // Jikan returns a JSON error body ({ status, type, message }) for most
-      // failures; fall back to statusText if it isn't JSON.
-      let detail = res.statusText;
-      try {
-        const body = (await res.json()) as { message?: string; error?: string };
-        detail = body.message ?? body.error ?? detail;
-      } catch {
-        /* non-JSON error body — keep statusText */
+      if (!res.ok) {
+        // Jikan returns a JSON error body ({ status, type, message }) for most
+        // failures; fall back to statusText if it isn't JSON.
+        let detail = res.statusText;
+        try {
+          const body = (await res.json()) as {
+            message?: string;
+            error?: string;
+          };
+          detail = body.message ?? body.error ?? detail;
+        } catch {
+          /* non-JSON error body — keep statusText */
+        }
+        throw new JikanError(
+          res.status,
+          `Jikan request failed (${res.status}): ${detail}`,
+        );
       }
-      throw new JikanError(
-        res.status,
-        `Jikan request failed (${res.status}): ${detail}`,
-      );
-    }
 
-    return (await res.json()) as T;
+      const body = (await res.json()) as T;
+      if (fallbackEligible) rememberLastGood(path, body);
+      return body;
+    } catch (err) {
+      // Serve the last-good copy through outages; rate limits (429) still
+      // throw so callers can back off instead of masking the signal.
+      if (fallbackEligible && !(err instanceof JikanError && err.status === 429)) {
+        const cached = lastGood.get(path);
+        if (cached !== undefined) {
+          console.warn(`[jikan] upstream failed; serving last-good ${path}`);
+          return cached as T;
+        }
+      }
+      throw err;
+    }
   });
 }
 
@@ -275,11 +313,17 @@ export function searchAnime(
       params.set("sort", "desc");
     }
   }
-  return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`);
+  // Cached 1h: repeat queries are instant, and cached queries keep working
+  // (served stale) through MAL outages.
+  return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`, {
+    revalidate: ONE_HOUR_SECONDS,
+  });
 }
 
-/** ~3 req/sec → space requests ~350ms apart; one day in seconds for caching. */
+/** ~3 req/sec → space requests ~350ms apart; cache windows in seconds. */
 const ONE_DAY_SECONDS = 86_400;
+const ONE_HOUR_SECONDS = 3_600;
+const THIRTY_MIN_SECONDS = 1_800;
 
 /**
  * Anime scheduled for upcoming seasons (`/seasons/upcoming`), concatenated
@@ -676,9 +720,9 @@ export async function getAnimeRecommendations(
  * @throws {JikanError} On any non-2xx response (e.g. 404 for an unknown id).
  */
 export function getAnimeById(malId: number): Promise<JikanAnime> {
-  return jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`).then(
-    (r) => r.data,
-  );
+  return jikanFetch<JikanByIdResponse>(`/anime/${malId}/full`, {
+    revalidate: ONE_HOUR_SECONDS,
+  }).then((r) => r.data);
 }
 
 /**
@@ -704,6 +748,7 @@ export function getAnimeEpisodes(
 ): Promise<JikanEpisodesResponse> {
   return jikanFetch<JikanEpisodesResponse>(
     `/anime/${malId}/episodes?page=${page}`,
+    { revalidate: THIRTY_MIN_SECONDS },
   );
 }
 

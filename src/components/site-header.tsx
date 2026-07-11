@@ -31,11 +31,11 @@ export function SiteHeader() {
           <Image
             src="/wordmark.png"
             alt="anime_maniacs"
-            width={5132}
-            height={832}
+            width={1600}
+            height={600}
             priority
-            sizes="250px"
-            className="h-9 w-auto"
+            sizes="150px"
+            className="h-11 w-auto"
           />
         </Link>
 

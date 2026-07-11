@@ -83,6 +83,8 @@ function SearchPageInner() {
     totalPages: number;
     totalItems: number;
   } | null>(null);
+  // True when MAL was down and results came from the local catalog.
+  const [degraded, setDegraded] = useState(false);
 
   function toggleGenre(id: number) {
     setPage(1);
@@ -163,6 +165,7 @@ function SearchPageInner() {
           totalPages: body.totalPages ?? 1,
           totalItems: body.totalItems ?? unique.length,
         });
+        setDegraded(Boolean(body.degraded));
         setResolvedQuery(hasQuery ? q : "the selected genres");
         setStatus("success");
       })
@@ -246,6 +249,13 @@ function SearchPageInner() {
 
         {status === "success" && results.length === 0 ? (
           <Hint>No anime found for “{resolvedQuery}”</Hint>
+        ) : null}
+
+        {status === "success" && degraded ? (
+          <p className="mx-auto mb-4 max-w-xl rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-300">
+            Live MAL search is unreachable — showing matches from the local
+            catalog until it recovers.
+          </p>
         ) : null}
 
         {status === "success" && results.length > 0 ? (

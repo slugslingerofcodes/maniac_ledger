@@ -7,10 +7,17 @@ import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
 
+/** Home-page preview cap — the full library lives on /library. */
+const PREVIEW_LIMIT = 10;
+
 /**
  * Async Server Component: fetches the signed-in user's tracked anime (RLS scopes
  * rows to them) and renders the responsive card grid. Rendered inside a
  * <Suspense> boundary so the skeleton grid shows while this awaits.
+ *
+ * Shows at most PREVIEW_LIMIT entries; when there are more, a "View all"
+ * card links to the full /library tab. Fetches one extra row so it knows
+ * whether to show that link without a count query.
  */
 export async function LibraryGrid() {
   const supabase = await createClient();
@@ -19,7 +26,8 @@ export async function LibraryGrid() {
     .select(
       "episodes_watched, status, score, anime:anime_id (id, title, poster_url, type, total_episodes)",
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(PREVIEW_LIMIT + 1);
 
   if (error) {
     return (
@@ -43,9 +51,12 @@ export async function LibraryGrid() {
     );
   }
 
+  const hasMore = data.length > PREVIEW_LIMIT;
+  const preview = data.slice(0, PREVIEW_LIMIT);
+
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {data.map((row) => (
+      {preview.map((row) => (
         <AnimeCard
           key={row.anime.id}
           item={{
@@ -60,6 +71,19 @@ export async function LibraryGrid() {
           }}
         />
       ))}
+      {hasMore ? (
+        <Link
+          href="/library"
+          className="group flex aspect-[2/3] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/40 text-center transition hover:border-primary/50 hover:bg-card"
+        >
+          <span className="grid size-10 place-items-center rounded-full bg-primary/15 text-lg text-primary transition group-hover:bg-primary/25">
+            →
+          </span>
+          <span className="px-3 text-sm font-medium text-muted-foreground transition group-hover:text-foreground">
+            View your full library
+          </span>
+        </Link>
+      ) : null}
     </div>
   );
 }

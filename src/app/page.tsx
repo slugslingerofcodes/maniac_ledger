@@ -29,6 +29,11 @@ import {
 } from "@/lib/jikan";
 import { JST_DAYS, nowInJst, todayInJst } from "@/lib/jst";
 
+// Per-user page (library, continue-watching, personalized rows) — never
+// prerender a shell at build time. Also keeps deploys from stalling on the
+// serial rate-limited Jikan fetches when MAL is slow or down.
+export const dynamic = "force-dynamic";
+
 /** "24 min per ep" → 24; null when unparsable. */
 function parseDurationMins(duration: string | null | undefined): number | null {
   const m = /(\d+)\s*min/.exec(duration ?? "");

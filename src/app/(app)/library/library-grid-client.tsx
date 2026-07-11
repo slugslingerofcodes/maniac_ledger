@@ -1,18 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { CheckIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { getUserLibrary } from "@/app/actions/library";
+import { bulkUpdateStatus } from "@/app/actions/progress";
+import { WATCH_STATUS_META } from "@/lib/watch-status";
 import { genreChipStyle } from "@/lib/genre-color";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
@@ -65,6 +69,42 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const [titleLang] = useTitleLanguage();
   const [genre, setGenre] = useState<string | null>(null);
   const [sort, setSort] = useState<SortValue>("recent");
+  // Bulk-edit mode: card clicks toggle selection instead of navigating.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState<WatchStatus>("completed");
+  const [bulkPending, startBulk] = useTransition();
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
+
+  function applyBulk() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    startBulk(async () => {
+      const res = await bulkUpdateStatus(ids, bulkStatus);
+      if (res.ok) {
+        toast.success(
+          `Moved ${ids.length} ${ids.length === 1 ? "entry" : "entries"} to “${WATCH_STATUS_META[bulkStatus].label}”.`,
+        );
+        queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
+        exitSelectMode();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
   const { data, isPending, isError } = useQuery({
     queryKey: LIBRARY_QUERY_KEY,
     queryFn: () => getUserLibrary(),
@@ -133,6 +173,19 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
             <span />
           )}
           <div className="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            aria-pressed={selectMode}
+            className={cn(
+              "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+              selectMode
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {selectMode ? "Cancel" : "Select"}
+          </button>
           <TitleLanguageToggle />
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Sort
@@ -183,12 +236,72 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                       : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
                   }
                 >
-                  <LibraryCard item={item} />
+                  <div className="relative">
+                    <LibraryCard item={item} />
+                    {selectMode ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSelected(item.id)}
+                        aria-pressed={selected.has(item.id)}
+                        aria-label={`Select ${item.title}`}
+                        className={cn(
+                          "absolute inset-0 z-10 rounded-lg transition",
+                          selected.has(item.id)
+                            ? "bg-primary/20 ring-2 ring-primary"
+                            : "bg-background/10 hover:bg-background/20",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute left-2 top-2 grid size-6 place-items-center rounded-full border-2",
+                            selected.has(item.id)
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-foreground/40 bg-background/70",
+                          )}
+                        >
+                          {selected.has(item.id) ? (
+                            <CheckIcon className="size-4" />
+                          ) : null}
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         )}
+
+        {/* Floating bulk-action bar */}
+        {selectMode ? (
+          <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-4 md:bottom-6">
+            <div className="glass flex flex-wrap items-center gap-3 rounded-full border border-border px-4 py-2 shadow-xl">
+              <span className="text-sm font-medium tabular-nums">
+                {selected.size} selected
+              </span>
+              <select
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value as WatchStatus)}
+                aria-label="New status"
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground outline-none"
+              >
+                {(Object.keys(WATCH_STATUS_META) as WatchStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {WATCH_STATUS_META[s].label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                disabled={selected.size === 0 || bulkPending}
+                onClick={applyBulk}
+              >
+                {bulkPending ? "Applying…" : "Apply"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </>
     );
   }

@@ -462,6 +462,118 @@ export async function searchAnilist(
 }
 
 /* -------------------------------------------------------------------------- */
+/* User list import                                                           */
+/* -------------------------------------------------------------------------- */
+
+/** One entry of a user's AniList anime list, ready to import. */
+export type AnilistListEntry = {
+  malId: number;
+  title: string;
+  titleEnglish: string | null;
+  posterUrl: string | null;
+  totalEpisodes: number | null;
+  format: string | null;
+  /** AniList list status, e.g. "CURRENT" | "COMPLETED" | "PLANNING" | … */
+  status: string;
+  /** Episodes the user has watched. */
+  progress: number;
+  /** User's score on a 10-point scale (0 = unrated). */
+  score: number;
+  averageScore: number | null;
+};
+
+interface AnilistListCollection {
+  MediaListCollection: {
+    lists: {
+      entries: {
+        status: string;
+        progress: number | null;
+        score: number | null;
+        media: {
+          idMal: number | null;
+          title: { romaji: string | null; english: string | null };
+          episodes: number | null;
+          format: string | null;
+          averageScore: number | null;
+          coverImage: { extraLarge: string | null; large: string | null } | null;
+        };
+      }[];
+    }[];
+    hasNextChunk: boolean;
+  };
+}
+
+/**
+ * A user's full public anime list by AniList username. Paged in chunks of 500;
+ * entries without a MAL id are dropped (they can't join our catalog).
+ *
+ * @throws {AnilistError} 404-shaped errors when the username doesn't exist.
+ */
+export async function getAnilistUserList(
+  username: string,
+): Promise<AnilistListEntry[]> {
+  const query = `
+    query ($userName: String, $chunk: Int) {
+      MediaListCollection(
+        userName: $userName
+        type: ANIME
+        chunk: $chunk
+        perChunk: 500
+        forceSingleCompletedList: true
+      ) {
+        hasNextChunk
+        lists {
+          entries {
+            status
+            progress
+            score(format: POINT_10)
+            media {
+              idMal
+              title { romaji english }
+              episodes
+              format
+              averageScore
+              coverImage { extraLarge large }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const out: AnilistListEntry[] = [];
+  for (let chunk = 1; chunk <= 6; chunk++) {
+    const data = await anilistFetch<AnilistListCollection>(query, {
+      userName: username,
+      chunk,
+    });
+    for (const list of data.MediaListCollection.lists) {
+      for (const e of list.entries) {
+        if (e.media.idMal == null) continue;
+        out.push({
+          malId: e.media.idMal,
+          title: e.media.title.romaji ?? e.media.title.english ?? `MAL ${e.media.idMal}`,
+          titleEnglish: e.media.title.english,
+          posterUrl:
+            e.media.coverImage?.extraLarge ?? e.media.coverImage?.large ?? null,
+          totalEpisodes: e.media.episodes,
+          format: e.media.format,
+          status: e.status,
+          progress: e.progress ?? 0,
+          score: e.score ?? 0,
+          averageScore: e.media.averageScore,
+        });
+      }
+    }
+    if (!data.MediaListCollection.hasNextChunk) break;
+  }
+
+  // Dedupe by malId (repeating + completed can both carry an entry).
+  const seen = new Set<number>();
+  return out.filter((e) => (seen.has(e.malId) ? false : (seen.add(e.malId), true)));
+}
+
+/* -------------------------------------------------------------------------- */
 /* Random                                                                     */
 /* -------------------------------------------------------------------------- */
 

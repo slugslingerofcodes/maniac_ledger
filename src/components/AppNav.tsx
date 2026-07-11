@@ -24,10 +24,14 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Library", href: "/library" },
+  { label: "My Progress", href: "/progress" },
   { label: "Search", href: "/search" },
   { label: "Schedule", href: "/schedule" },
+  { label: "Seasons", href: "/seasons" },
   { label: "Upcoming", href: "/upcoming" },
   { label: "Movies", href: "/movies" },
+  { label: "Lists", href: "/lists" },
+  { label: "Feed", href: "/feed" },
   { label: "News", href: "/news" },
   { label: "Songs", href: "/songs" },
   { label: "Recommendations", href: "/recommendations" },

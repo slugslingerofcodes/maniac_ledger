@@ -4,6 +4,7 @@ import { Megaphone, ShieldCheck } from "lucide-react";
 
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
+import { ImportExportCard } from "@/components/profile/ImportExportCard";
 import {
   ProfileStats,
   type ProfileProgressRow,
@@ -85,6 +86,8 @@ export default async function ProfilePage() {
       <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <UsernameForm initialUsername={username} />
       </div>
+
+      <ImportExportCard />
 
       <Link
         href="/announcements"

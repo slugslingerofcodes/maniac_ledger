@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { ContinueWatching } from "@/components/anime/ContinueWatching";
+import { BecauseYouWatched } from "@/components/home/BecauseYouWatched";
 import { DiscoveryTabs, type DiscoveryItem } from "@/components/home/DiscoveryTabs";
 import { GenreRibbon } from "@/components/home/GenreRibbon";
 import { HeroCarousel, type HeroSlide } from "@/components/home/HeroCarousel";
@@ -318,6 +319,11 @@ export default function Home() {
             </Suspense>
           </div>
         </section>
+
+        {/* Personalized rows seeded from the user's top-rated entries. */}
+        <Suspense fallback={null}>
+          <BecauseYouWatched />
+        </Suspense>
 
         {/* Bottom rails: just finished, movies, tonight's schedule */}
         <section className="mt-6 grid items-start gap-6 md:grid-cols-3">

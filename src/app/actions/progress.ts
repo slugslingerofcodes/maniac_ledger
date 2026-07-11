@@ -145,6 +145,49 @@ export type UpsertProgressResult = { ok: true } | { ok: false; error: string };
  * the library and later calls edit it. The Zod patch is validated server-side;
  * RLS scopes the write to the current user.
  */
+/** Bulk status change for the library's multi-select mode. Max 100 per call. */
+export async function bulkUpdateStatus(
+  animeIds: string[],
+  status: ProgressPatch["status"],
+): Promise<UpsertProgressResult> {
+  const parsed = z
+    .object({
+      animeIds: z.array(z.string().uuid()).min(1).max(100),
+      status: z.enum([
+        "watching",
+        "completed",
+        "plan_to_watch",
+        "on_hold",
+        "dropped",
+      ]),
+    })
+    .safeParse({ animeIds, status });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid bulk update." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit your library." };
+  }
+
+  // UPDATE (not upsert): only rows already in the library change; RLS scopes
+  // the write to the current user's rows.
+  const { error } = await supabase
+    .from("user_progress")
+    .update({ status: parsed.data.status })
+    .in("anime_id", parsed.data.animeIds);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/library");
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
 export async function upsertProgress(
   animeId: string,
   patch: ProgressPatch,

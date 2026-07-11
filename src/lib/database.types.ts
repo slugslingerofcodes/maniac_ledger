@@ -130,6 +130,8 @@ export type Database = {
           status: Database["public"]["Enums"]["watch_status"];
           score: number | null;
           notes: string | null;
+          /** Times re-completed (0 = first watch). Migration 0017. */
+          rewatch_count: number;
           started_at: string | null;
           completed_at: string | null;
           last_watched_at: string | null;
@@ -144,6 +146,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["watch_status"];
           score?: number | null;
           notes?: string | null;
+          rewatch_count?: number;
           started_at?: string | null;
           completed_at?: string | null;
           last_watched_at?: string | null;
@@ -158,6 +161,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["watch_status"];
           score?: number | null;
           notes?: string | null;
+          rewatch_count?: number;
           started_at?: string | null;
           completed_at?: string | null;
           last_watched_at?: string | null;
@@ -186,18 +190,22 @@ export type Database = {
           id: string;
           user_id: string;
           episode_id: string;
+          /** Optional 1–5 star rating. Migration 0017. */
+          rating: number | null;
           watched_at: string;
         };
         Insert: {
           id?: string;
           user_id?: string;
           episode_id: string;
+          rating?: number | null;
           watched_at?: string;
         };
         Update: {
           id?: string;
           user_id?: string;
           episode_id?: string;
+          rating?: number | null;
           watched_at?: string;
         };
         Relationships: [
@@ -372,6 +380,183 @@ export type Database = {
           },
           {
             foreignKeyName: "anime_chat_messages_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      profiles: {
+        Row: {
+          user_id: string;
+          username: string;
+          is_public: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id?: string;
+          username: string;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          username?: string;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "profiles_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      follows: {
+        Row: {
+          follower_id: string;
+          followee_id: string;
+          created_at: string;
+        };
+        Insert: {
+          follower_id?: string;
+          followee_id: string;
+          created_at?: string;
+        };
+        Update: {
+          follower_id?: string;
+          followee_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "follows_follower_id_fkey";
+            columns: ["follower_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "follows_followee_id_fkey";
+            columns: ["followee_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lists: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          is_public: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          name: string;
+          description?: string | null;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string | null;
+          is_public?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lists_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      list_items: {
+        Row: {
+          id: string;
+          list_id: string;
+          anime_id: string;
+          position: number;
+          added_at: string;
+        };
+        Insert: {
+          id?: string;
+          list_id: string;
+          anime_id: string;
+          position?: number;
+          added_at?: string;
+        };
+        Update: {
+          id?: string;
+          list_id?: string;
+          anime_id?: string;
+          position?: number;
+          added_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_items_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_items_anime_id_fkey";
+            columns: ["anime_id"];
+            isOneToOne: false;
+            referencedRelation: "anime";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          endpoint?: string;
+          p256dh?: string;
+          auth?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";

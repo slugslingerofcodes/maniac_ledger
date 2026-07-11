@@ -9,6 +9,7 @@ import { EpisodeList } from "@/components/anime/EpisodeList";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
+import { WatchOrder } from "@/components/anime/WatchOrder";
 import { ScoreRing } from "@/components/ScoreRing";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -520,12 +521,21 @@ export default async function AnimeDetailPage({
           </section>
         ) : null}
 
-        {/* Franchise overview — only when this anime has been grouped. */}
+        {/* Franchise watch order — release-ordered, with your progress. */}
         {anime.franchise_id ? (
           <section className="mt-8">
-            <h2 className="mb-3 text-base font-semibold">Franchise</h2>
-            <Suspense fallback={null}>
-              <FranchiseCard franchiseId={anime.franchise_id} variant="list" />
+            <h2 className="mb-3 text-base font-semibold">
+              Franchise watch order
+            </h2>
+            <Suspense
+              fallback={
+                <FranchiseCard franchiseId={anime.franchise_id} variant="list" />
+              }
+            >
+              <WatchOrder
+                franchiseId={anime.franchise_id}
+                currentAnimeId={anime.id}
+              />
             </Suspense>
           </section>
         ) : null}

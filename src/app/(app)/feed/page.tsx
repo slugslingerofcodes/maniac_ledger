@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
+import { getFriendIds } from "@/app/actions/friends";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
@@ -51,52 +52,52 @@ function verbFor(row: FeedRow): string {
 }
 
 export default async function FeedPage() {
-  const user = await requireUser();
+  await requireUser();
   const supabase = await createClient();
 
-  // Who am I following?
-  const { data: edges, error: followErr } = await supabase
-    .from("follows")
-    .select("followee_id")
-    .eq("follower_id", user.id);
-
-  if (followErr) {
+  // My accepted friends — the feed is their recent activity.
+  let friendIds: string[];
+  try {
+    friendIds = await getFriendIds();
+  } catch {
     return (
       <Shell>
         <p className="mt-8 text-sm text-destructive">
-          The feed isn&apos;t available yet — the social migration (0015)
+          The feed isn&apos;t available yet — the friends migration (0020)
           hasn&apos;t been applied to the database.
         </p>
       </Shell>
     );
   }
 
-  const followeeIds = (edges ?? []).map((e) => e.followee_id);
-
-  if (followeeIds.length === 0) {
+  if (friendIds.length === 0) {
     return (
       <Shell>
         <p className="mt-16 text-center text-sm text-muted-foreground">
-          You&apos;re not following anyone yet. Ask friends for their handle
-          and visit <span className="text-foreground">/users/&lt;name&gt;</span>{" "}
-          to follow them — their activity shows up here.
+          No friends yet. Head to{" "}
+          <Link href="/friends" className="text-foreground underline">
+            Friends
+          </Link>{" "}
+          to add some by username — once they accept, their activity shows up
+          here.
         </p>
       </Shell>
     );
   }
 
-  // Usernames for the byline + their latest activity (public rows only).
+  // Usernames for the byline + friends' latest activity (friends RLS lets us
+  // read each other's rows, public or not).
   const [{ data: profiles }, { data: activity }] = await Promise.all([
     supabase
       .from("profiles")
       .select("user_id, username")
-      .in("user_id", followeeIds),
+      .in("user_id", friendIds),
     supabase
       .from("user_progress")
       .select(
         "user_id, status, score, episodes_watched, updated_at, anime:anime_id (id, title, title_english, poster_url)",
       )
-      .in("user_id", followeeIds)
+      .in("user_id", friendIds)
       .order("updated_at", { ascending: false })
       .limit(60),
   ]);

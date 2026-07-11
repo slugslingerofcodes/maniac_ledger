@@ -89,50 +89,5 @@ export async function claimProfile(
   return { ok: true };
 }
 
-export async function followUser(
-  followeeId: string,
-): Promise<SocialActionResult> {
-  if (!z.string().uuid().safeParse(followeeId).success) {
-    return { ok: false, error: "Bad user id." };
-  }
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Sign in first." };
-  if (user.id === followeeId) return { ok: false, error: "That's you!" };
-
-  const { error } = await supabase
-    .from("follows")
-    .upsert(
-      { follower_id: user.id, followee_id: followeeId },
-      { onConflict: "follower_id,followee_id", ignoreDuplicates: true },
-    );
-  if (error) return { ok: false, error: friendly(error) };
-
-  revalidatePath("/feed");
-  return { ok: true };
-}
-
-export async function unfollowUser(
-  followeeId: string,
-): Promise<SocialActionResult> {
-  if (!z.string().uuid().safeParse(followeeId).success) {
-    return { ok: false, error: "Bad user id." };
-  }
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Sign in first." };
-
-  const { error } = await supabase
-    .from("follows")
-    .delete()
-    .eq("follower_id", user.id)
-    .eq("followee_id", followeeId);
-  if (error) return { ok: false, error: friendly(error) };
-
-  revalidatePath("/feed");
-  return { ok: true };
-}
+// Following was replaced by the mutual-friends model (see
+// src/app/actions/friends.ts). The one-way follow actions were removed.

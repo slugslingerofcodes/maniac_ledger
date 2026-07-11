@@ -183,7 +183,7 @@ export default async function AnimeDetailPage({
     // MAL (each request can hang ~10s during an outage) doesn't add up serially.
     const [extrasRes, similarRes] = await Promise.allSettled([
       getAnimeExtras(anime.mal_id),
-      getAnimeRecommendations(anime.mal_id, 3),
+      getAnimeRecommendations(anime.mal_id, 12),
     ]);
     if (similarRes.status === "fulfilled") similar = similarRes.value;
 
@@ -493,11 +493,17 @@ export default async function AnimeDetailPage({
           </section>
         ) : null}
 
-        {/* Community "users also liked" picks. */}
+        {/* Personalized picks. Titled "Because you watched X" once the user has
+            actually watched (or is watching) this title, else a neutral
+            "More like this". Sourced from MAL community recommendations. */}
         {similar.length > 0 ? (
           <section className="mt-8">
-            <h2 className="mb-3 text-base font-semibold">More like this</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <h2 className="mb-3 text-base font-semibold">
+              {progress?.status === "completed" || progress?.status === "watching"
+                ? `Because you watched ${anime.title_english ?? anime.title}`
+                : "More like this"}
+            </h2>
+            <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
               {similar.map((s) => (
                 <Link
                   key={s.malId}

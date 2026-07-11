@@ -77,15 +77,15 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   function commitRating(episodeId: string, value: number) {
     const prev = ratings ?? {};
     // Clicking the current rating clears it.
-    const next = prev[episodeId] === value ? null : value;
-    setRatings({ ...prev, ...(next == null ? {} : { [episodeId]: next }) });
-    if (next == null) {
-      const { [episodeId]: _cleared, ...rest } = prev;
-      setRatings(rest);
-    }
-    void rateEpisode(episodeId, next).then((res) => {
+    const clearing = prev[episodeId] === value;
+    const nextRatings = { ...prev };
+    if (clearing) delete nextRatings[episodeId];
+    else nextRatings[episodeId] = value;
+    setRatings(nextRatings); // optimistic
+
+    void rateEpisode(episodeId, clearing ? null : value).then((res) => {
       if (!res.ok) {
-        setRatings(prev);
+        setRatings(prev); // revert
         toast.error(res.error);
       }
     });

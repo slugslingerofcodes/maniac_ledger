@@ -114,16 +114,16 @@ export function SocialSettingsCard({
               >
                 /users/{username}
               </Link>{" "}
-              — follow friends there and see them in your{" "}
-              <Link href="/feed" className="text-foreground underline">
-                Feed
+              — others can add you as a friend there. Manage requests in{" "}
+              <Link href="/friends" className="text-foreground underline">
+                Friends
               </Link>
               .
             </p>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Claim a handle to follow friends and (optionally) share your
-              library.
+              Claim a handle so friends can find you, and (optionally) share
+              your library.
             </p>
           )}
         </>

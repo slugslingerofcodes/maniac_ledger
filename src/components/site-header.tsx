@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { label: "Upcoming", href: "/upcoming" },
   { label: "Movies", href: "/movies" },
   { label: "Lists", href: "/lists" },
+  { label: "Friends", href: "/friends" },
   { label: "Feed", href: "/feed" },
   { label: "News", href: "/news" },
   { label: "Songs", href: "/songs" },

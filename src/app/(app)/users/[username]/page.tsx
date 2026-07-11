@@ -2,7 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { FollowButton } from "@/components/social/FollowButton";
+import { FriendButton } from "@/components/social/FriendButton";
+import { getFriendStateWith } from "@/app/actions/friends";
 import { Badge } from "@/components/ui/badge";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -59,23 +60,19 @@ export default async function PublicProfilePage({
   const isSelf = profile.user_id === viewer.id;
 
   // Follower/following counts + whether the viewer already follows them.
-  const [{ count: followers }, { count: followingCount }, { data: myEdge }] =
-    await Promise.all([
-      supabase
-        .from("follows")
-        .select("follower_id", { count: "exact", head: true })
-        .eq("followee_id", profile.user_id),
-      supabase
-        .from("follows")
-        .select("followee_id", { count: "exact", head: true })
-        .eq("follower_id", profile.user_id),
-      supabase
-        .from("follows")
-        .select("followee_id")
-        .eq("follower_id", viewer.id)
-        .eq("followee_id", profile.user_id)
-        .maybeSingle(),
-    ]);
+  // Friend count for this profile (accepted friendships either direction) +
+  // the viewer's own relationship to them (drives the friend button).
+  const [{ count: friendCount }, friendState] = await Promise.all([
+    supabase
+      .from("friendships")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "accepted")
+      .or(`requester_id.eq.${profile.user_id},addressee_id.eq.${profile.user_id}`),
+    isSelf
+      ? Promise.resolve({ state: "self" as const })
+      : getFriendStateWith(profile.user_id),
+  ]);
+  const areFriends = friendState.state === "friends";
 
   // Their library — RLS returns rows only when the profile is public (or self).
   const { data: theirRows } = await supabase
@@ -87,7 +84,9 @@ export default async function PublicProfilePage({
     .order("updated_at", { ascending: false })
     .limit(200);
 
-  const visible = profile.is_public || isSelf;
+  // Friends can see each other's library even when the profile is private
+  // (the friends RLS policy already returns their rows).
+  const visible = profile.is_public || isSelf || areFriends;
   const rows = (theirRows ?? []) as TheirRow[];
 
   // Affinity: mean |Δscore| over anime both rated, mapped to 0–100.
@@ -134,17 +133,15 @@ export default async function PublicProfilePage({
             @{profile.username}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {followers ?? 0} followers · {followingCount ?? 0} following
+            {friendCount ?? 0}{" "}
+            {(friendCount ?? 0) === 1 ? "friend" : "friends"}
             {affinity
               ? ` · ${affinity.percent}% taste match (${affinity.shared} shared)`
               : ""}
           </p>
         </div>
         {!isSelf ? (
-          <FollowButton
-            followeeId={profile.user_id}
-            initialFollowing={myEdge != null}
-          />
+          <FriendButton targetUserId={profile.user_id} initial={friendState} />
         ) : (
           <Link
             href="/profile"

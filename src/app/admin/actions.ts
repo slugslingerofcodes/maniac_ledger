@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin, requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -58,6 +59,53 @@ export async function createAnnouncement(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/announcements");
   redirect("/admin");
+}
+
+/**
+ * Grant or revoke the `is_admin` app_metadata claim on another account
+ * (admin only). Uses the service-role client since only it can write the Auth
+ * admin API. Existing app_metadata is preserved (merged), and an admin can't
+ * revoke their own access — that would risk locking everyone out.
+ */
+export async function setUserAdmin(formData: FormData) {
+  const admin = await requireAdmin();
+
+  const userId = String(formData.get("userId"));
+  const makeAdmin = String(formData.get("makeAdmin")) === "true";
+
+  if (!userId) {
+    redirect(`/admin?message=${encodeURIComponent("Missing user id.")}`);
+  }
+  if (userId === admin.id && !makeAdmin) {
+    redirect(
+      `/admin?message=${encodeURIComponent("You can't revoke your own admin access.")}`,
+    );
+  }
+
+  const svc = createAdminClient();
+
+  // Preserve other app_metadata (provider, etc.) by merging onto the existing.
+  const { data: target, error: readErr } =
+    await svc.auth.admin.getUserById(userId);
+  if (readErr || !target?.user) {
+    redirect(
+      `/admin?message=${encodeURIComponent(readErr?.message ?? "User not found.")}`,
+    );
+  }
+
+  const { error } = await svc.auth.admin.updateUserById(userId, {
+    app_metadata: { ...target.user.app_metadata, is_admin: makeAdmin },
+  });
+  if (error) {
+    redirect(`/admin?message=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/admin");
+  redirect(
+    `/admin?message=${encodeURIComponent(
+      `${target.user.email ?? "User"} is ${makeAdmin ? "now an admin" : "no longer an admin"}.`,
+    )}`,
+  );
 }
 
 /** Delete an announcement (admin only). */

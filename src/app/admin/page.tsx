@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 
-import { createAnnouncement, deleteAnnouncement } from "@/app/admin/actions";
+import {
+  createAnnouncement,
+  deleteAnnouncement,
+  setUserAdmin,
+} from "@/app/admin/actions";
 import { signOut } from "@/app/auth/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,12 +180,14 @@ export default async function AdminPage(props: {
                 <th className="px-4 py-3 font-medium">Provider</th>
                 <th className="px-4 py-3 font-medium">Last sign-in</th>
                 <th className="px-4 py-3 font-medium">Joined</th>
+                <th className="px-4 py-3 text-right font-medium">Role</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => {
                 const provider = u.app_metadata?.provider ?? "email";
                 const adminFlag = u.app_metadata?.is_admin === true;
+                const isSelf = u.id === admin.id;
                 return (
                   <tr key={u.id} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-3">
@@ -200,6 +206,27 @@ export default async function AdminPage(props: {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {fmt(u.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isSelf ? (
+                        <span className="text-xs text-muted-foreground">You</span>
+                      ) : (
+                        <form action={setUserAdmin} className="inline">
+                          <input type="hidden" name="userId" value={u.id} />
+                          <input
+                            type="hidden"
+                            name="makeAdmin"
+                            value={adminFlag ? "false" : "true"}
+                          />
+                          <Button
+                            type="submit"
+                            variant={adminFlag ? "outline" : "default"}
+                            size="sm"
+                          >
+                            {adminFlag ? "Revoke admin" : "Make admin"}
+                          </Button>
+                        </form>
+                      )}
                     </td>
                   </tr>
                 );

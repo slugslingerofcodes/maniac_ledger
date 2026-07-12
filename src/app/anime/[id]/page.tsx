@@ -11,6 +11,7 @@ import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { RewatchButton } from "@/components/anime/RewatchButton";
 import { WatchOrder } from "@/components/anime/WatchOrder";
+import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
 import { AddToListButton } from "@/components/lists/AddToListButton";
 import { ScoreRing } from "@/components/ScoreRing";
 import { SiteHeader } from "@/components/site-header";
@@ -22,7 +23,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { AnimeInfoGrid, type AnimeInfo } from "@/components/anime/AnimeInfoGrid";
 import { ensureEpisodes } from "@/lib/episodes";
+import { getAnimeExtraInfo, type AnimeExtraInfo } from "@/lib/anilist";
 import {
   getAnimeExtras,
   getAnimeRecommendations,
@@ -58,6 +61,43 @@ const RATING_LABEL: Record<ContentRating, string> = {
   r_plus: "R+",
   rx: "Rx",
 };
+
+const FORMAT_LABEL: Record<string, string> = {
+  tv: "TV",
+  movie: "Movie",
+  ova: "OVA",
+  ona: "ONA",
+  special: "Special",
+  music: "Music",
+};
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** {year,month,day} → "April 3, 2026" (drops missing parts). */
+function fmtDateParts(
+  d: { year: number | null; month: number | null; day: number | null } | null,
+): string | null {
+  if (!d || d.year == null) return null;
+  const mon = d.month != null ? MONTHS[d.month - 1] : null;
+  if (mon && d.day != null) return `${mon} ${d.day}, ${d.year}`;
+  if (mon) return `${mon} ${d.year}`;
+  return String(d.year);
+}
+
+/** ISO date string → "April 3, 2026", or null if unparseable. */
+function fmtDateString(s: string | null): string | null {
+  if (!s) return null;
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 
 function seasonLabel(season: string | null, year: number | null): string | null {
   if (!season && year == null) return null;
@@ -178,14 +218,19 @@ export default async function AnimeDetailPage({
   let synonyms: string[] = [];
   let openings: string[] = [];
   let endings: string[] = [];
+  let extraInfo: AnimeExtraInfo | null = null;
   if (anime.mal_id != null) {
-    // Both are independent MAL calls; run them concurrently so a slow/timed-out
+    // Independent upstream calls; run them concurrently so a slow/timed-out
     // MAL (each request can hang ~10s during an outage) doesn't add up serially.
-    const [extrasRes, similarRes] = await Promise.allSettled([
+    // getAnimeExtraInfo hits AniList for the info-grid extras (author, country,
+    // official site, adult flag, duration).
+    const [extrasRes, similarRes, infoRes] = await Promise.allSettled([
       getAnimeExtras(anime.mal_id),
       getAnimeRecommendations(anime.mal_id, 12),
+      getAnimeExtraInfo(anime.mal_id),
     ]);
     if (similarRes.status === "fulfilled") similar = similarRes.value;
+    if (infoRes.status === "fulfilled") extraInfo = infoRes.value;
 
     if (extrasRes.status === "fulfilled") {
       const extras = extrasRes.value;
@@ -243,6 +288,49 @@ export default async function AnimeDetailPage({
       }
     }
   }
+
+  // Assemble the info-grid facts, preferring AniList extras where richer and
+  // falling back to the catalog row. Rating shows AniList's /100 when we have
+  // it, else the MAL /10 score.
+  const startDate =
+    fmtDateParts(extraInfo?.startDate ?? null) ??
+    fmtDateString(anime.airing_start);
+  const endDate =
+    fmtDateParts(extraInfo?.endDate ?? null) ??
+    fmtDateString(anime.airing_end);
+  const durationText =
+    extraInfo?.durationMinutes != null
+      ? `${extraInfo.durationMinutes} min`
+      : null;
+  const ratingText =
+    extraInfo?.averageScore != null
+      ? `${extraInfo.averageScore} / 100`
+      : anime.score != null
+        ? `${anime.score} / 10`
+        : null;
+  const studios =
+    extraInfo && extraInfo.studios.length > 0
+      ? extraInfo.studios
+      : anime.studio
+        ? [anime.studio]
+        : [];
+  const animeInfo: AnimeInfo = {
+    format: anime.type ? (FORMAT_LABEL[anime.type] ?? anime.type) : null,
+    status: AIRING_LABEL[anime.status],
+    episodes: anime.total_episodes,
+    ratingText,
+    durationText,
+    season,
+    author: extraInfo?.author ?? null,
+    startDate,
+    endDate,
+    airing: anime.status === "currently_airing",
+    dayOfAiring: broadcastDay,
+    country: extraInfo?.countryOfOrigin ?? null,
+    adult: extraInfo?.isAdult ?? null,
+    studios,
+    officialSite: extraInfo?.officialSite ?? null,
+  };
 
   return (
     <Shell>
@@ -353,8 +441,13 @@ export default async function AnimeDetailPage({
         </div>
       </section>
 
+      {/* Information grid — format, dates, author, day of airing, country, … */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6">
+        <AnimeInfoGrid info={animeInfo} />
+      </div>
+
       {/* Below the hero: synopsis (left) + tracking sidebar (right) */}
-      <div className="mx-auto w-full max-w-6xl px-4 pt-12 pb-8 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-8 pb-8 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           {/* Synopsis */}
           <Card>
@@ -493,15 +586,16 @@ export default async function AnimeDetailPage({
           </section>
         ) : null}
 
-        {/* Personalized picks. Titled "Because you watched X" once the user has
-            actually watched (or is watching) this title, else a neutral
-            "More like this". Sourced from MAL community recommendations. */}
+        {/* Personalized picks — shown for EVERY anime, whether or not it's in
+            your library. Once you've watched (or are watching) it the heading
+            is "Because you watched X"; otherwise "If you like X". Sourced from
+            MAL community recommendations. */}
         {similar.length > 0 ? (
           <section className="mt-8">
             <h2 className="mb-3 text-base font-semibold">
               {progress?.status === "completed" || progress?.status === "watching"
                 ? `Because you watched ${anime.title_english ?? anime.title}`
-                : "More like this"}
+                : `If you like ${anime.title_english ?? anime.title}`}
             </h2>
             <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
               {similar.map((s) => (
@@ -598,7 +692,10 @@ type ProgressRow = {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    // No opaque bg-background: the fixed GalaxyBackdrop sits at -z-10 and shows
+    // through the gaps between the hero gradient and the content cards.
+    <div className="relative flex min-h-screen flex-col">
+      <GalaxyBackdrop />
       <SiteHeader />
       <main className="flex-1">{children}</main>
     </div>

@@ -35,6 +35,7 @@ const ANILIST_URL = "https://graphql.anilist.co";
 const MIN_REQUEST_INTERVAL_MS = 2_100;
 
 const ONE_HOUR_SECONDS = 3_600;
+const ONE_DAY_SECONDS = 86_400;
 
 /* -------------------------------------------------------------------------- */
 /* Errors                                                                     */
@@ -458,6 +459,128 @@ export async function searchAnilist(
         per_page: pageInfo.perPage,
       },
     },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Single-title details (for the anime info grid)                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Extra catalog facts AniList has that our catalog row + Jikan don't expose
+ * cleanly: the source author, country of origin, official site, adult flag,
+ * per-episode duration, and precise start/end dates.
+ */
+export type AnimeExtraInfo = {
+  /** Source-material author (AniList "Original Creator" / "Story" staff). */
+  author: string | null;
+  /** ISO country code of origin, e.g. "JP" / "KR" / "CN". */
+  countryOfOrigin: string | null;
+  /** Official website URL, when AniList lists one. */
+  officialSite: string | null;
+  /** True when AniList flags the title 18+. */
+  isAdult: boolean | null;
+  /** Runtime per episode, in minutes. */
+  durationMinutes: number | null;
+  /** AniList average score on a 100-point scale. */
+  averageScore: number | null;
+  /** Main studios. */
+  studios: string[];
+  /** ISO-ish dates as { year, month, day }; any field may be null. */
+  startDate: { year: number | null; month: number | null; day: number | null } | null;
+  endDate: { year: number | null; month: number | null; day: number | null } | null;
+};
+
+interface AnilistMediaDetails {
+  Media: {
+    format: string | null;
+    duration: number | null;
+    averageScore: number | null;
+    countryOfOrigin: string | null;
+    isAdult: boolean | null;
+    startDate: { year: number | null; month: number | null; day: number | null } | null;
+    endDate: { year: number | null; month: number | null; day: number | null } | null;
+    studios: { nodes: { name: string }[] } | null;
+    externalLinks: { site: string | null; url: string | null; type: string | null }[] | null;
+    staff: {
+      edges: { role: string | null; node: { name: { full: string | null } | null } }[];
+    } | null;
+  } | null;
+}
+
+/** Staff roles (in priority order) that identify the source author. */
+const AUTHOR_ROLES = ["Original Creator", "Original Story", "Story", "Creator"];
+
+/**
+ * Rich single-title details by MAL id, for the anime info grid. Best-effort:
+ * returns null when AniList has no match or is unreachable, so the detail page
+ * degrades to the catalog row + Jikan extras it already has. Cached 24h.
+ */
+export async function getAnimeExtraInfo(
+  malId: number,
+): Promise<AnimeExtraInfo | null> {
+  const query = `
+    query ($idMal: Int) {
+      Media(idMal: $idMal, type: ANIME) {
+        format
+        duration
+        averageScore
+        countryOfOrigin
+        isAdult
+        startDate { year month day }
+        endDate { year month day }
+        studios(isMain: true) { nodes { name } }
+        externalLinks { site url type }
+        staff(sort: RELEVANCE, perPage: 8) {
+          edges { role node { name { full } } }
+        }
+      }
+    }
+  `;
+
+  let data: AnilistMediaDetails;
+  try {
+    data = await anilistFetch<AnilistMediaDetails>(
+      query,
+      { idMal: malId },
+      { revalidate: ONE_DAY_SECONDS },
+    );
+  } catch {
+    return null;
+  }
+  const m = data.Media;
+  if (!m) return null;
+
+  // Author: the highest-priority matching staff role, else the first credit.
+  const edges = m.staff?.edges ?? [];
+  let author: string | null = null;
+  for (const role of AUTHOR_ROLES) {
+    const hit = edges.find((e) =>
+      (e.role ?? "").toLowerCase().includes(role.toLowerCase()),
+    );
+    if (hit?.node?.name?.full) {
+      author = hit.node.name.full;
+      break;
+    }
+  }
+
+  // Official site: the link literally named "Official Site", else any INFO link.
+  const links = m.externalLinks ?? [];
+  const officialSite =
+    links.find((l) => (l.site ?? "").toLowerCase() === "official site")?.url ??
+    links.find((l) => (l.type ?? "").toUpperCase() === "INFO")?.url ??
+    null;
+
+  return {
+    author,
+    countryOfOrigin: m.countryOfOrigin,
+    officialSite,
+    isAdult: m.isAdult,
+    durationMinutes: m.duration,
+    averageScore: m.averageScore,
+    studios: (m.studios?.nodes ?? []).map((s) => s.name),
+    startDate: m.startDate,
+    endDate: m.endDate,
   };
 }
 

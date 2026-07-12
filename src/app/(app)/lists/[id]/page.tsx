@@ -1,11 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import {
-  ListOwnerBar,
-  RemoveFromListButton,
-} from "@/components/lists/ListControls";
+import { ListItemsGrid } from "@/components/lists/ListItemsGrid";
+import { ListOwnerBar } from "@/components/lists/ListControls";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -82,40 +79,19 @@ export default async function ListDetailPage({
           Nothing here yet — open any anime and use &ldquo;Add to list&rdquo;.
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {rows.map((item) =>
-            item.anime ? (
-              <div key={item.anime_id} className="group relative">
-                {isOwner ? (
-                  <RemoveFromListButton listId={list.id} animeId={item.anime_id} />
-                ) : null}
-                <Link
-                  href={`/anime/${item.anime.id}`}
-                  className="flex flex-col gap-2"
-                >
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
-                    {item.anime.poster_url ? (
-                      <Image
-                        src={item.anime.poster_url}
-                        alt={item.anime.title}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                        No image
-                      </div>
-                    )}
-                  </div>
-                  <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
-                    {item.anime.title_english ?? item.anime.title}
-                  </p>
-                </Link>
-              </div>
-            ) : null,
-          )}
-        </div>
+        <ListItemsGrid
+          listId={list.id}
+          isOwner={isOwner}
+          items={rows
+            .filter((item) => item.anime)
+            .map((item) => ({
+              animeId: item.anime_id,
+              animeUuid: item.anime!.id,
+              title: item.anime!.title,
+              titleEnglish: item.anime!.title_english,
+              posterUrl: item.anime!.poster_url,
+            }))}
+        />
       )}
     </main>
   );

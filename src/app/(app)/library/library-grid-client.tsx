@@ -18,6 +18,7 @@ import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
@@ -69,6 +70,9 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const [titleLang] = useTitleLanguage();
   const [genre, setGenre] = useState<string | null>(null);
   const [sort, setSort] = useState<SortValue>("recent");
+  // Free-text filter over the cached library (title + english). Purely
+  // client-side — never hits the network, so it searches your library only.
+  const [query, setQuery] = useState("");
   // Bulk-edit mode: card clicks toggle selection instead of navigating.
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -137,12 +141,16 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   } else {
     // Swap in the preferred display title BEFORE sorting so "Title A–Z"
     // follows what the user actually sees.
+    const q = query.trim().toLowerCase();
     const items = sortItems(
       (data ?? [])
         .filter(
           (i) =>
             (filter === "all" || i.status === filter) &&
-            (genre === null || i.genres.includes(genre)),
+            (genre === null || i.genres.includes(genre)) &&
+            (q === "" ||
+              i.title.toLowerCase().includes(q) ||
+              (i.titleEnglish?.toLowerCase().includes(q) ?? false)),
         )
         .map((i) => ({
           ...i,
@@ -152,6 +160,16 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
     );
     content = (
       <>
+        {/* Search within your own library (client-side over the cached list). */}
+        <div className="mb-4">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search your library…"
+            aria-label="Search your library"
+            className="h-9 max-w-sm"
+          />
+        </div>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           {genreOptions.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -204,7 +222,11 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           </div>
         </div>
         {items.length === 0 ? (
-          genre !== null ? (
+          query.trim() !== "" ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No anime in your library match “{query.trim()}”.
+            </p>
+          ) : genre !== null ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Nothing in your library matches “{genre}” with this status.
             </p>

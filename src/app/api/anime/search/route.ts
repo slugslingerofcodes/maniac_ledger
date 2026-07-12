@@ -130,6 +130,14 @@ const QuerySchema = z
 /** Results per app page: two 25-result Jikan pages stitched together. */
 const JIKAN_PAGES_PER_APP_PAGE = 2;
 
+/**
+ * AniList hard-caps `Page.pageInfo.total` at 5000 (→ exactly 100 pages of 50).
+ * So any broad AniList browse reports the same 5000/100 regardless of the real
+ * size — we surface that as an approximate "5,000+" instead of a precise
+ * (and misleading, constant-looking) count.
+ */
+const ANILIST_MAX_TOTAL = 5000;
+
 export type SearchSource = "mal" | "anilist" | "catalog";
 
 export interface AnimeSearchResponse {
@@ -140,6 +148,8 @@ export interface AnimeSearchResponse {
   totalItems: number;
   /** Which engine served the results. */
   source: SearchSource;
+  /** True when the count is an engine cap (show "N+"), not an exact total. */
+  approxTotal?: boolean;
   /** True when live APIs were unreachable and results came from the local catalog. */
   degraded?: boolean;
 }
@@ -221,15 +231,41 @@ export async function GET(request: NextRequest) {
     f.doujin != null ||
     tags.length > 0;
 
+  /**
+   * Enrich page-1 text-query results with local-catalog substring matches the
+   * live engine missed. AniList's SEARCH_MATCH only matches whole tokens
+   * ("naruto" works, "narut" returns nothing), so typing letters progressively
+   * would otherwise dead-end. The catalog is matched with `ilike %q%` (true
+   * substring) and appended, deduped by mal_id. Best-effort; only on page 1.
+   */
+  async function mergeCatalog(results: JikanAnime[]): Promise<JikanAnime[]> {
+    if (!f.q || page !== 1) return results;
+    try {
+      const catalog = await searchCatalog(f.q, genres);
+      if (catalog.length === 0) return results;
+      const seen = new Set(results.map((r) => r.mal_id));
+      const extra = catalog.filter((c) => !seen.has(c.mal_id));
+      // Catalog substring hits go first when the live engine found nothing
+      // (e.g. a partial prefix) so the obvious match isn't buried.
+      return results.length === 0 ? extra : [...results, ...extra];
+    } catch {
+      return results;
+    }
+  }
+
   async function fromAnilist(): Promise<NextResponse> {
     const res = await searchAnilist(anilistFilters, page);
+    const results = await mergeCatalog(res.data);
+    const rawTotal = res.pagination.items.total;
+    const approxTotal = rawTotal >= ANILIST_MAX_TOTAL;
     return NextResponse.json(
       {
-        results: res.data,
+        results,
         page,
         totalPages: res.pagination.last_visible_page,
-        totalItems: res.pagination.items.total,
+        totalItems: Math.max(rawTotal, results.length),
         source: "anilist",
+        approxTotal,
       } satisfies AnimeSearchResponse,
       { headers: CACHE_HEADERS },
     );
@@ -321,12 +357,14 @@ export async function GET(request: NextRequest) {
       Math.ceil(first.pagination.last_visible_page / JIKAN_PAGES_PER_APP_PAGE),
     );
 
+    const merged = await mergeCatalog(results);
+
     return NextResponse.json(
       {
-        results,
+        results: merged,
         page,
         totalPages,
-        totalItems: first.pagination.items.total,
+        totalItems: Math.max(first.pagination.items.total, merged.length),
         source: "mal",
       } satisfies AnimeSearchResponse,
       { headers: CACHE_HEADERS },

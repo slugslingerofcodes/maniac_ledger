@@ -101,6 +101,7 @@ function SearchPageInner() {
   const [pageInfo, setPageInfo] = useState<{
     totalPages: number;
     totalItems: number;
+    approxTotal: boolean;
   } | null>(null);
   // Which engine served the results: "mal" | "anilist" | "catalog".
   const [source, setSource] = useState<string>("mal");
@@ -173,6 +174,7 @@ function SearchPageInner() {
         setPageInfo({
           totalPages: body.totalPages ?? 1,
           totalItems: body.totalItems ?? unique.length,
+          approxTotal: Boolean(body.approxTotal),
         });
         setSource(body.source ?? "mal");
         setDegraded(Boolean(body.degraded));
@@ -266,8 +268,10 @@ function SearchPageInner() {
           <>
             {pageInfo ? (
               <p className="mb-4 text-center text-xs text-muted-foreground">
-                Page {page} of {pageInfo.totalPages} ·{" "}
-                {pageInfo.totalItems.toLocaleString()} matches
+                Page {page} of {pageInfo.totalPages}
+                {pageInfo.approxTotal ? "+" : ""} ·{" "}
+                {pageInfo.totalItems.toLocaleString()}
+                {pageInfo.approxTotal ? "+" : ""} matches
               </p>
             ) : null}
             <Grid>

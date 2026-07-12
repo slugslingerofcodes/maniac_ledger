@@ -21,6 +21,7 @@ import {
   getThemesByMalId,
   type ThemeTrack,
 } from "@/lib/animethemes";
+import { MusicVisualizer } from "@/components/songs/MusicVisualizer";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   displayTitle,
@@ -331,6 +332,11 @@ export function SongsClient() {
       {/* Transport bar — sticky above the mobile tab bar */}
       {currentTrack ? (
         <div className="glass sticky bottom-20 z-30 mt-6 rounded-xl p-3 ring-1 ring-foreground/10 md:bottom-4">
+          {/* Music visualizer — dances while a track plays, settles when paused. */}
+          <MusicVisualizer
+            playing={playing}
+            className="mb-2.5 h-8 w-full rounded-md opacity-90"
+          />
           <div className="flex items-center gap-3">
             <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-muted">
               {currentTrack.posterUrl ? (

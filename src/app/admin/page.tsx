@@ -4,8 +4,13 @@ import { Trash2 } from "lucide-react";
 import {
   createAnnouncement,
   deleteAnnouncement,
+  deleteProduct,
+  setProductAvailability,
+  setRequestStatus,
   setUserAdmin,
 } from "@/app/admin/actions";
+import { ProductForm } from "@/components/store/ProductForm";
+import { formatPrice } from "@/lib/price";
 import { signOut } from "@/app/auth/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +64,21 @@ export default async function AdminPage(props: {
     .from("announcements")
     .select("id, title, body, active, created_at")
     .order("created_at", { ascending: false });
+
+  // Store: products + incoming requests (RLS lets an admin read all). Both
+  // degrade to null/empty when migration 0021 hasn't been applied.
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, price, image_url, available, created_at")
+    .order("created_at", { ascending: false });
+  const { data: requests } = await supabase
+    .from("product_requests")
+    .select("id, note, status, created_at, user_id, product:product_id (name)")
+    .order("created_at", { ascending: false });
+  const emailById = new Map(users.map((u) => [u.id, u.email]));
+  const pendingRequestCount = (requests ?? []).filter(
+    (r) => r.status === "pending",
+  ).length;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
@@ -153,6 +173,140 @@ export default async function AdminPage(props: {
             ))
           )}
         </div>
+      </section>
+
+      {/* Store products */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-lg font-semibold">Store</h2>
+        <div className="mb-5">
+          <ProductForm />
+        </div>
+        {products == null ? (
+          <p className="rounded-xl bg-card p-4 text-sm text-destructive ring-1 ring-foreground/10">
+            Couldn&apos;t load products — the store migration (0021) may not be
+            applied yet.
+          </p>
+        ) : products.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No products yet.</p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {products.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 rounded-lg bg-card p-3 ring-1 ring-foreground/10"
+              >
+                <div className="relative size-12 shrink-0 overflow-hidden rounded bg-muted">
+                  {p.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.image_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatPrice(p.price)} ·{" "}
+                    {p.available ? "available" : "hidden"}
+                  </p>
+                </div>
+                <form action={setProductAvailability}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <input
+                    type="hidden"
+                    name="available"
+                    value={p.available ? "false" : "true"}
+                  />
+                  <Button type="submit" variant="outline" size="sm">
+                    {p.available ? "Hide" : "Show"}
+                  </Button>
+                </form>
+                <form action={deleteProduct}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Delete ${p.name}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Product requests */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-lg font-semibold">
+          Product requests{" "}
+          {pendingRequestCount > 0 ? (
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
+              {pendingRequestCount} pending
+            </span>
+          ) : null}
+        </h2>
+        {requests == null ? (
+          <p className="rounded-xl bg-card p-4 text-sm text-destructive ring-1 ring-foreground/10">
+            Couldn&apos;t load requests — the store migration (0021) may not be
+            applied yet.
+          </p>
+        ) : requests.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No requests yet.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {requests.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center gap-3 rounded-lg bg-card p-3 ring-1 ring-foreground/10"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    {r.product?.name ?? "(deleted product)"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {emailById.get(r.user_id) ?? "Unknown user"} · {fmt(r.created_at)}
+                    {r.note ? ` · “${r.note}”` : ""}
+                  </p>
+                </div>
+                <Badge
+                  variant={r.status === "pending" ? "secondary" : "outline"}
+                  className={
+                    r.status === "fulfilled"
+                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                      : r.status === "declined"
+                        ? "border-destructive/40 text-destructive"
+                        : undefined
+                  }
+                >
+                  {r.status}
+                </Badge>
+                {r.status === "pending" ? (
+                  <div className="flex gap-2">
+                    <form action={setRequestStatus}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <input type="hidden" name="status" value="fulfilled" />
+                      <Button type="submit" size="sm">
+                        Fulfill
+                      </Button>
+                    </form>
+                    <form action={setRequestStatus}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <input type="hidden" name="status" value="declined" />
+                      <Button type="submit" size="sm" variant="outline">
+                        Decline
+                      </Button>
+                    </form>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Users / logins */}

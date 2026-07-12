@@ -606,6 +606,92 @@ export type Database = {
           },
         ];
       };
+      products: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          price: number;
+          image_url: string | null;
+          available: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          price: number;
+          image_url?: string | null;
+          available?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          price?: number;
+          image_url?: string | null;
+          available?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "products_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      product_requests: {
+        Row: {
+          id: string;
+          product_id: string;
+          user_id: string;
+          note: string | null;
+          status: "pending" | "fulfilled" | "declined";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          user_id?: string;
+          note?: string | null;
+          status?: "pending" | "fulfilled" | "declined";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          user_id?: string;
+          note?: string | null;
+          status?: "pending" | "fulfilled" | "declined";
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_requests_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_requests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       anime_watched_count: {

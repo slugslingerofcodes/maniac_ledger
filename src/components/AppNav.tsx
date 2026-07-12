@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { label: "Lists", href: "/lists" },
   { label: "Friends", href: "/friends" },
   { label: "Feed", href: "/feed" },
+  { label: "Store", href: "/store" },
   { label: "News", href: "/news" },
   { label: "Songs", href: "/songs" },
   { label: "Recommendations", href: "/recommendations" },

@@ -277,7 +277,7 @@ function ActivityHeatmap({ activity }: { activity: string[] }) {
           last {HEATMAP_WEEKS} weeks
         </span>
       </div>
-      <div className="mt-3 overflow-x-auto">
+      <div className="scrollbar-subtle mt-3 overflow-x-auto">
         <div className="grid w-max grid-flow-col grid-rows-7 gap-1">
           {cells.map((c) => (
             <div

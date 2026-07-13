@@ -339,6 +339,7 @@ export async function upsertMangaProgress(
 
   revalidatePath("/manga");
   revalidatePath("/manga/library");
-  revalidatePath(`/manga/${mangaId}`);
+  // No detail-page revalidate: /manga/[malId] is keyed by MAL id, not this
+  // catalog uuid — the tracker router.refresh()es the open page itself.
   return { ok: true };
 }

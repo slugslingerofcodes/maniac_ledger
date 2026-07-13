@@ -918,9 +918,9 @@ export function searchAdultManga(
   });
 }
 
-/** Top / most-popular manga (`/top/manga`, MAL rank order). Cached 24h. */
+/** Top / most-popular manga (`/top/manga`, MAL rank order, SFW). Cached 24h. */
 export function getTopManga(limit = 24): Promise<JikanMangaSearchResponse> {
-  const params = new URLSearchParams({ limit: String(limit) });
+  const params = new URLSearchParams({ limit: String(limit), sfw: "true" });
   return jikanFetch<JikanMangaSearchResponse>(`/top/manga?${params.toString()}`, {
     revalidate: ONE_DAY_SECONDS,
   });

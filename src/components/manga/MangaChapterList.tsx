@@ -11,9 +11,9 @@ export type ChapterListItem = {
   publishedAt: string | null;
 };
 
-/** "10.5" style label without float noise. */
+/** Chapter number label — trims float noise like 10.100000000000001. */
 function chapterLabel(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(n);
+  return String(Math.round(n * 100) / 100);
 }
 
 /**

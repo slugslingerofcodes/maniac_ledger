@@ -196,7 +196,7 @@ export function RecommendationsView({
           get started.
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="scrollbar-subtle flex gap-4 overflow-x-auto pb-4">
           <AnimatePresence initial={false} mode="popLayout">
             {items.map((item) => (
               <motion.div

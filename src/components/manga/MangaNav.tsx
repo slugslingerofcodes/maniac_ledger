@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { label: "Home", href: "/manga" },
   { label: "Search", href: "/manga/search" },
+  { label: "Light Novels", href: "/manga/lightnovels" },
   { label: "Library", href: "/manga/library" },
   { label: "Miscellaneous", href: "/manga/miscellaneous" },
 ] as const;

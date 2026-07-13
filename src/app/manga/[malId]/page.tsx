@@ -111,6 +111,7 @@ export default async function MangaDetailPage(props: {
     title: manga.title,
     title_english: manga.title_english,
     status: manga.status,
+    chapters: manga.chapters,
     ...syncMeta,
   });
   const chapterRows = await getStoredChapters(mangaId);

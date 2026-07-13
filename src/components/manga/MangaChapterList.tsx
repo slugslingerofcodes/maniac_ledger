@@ -66,7 +66,7 @@ export function MangaChapterList({
       </div>
 
       {open ? (
-        <ol className="mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto rounded-xl border border-border bg-card/60">
+        <ol className="scrollbar-subtle mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto rounded-xl border border-border bg-card/60">
           {ordered.map((c) => {
             const read = c.number <= chaptersRead;
             return (

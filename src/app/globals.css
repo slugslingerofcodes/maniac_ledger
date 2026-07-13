@@ -570,3 +570,29 @@ html:not(.dark) .text-gradient {
     animation-delay: 0s !important;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Subtle scrollbar: thin, transparent track, faint thumb that shows on       */
+/* hover. For horizontal rows (Watch History) and long lists (chapters).      */
+/* ------------------------------------------------------------------------- */
+
+.scrollbar-subtle {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent)
+    transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-subtle::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--foreground) 18%, transparent);
+  border-radius: 9999px;
+}
+.scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--foreground) 32%, transparent);
+}

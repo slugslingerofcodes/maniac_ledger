@@ -7,6 +7,7 @@ import { GenreRibbon } from "@/components/home/GenreRibbon";
 import { HeroCarousel, type HeroSlide } from "@/components/home/HeroCarousel";
 import { MiniSchedule, type ScheduleDay } from "@/components/home/MiniSchedule";
 import { ShareBanner } from "@/components/home/ShareBanner";
+import { WatchingAiring } from "@/components/home/WatchingAiring";
 import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList";
 import { LibraryGrid } from "@/components/library-grid";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
@@ -291,6 +292,10 @@ export default function Home() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         <Suspense fallback={null}>
           <ContinueWatching />
+        </Suspense>
+        {/* Ongoing shows from the user's watchlist — new episodes each day. */}
+        <Suspense fallback={null}>
+          <WatchingAiring />
         </Suspense>
         {/* Trending poster marquee as a full-width divider between sections. */}
         <Suspense fallback={null}>

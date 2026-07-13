@@ -4,19 +4,24 @@ import type { Tables } from "@/lib/database.types";
 
 /** Re-sync window: publishing titles refresh their chapter list daily. */
 const SYNC_STALE_MS = 24 * 60 * 60 * 1000;
+/** Incomplete lists retry sooner (self-heal), but never more than hourly. */
+const RETRY_INCOMPLETE_MS = 60 * 60 * 1000;
 
 /**
  * Ensures the shared `manga_chapters` catalog is populated for a manga — and
  * kept fresh, so the list runs "up to the latest ones":
  *
  *  - First detail view: resolves the MangaDex id (strict `links.mal` match,
- *    stored on the row) and backfills the full English chapter list.
- *  - Later views: re-syncs when the last sync is >24h old, unless the title is
- *    finished AND already has rows (its list can't grow).
+ *    stored on the row) and backfills the chapter list — MangaDex's
+ *    all-language aggregate for complete numbering, the English feed for
+ *    titles, and MAL's own chapter count to fill any remaining integer gaps.
+ *  - Later views: re-syncs when the last sync is >24h old; lists that are
+ *    still visibly short of MAL's count retry hourly until they catch up.
+ *    Titles heal on every re-sync (existing rows are updated, never blanked).
  *
  * Mirrors `ensureEpisodes`. Best-effort: swallows MangaDex failures so the
  * detail page always renders. Requires migration 0024 and runs under the
- * caller's session (insert policy: any authenticated user).
+ * caller's session.
  */
 export async function ensureMangaChapters(row: {
   id: string;
@@ -24,6 +29,8 @@ export async function ensureMangaChapters(row: {
   title: string;
   title_english: string | null;
   status: string | null;
+  /** MAL's total chapter count, when known — fills numbering gaps. */
+  chapters?: number | null;
   mangadex_id?: string | null;
   chapters_synced_at?: string | null;
 }): Promise<void> {
@@ -32,14 +39,30 @@ export async function ensureMangaChapters(row: {
   try {
     const supabase = await createClient();
 
+    // How much we already have vs. how much MAL says exists.
+    const { count } = await supabase
+      .from("manga_chapters")
+      .select("id", { count: "exact", head: true })
+      .eq("manga_id", row.id);
+    const stored = count ?? 0;
+    const expected = row.chapters ?? 0;
+    const incomplete = expected > 0 ? stored < expected : stored === 0;
+
     // Freshness gate. `finished` uses MAL's manga status string.
     const syncedAt = row.chapters_synced_at
       ? Date.parse(row.chapters_synced_at)
       : null;
-    const fresh = syncedAt != null && Date.now() - syncedAt < SYNC_STALE_MS;
-    if (fresh) return;
-    const finished = (row.status ?? "").toLowerCase() === "finished";
-    if (finished && syncedAt != null) return; // full list already synced once
+    const age = syncedAt != null ? Date.now() - syncedAt : Infinity;
+    if (syncedAt != null) {
+      const finished = (row.status ?? "").toLowerCase() === "finished";
+      if (incomplete) {
+        if (age < RETRY_INCOMPLETE_MS) return; // retried recently — back off
+      } else if (finished) {
+        return; // complete + finished → the list can't grow
+      } else if (age < SYNC_STALE_MS) {
+        return; // complete + publishing → daily refresh is enough
+      }
+    }
 
     // Resolve (or reuse) the MangaDex id.
     let mdId = row.mangadex_id ?? null;
@@ -48,29 +71,53 @@ export async function ensureMangaChapters(row: {
         row.title,
         row.title_english,
       ]);
-      if (!mdId) {
-        // No linked MangaDex entry — remember we looked so every page view
-        // doesn't re-search; a future sync (>24h) will retry.
-        await supabase
-          .from("manga")
-          .update({ chapters_synced_at: new Date().toISOString() })
-          .eq("id", row.id);
-        return;
-      }
     }
 
-    const chapters = await getMangaDexChapters(mdId);
-    if (chapters.length > 0) {
-      const rows = chapters.map((c) => ({
-        manga_id: row.id,
-        number: c.number,
-        title: c.title,
-        published_at: c.publishedAt,
-      }));
-      // Dedup on (manga_id, number); rows a concurrent request wrote are skipped.
-      await supabase
+    // Chapter set: MangaDex (numbers + titles) ∪ MAL's integer count.
+    const byNumber = new Map<
+      number,
+      { title: string | null; published_at: string | null }
+    >();
+    if (mdId) {
+      for (const c of await getMangaDexChapters(mdId)) {
+        byNumber.set(c.number, { title: c.title, published_at: c.publishedAt });
+      }
+    }
+    for (let n = 1; n <= expected; n++) {
+      if (!byNumber.has(n)) byNumber.set(n, { title: null, published_at: null });
+    }
+
+    if (byNumber.size > 0) {
+      // Never downgrade: keep an already-stored title/date when the fresh
+      // fetch has none for that number.
+      const { data: existing } = await supabase
         .from("manga_chapters")
-        .upsert(rows, { onConflict: "manga_id,number", ignoreDuplicates: true });
+        .select("number, title, published_at")
+        .eq("manga_id", row.id);
+      for (const e of existing ?? []) {
+        const fresh = byNumber.get(e.number);
+        if (!fresh) continue;
+        if (!fresh.title && e.title) fresh.title = e.title;
+        if (!fresh.published_at && e.published_at)
+          fresh.published_at = e.published_at;
+      }
+
+      const rows = [...byNumber.entries()].map(([number, c]) => ({
+        manga_id: row.id,
+        number,
+        title: c.title,
+        published_at: c.published_at,
+      }));
+      // Update on conflict so titles heal; if the UPDATE policy isn't applied
+      // yet (pre-re-run 0024), fall back to insert-only so new numbers land.
+      const { error } = await supabase
+        .from("manga_chapters")
+        .upsert(rows, { onConflict: "manga_id,number" });
+      if (error) {
+        await supabase
+          .from("manga_chapters")
+          .upsert(rows, { onConflict: "manga_id,number", ignoreDuplicates: true });
+      }
     }
 
     await supabase
@@ -101,7 +148,7 @@ export async function getStoredChapters(
       .select("number, title, published_at")
       .eq("manga_id", mangaId)
       .order("number", { ascending: true })
-      .limit(2000);
+      .limit(3000);
     return data ?? [];
   } catch {
     return [];

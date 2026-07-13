@@ -37,6 +37,15 @@ create policy "Manga chapters insertable by authenticated"
   to authenticated
   with check (true);
 
+-- Re-syncs heal chapter titles in place (upsert's conflict-update path), so
+-- updates are catalog contributions too — same trust model as inserts.
+drop policy if exists "Manga chapters updatable by authenticated" on public.manga_chapters;
+create policy "Manga chapters updatable by authenticated"
+  on public.manga_chapters for update
+  to authenticated
+  using (true)
+  with check (true);
+
 -- Chapter list per manga, in reading order.
 create index if not exists manga_chapters_manga_number_idx
   on public.manga_chapters (manga_id, number);

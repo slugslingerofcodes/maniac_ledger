@@ -121,20 +121,51 @@ interface MdFeed {
 
 /** Feed page size (MangaDex max is 500). */
 const FEED_LIMIT = 500;
-/** Cap total chapters synced per manga (3 pages × 500). */
-const MAX_FEED_PAGES = 3;
+/** Cap the English title feed at 4 pages × 500 entries. */
+const MAX_FEED_PAGES = 4;
 
 /**
- * The full English chapter list for a MangaDex manga, deduped by chapter
- * number (multiple scanlation groups upload the same chapter — the first
- * titled version wins). Ordered ascending. All content ratings included so
- * the miscellaneous section's titles resolve too.
+ * `/manga/{id}/aggregate` — every chapter number MangaDex knows, across ALL
+ * languages, in one cheap call. `volumes` is a keyed object (or `[]` when the
+ * manga has none).
+ */
+interface MdAggregate {
+  volumes:
+    | Record<string, { chapters: Record<string, { chapter: string }> }>
+    | unknown[];
+}
+
+/**
+ * The full chapter list for a MangaDex manga, ordered ascending:
+ *
+ *  1. **Numbers** come from the `/aggregate` endpoint (all languages), which
+ *     is complete — an English-only feed misses every not-yet-translated
+ *     chapter, which is how lists ended up short of the latest release.
+ *  2. **Titles + dates** are layered on from the English feed (deduped per
+ *     number; the first titled version wins, all content ratings included so
+ *     the miscellaneous section's titles resolve too).
  */
 export async function getMangaDexChapters(
   mangadexId: string,
 ): Promise<MangaDexChapter[]> {
   const byNumber = new Map<number, MangaDexChapter>();
 
+  // 1) Complete number backbone from the all-language aggregate.
+  try {
+    const agg = await mdFetch<MdAggregate>(`/manga/${mangadexId}/aggregate`);
+    const volumes = Array.isArray(agg.volumes) ? [] : Object.values(agg.volumes);
+    for (const vol of volumes) {
+      for (const ch of Object.values(vol.chapters ?? {})) {
+        const num = Number.parseFloat(ch.chapter ?? "");
+        if (!Number.isFinite(num) || byNumber.has(num)) continue;
+        byNumber.set(num, { number: num, title: null, publishedAt: null });
+      }
+    }
+  } catch {
+    /* aggregate down — the feed below still provides a usable list */
+  }
+
+  // 2) English titles + publish dates layered onto the numbers.
   for (let page = 0; page < MAX_FEED_PAGES; page++) {
     const params = new URLSearchParams({
       limit: String(FEED_LIMIT),
@@ -154,17 +185,15 @@ export async function getMangaDexChapters(
       const num = Number.parseFloat(c.attributes.chapter ?? "");
       if (!Number.isFinite(num)) continue; // oneshot/extra rows without numbers
       const title = c.attributes.title?.trim() || null;
+      const publishedAt = c.attributes.publishAt
+        ? c.attributes.publishAt.slice(0, 10)
+        : null;
       const existing = byNumber.get(num);
       if (!existing) {
-        byNumber.set(num, {
-          number: num,
-          title,
-          publishedAt: c.attributes.publishAt
-            ? c.attributes.publishAt.slice(0, 10)
-            : null,
-        });
-      } else if (!existing.title && title) {
-        existing.title = title;
+        byNumber.set(num, { number: num, title, publishedAt });
+      } else {
+        if (!existing.title && title) existing.title = title;
+        if (!existing.publishedAt && publishedAt) existing.publishedAt = publishedAt;
       }
     }
 

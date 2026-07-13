@@ -32,7 +32,7 @@ export async function ContinueWatching() {
       <h2 className="text-gradient mb-4 text-2xl font-bold tracking-tight">
         Watch History
       </h2>
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <div className="scrollbar-subtle flex gap-4 overflow-x-auto pb-2">
         {data.map((row) => {
           const { anime } = row;
           const total = anime.total_episodes;

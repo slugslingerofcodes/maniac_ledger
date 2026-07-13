@@ -24,7 +24,12 @@ export const MANGA_LIBRARY_QUERY_KEY = ["user-manga-library"] as const;
 const FIVE_MIN_MS = 5 * 60_000;
 
 /** Format filter: MAL media-kind display strings, or "all". */
-export type MangaFormatFilter = "all" | "Manga" | "Manhwa" | "Manhua";
+export type MangaFormatFilter =
+  | "all"
+  | "Manga"
+  | "Manhwa"
+  | "Manhua"
+  | "Light Novel";
 
 /**
  * Client-side manga library grid backed by TanStack Query — the manga analog of

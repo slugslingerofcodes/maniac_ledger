@@ -3,14 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { getAnilistMangaByMalId, searchAnilistManga } from "@/lib/anilist";
+import {
+  getAnilistMangaByMalId,
+  searchAnilistAdultManga,
+  searchAnilistManga,
+} from "@/lib/anilist";
+import { GENRE_OPTIONS } from "@/lib/genres";
 import {
   getMangaById,
+  searchAdultManga,
   searchManga,
   type JikanManga,
   type JikanMangaType,
 } from "@/lib/jikan";
-import { searchMangaCatalog } from "@/lib/manga-catalog-fallback";
+import {
+  searchAdultMangaCatalog,
+  searchMangaCatalog,
+} from "@/lib/manga-catalog-fallback";
 import { addToMangaLibrary } from "@/lib/manga";
 import { createClient } from "@/lib/supabase/server";
 import type { ReadingStatus } from "@/types/manga";
@@ -97,21 +106,30 @@ function dedupeManga(list: JikanManga[]): JikanManga[] {
   );
 }
 
+/** MAL genre ids → names, for the catalog fallback's genre matching. */
+function genreNamesOf(genreIds: number[]): string[] {
+  return genreIds
+    .map((id) => GENRE_OPTIONS.find((g) => g.id === id)?.name)
+    .filter((n): n is string => Boolean(n));
+}
+
 /**
- * Search manga, optionally narrowed to a media kind (manga / manhwa / manhua).
- * With an empty query it browses the most popular titles.
+ * Search manga, optionally narrowed to a media kind (manga / manhwa / manhua /
+ * lightnovel) and MAL genre ids (AND semantics). With an empty query it
+ * browses the most popular titles.
  *
  * Fallback chain (same as the anime search API): MAL (Jikan `/manga`) →
- * AniList (`type: MANGA`, country-of-origin mapped from the format tab) → the
- * local `manga` catalog, which grows as users browse and add (degraded).
+ * AniList (country-of-origin / format mapped from the tab, genres translated
+ * to AniList names) → the local `manga` catalog (degraded).
  */
 export async function searchMangaAction(
   query: string,
   page = 1,
   type?: JikanMangaType,
+  genreIds: number[] = [],
 ): Promise<MangaSearchResult> {
   try {
-    const res = await searchManga(query.trim(), page, [], type);
+    const res = await searchManga(query.trim(), page, genreIds, type);
     return {
       ok: true,
       results: dedupeManga(res.data),
@@ -125,7 +143,7 @@ export async function searchMangaAction(
 
   // MAL down → same search on AniList (live data, still paginated).
   try {
-    const res = await searchAnilistManga(query, page, type);
+    const res = await searchAnilistManga(query, page, type, genreIds);
     return {
       ok: true,
       results: dedupeManga(res.data),
@@ -139,10 +157,56 @@ export async function searchMangaAction(
 
   // Both live APIs down → the local catalog keeps known titles searchable.
   try {
-    const results = await searchMangaCatalog(query, type);
+    const results = await searchMangaCatalog(query, type, genreNamesOf(genreIds));
     return { ok: true, results, totalPages: 1, source: "catalog", degraded: true };
   } catch {
     return { ok: false, error: "Manga search is unavailable right now." };
+  }
+}
+
+/**
+ * Adult (hentai) manga search for the manga miscellaneous section — same
+ * three-engine chain as {@link searchMangaAction}, scoped to MAL genre 12 /
+ * AniList genre "Hentai" / catalog rows carrying the Hentai genre. The page
+ * sits behind login + the 18+ gate; manga progress is only ever visible to
+ * its owner (RLS), so entries need no extra privacy flag.
+ */
+export async function searchAdultMangaAction(
+  query: string,
+  page = 1,
+  type?: JikanMangaType,
+): Promise<MangaSearchResult> {
+  try {
+    const res = await searchAdultManga(query.trim(), page, type);
+    return {
+      ok: true,
+      results: dedupeManga(res.data),
+      totalPages: Math.max(res.pagination.last_visible_page, 1),
+      source: "mal",
+      degraded: false,
+    };
+  } catch (err) {
+    console.error("[searchAdultMangaAction] MAL failure, trying AniList:", err);
+  }
+
+  try {
+    const res = await searchAnilistAdultManga(query, page, type);
+    return {
+      ok: true,
+      results: dedupeManga(res.data),
+      totalPages: Math.max(res.pagination.last_visible_page, 1),
+      source: "anilist",
+      degraded: false,
+    };
+  } catch (err) {
+    console.error("[searchAdultMangaAction] AniList fallback failed:", err);
+  }
+
+  try {
+    const results = await searchAdultMangaCatalog(query, type);
+    return { ok: true, results, totalPages: 1, source: "catalog", degraded: true };
+  } catch {
+    return { ok: false, error: "Search is unavailable right now." };
   }
 }
 

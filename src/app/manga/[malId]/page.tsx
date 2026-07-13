@@ -2,11 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { MangaChapterList } from "@/components/manga/MangaChapterList";
 import { MangaReadingTracker } from "@/components/manga/MangaReadingTracker";
 import { SourceNotice } from "@/components/SourceNotice";
 import { Badge } from "@/components/ui/badge";
 import { getAnilistMangaByMalId } from "@/lib/anilist";
 import { getMangaById, type JikanManga } from "@/lib/jikan";
+import {
+  ensureMangaChapters,
+  getStoredChapters,
+} from "@/lib/manga-chapters";
 import {
   catalogMangaByMalId,
   toJikanMangaShape,
@@ -82,6 +87,33 @@ export default async function MangaDetailPage(props: {
     .select("status, chapters_read, volumes_read, score")
     .eq("manga_id", mangaId)
     .maybeSingle();
+
+  // Chapter list: lazily synced from MangaDex (fresh titles re-sync daily so
+  // the list runs up to the latest chapter), then read from the shared
+  // catalog. Both steps are best-effort — the page renders without them.
+  let syncMeta: { mangadex_id: string | null; chapters_synced_at: string | null } = {
+    mangadex_id: null,
+    chapters_synced_at: null,
+  };
+  try {
+    const { data } = await supabase
+      .from("manga")
+      .select("mangadex_id, chapters_synced_at")
+      .eq("id", mangaId)
+      .maybeSingle();
+    if (data) syncMeta = data;
+  } catch {
+    /* migration 0024 not applied yet */
+  }
+  await ensureMangaChapters({
+    id: mangaId,
+    mal_id: manga.mal_id,
+    title: manga.title,
+    title_english: manga.title_english,
+    status: manga.status,
+    ...syncMeta,
+  });
+  const chapterRows = await getStoredChapters(mangaId);
 
   const cover = coverOf(manga);
   const title = manga.title_english ?? manga.title;
@@ -170,6 +202,16 @@ export default async function MangaDetailPage(props: {
               {manga.synopsis}
             </p>
           ) : null}
+
+          {/* Chapter list (from the MangaDex-synced catalog). */}
+          <MangaChapterList
+            chapters={chapterRows.map((c) => ({
+              number: c.number,
+              title: c.title,
+              publishedAt: c.published_at,
+            }))}
+            chaptersRead={progress?.chapters_read ?? 0}
+          />
         </div>
       </div>
     </main>

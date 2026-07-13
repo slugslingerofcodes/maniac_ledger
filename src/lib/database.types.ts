@@ -713,6 +713,10 @@ export type Database = {
           year: number | null;
           authors: string[];
           genres: string[];
+          /** MangaDex uuid, resolved once for chapter syncs. Migration 0024. */
+          mangadex_id: string | null;
+          /** Last chapter-list sync from MangaDex. Migration 0024. */
+          chapters_synced_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -731,6 +735,8 @@ export type Database = {
           year?: number | null;
           authors?: string[];
           genres?: string[];
+          mangadex_id?: string | null;
+          chapters_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -749,10 +755,47 @@ export type Database = {
           year?: number | null;
           authors?: string[];
           genres?: string[];
+          mangadex_id?: string | null;
+          chapters_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Relationships: [];
+      };
+      manga_chapters: {
+        Row: {
+          id: string;
+          manga_id: string;
+          number: number;
+          title: string | null;
+          published_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          manga_id: string;
+          number: number;
+          title?: string | null;
+          published_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          manga_id?: string;
+          number?: number;
+          title?: string | null;
+          published_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "manga_chapters_manga_id_fkey";
+            columns: ["manga_id"];
+            isOneToOne: false;
+            referencedRelation: "manga";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       manga_progress: {
         Row: {

@@ -859,46 +859,19 @@ const MANGA_MEDIA_FIELDS = `
   countryOfOrigin
 `;
 
-/** Format-tab value → AniList countryOfOrigin filter. */
-const MANGA_TYPE_TO_COUNTRY: Record<JikanMangaType, string> = {
+/** Comic format tabs → AniList countryOfOrigin filter (lightnovel has none). */
+const MANGA_TYPE_TO_COUNTRY: Partial<Record<JikanMangaType, string>> = {
   manga: "JP",
   manhwa: "KR",
   manhua: "CN",
 };
 
-/**
- * Manga search against AniList, returned in the Jikan manga response shape —
- * the fallback engine when MAL is down. The format tabs map to AniList's
- * `countryOfOrigin` (JP / KR / CN); with no query it browses by popularity.
- * Entries without a MAL id are dropped (detail links are mal_id-keyed).
- *
- * @throws {AnilistError} On any failed request.
- */
-export async function searchAnilistManga(
-  query: string,
-  page = 1,
-  type?: JikanMangaType,
+/** Shared page-of-manga runner for the SFW and adult searches below. */
+async function runAnilistMangaQuery(
+  defs: string[],
+  args: string[],
+  vars: Record<string, unknown>,
 ): Promise<JikanMangaSearchResponse> {
-  const vars: Record<string, unknown> = { page, perPage: PER_PAGE };
-  const defs: string[] = ["$page: Int", "$perPage: Int"];
-  const args: string[] = [
-    "type: MANGA",
-    query.trim() ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
-  ];
-  if (query.trim()) {
-    vars.search = query.trim();
-    defs.push("$search: String");
-    args.push("search: $search");
-  }
-  if (type) {
-    vars.country = MANGA_TYPE_TO_COUNTRY[type];
-    defs.push("$country: CountryCode");
-    args.push("countryOfOrigin: $country");
-    // Every format tab means comics, not novels — without this, the Manhwa /
-    // Manhua tabs would include Korean/Chinese light novels (format NOVEL).
-    args.push("format_in: [MANGA, ONE_SHOT]");
-  }
-
   const gql = `
     query (${defs.join(", ")}) {
       Page(page: $page, perPage: $perPage) {
@@ -937,6 +910,102 @@ export async function searchAnilistManga(
       },
     },
   };
+}
+
+/** Apply a format tab to a manga query's defs/args/vars. */
+function applyMangaType(
+  type: JikanMangaType,
+  defs: string[],
+  args: string[],
+  vars: Record<string, unknown>,
+) {
+  if (type === "lightnovel") {
+    args.push("format_in: [NOVEL]");
+    return;
+  }
+  vars.country = MANGA_TYPE_TO_COUNTRY[type];
+  defs.push("$country: CountryCode");
+  args.push("countryOfOrigin: $country");
+  // Comic tabs mean comics, not novels — without this, the Manhwa / Manhua
+  // tabs would include Korean/Chinese light novels (format NOVEL).
+  args.push("format_in: [MANGA, ONE_SHOT]");
+}
+
+/**
+ * Manga search against AniList, returned in the Jikan manga response shape —
+ * the fallback engine when MAL is down. SFW only (`isAdult: false`). The
+ * comic tabs map to AniList's `countryOfOrigin` (JP / KR / CN) and the light
+ * novel tab to `format: NOVEL`; MAL genre ids translate to AniList
+ * genre/tag names. With no query it browses by popularity. Entries without a
+ * MAL id are dropped (detail links are mal_id-keyed).
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function searchAnilistManga(
+  query: string,
+  page = 1,
+  type?: JikanMangaType,
+  genreIds: number[] = [],
+): Promise<JikanMangaSearchResponse> {
+  const vars: Record<string, unknown> = { page, perPage: PER_PAGE };
+  const defs: string[] = ["$page: Int", "$perPage: Int"];
+  const args: string[] = [
+    "type: MANGA",
+    "isAdult: false",
+    query.trim() ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
+  ];
+  if (query.trim()) {
+    vars.search = query.trim();
+    defs.push("$search: String");
+    args.push("search: $search");
+  }
+  if (type) applyMangaType(type, defs, args, vars);
+  const { genres, tags } = malGenresToAnilist(genreIds);
+  if (genres.length > 0) {
+    vars.genres = genres;
+    defs.push("$genres: [String]");
+    args.push("genre_in: $genres");
+  }
+  if (tags.length > 0) {
+    vars.tags = tags;
+    defs.push("$tags: [String]");
+    args.push("tag_in: $tags");
+  }
+
+  return runAnilistMangaQuery(defs, args, vars);
+}
+
+/**
+ * Adult manga search against AniList (genre "Hentai") — the fallback engine
+ * for the manga side's miscellaneous section when MAL is down. Same tabs and
+ * shape as {@link searchAnilistManga}, without the adult filter.
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function searchAnilistAdultManga(
+  query: string,
+  page = 1,
+  type?: JikanMangaType,
+): Promise<JikanMangaSearchResponse> {
+  const vars: Record<string, unknown> = {
+    page,
+    perPage: PER_PAGE,
+    genres: ["Hentai"],
+  };
+  const defs: string[] = ["$page: Int", "$perPage: Int", "$genres: [String]"];
+  const args: string[] = [
+    "type: MANGA",
+    "genre_in: $genres",
+    query.trim() ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
+  ];
+  if (query.trim()) {
+    vars.search = query.trim();
+    defs.push("$search: String");
+    args.push("search: $search");
+  }
+  if (type) applyMangaType(type, defs, args, vars);
+
+  return runAnilistMangaQuery(defs, args, vars);
 }
 
 /**
@@ -986,6 +1055,63 @@ const ADULT_MODE_GENRES: Record<"ecchi" | "hentai" | "both", string[]> = {
  *
  * @throws {AnilistError} On any failed request.
  */
+/* -------------------------------------------------------------------------- */
+/* Upcoming anime (outage fallback for /upcoming)                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Not-yet-released anime by popularity — the fallback for Jikan's
+ * `/seasons/upcoming`. Fetches full start dates so the page's season grouping
+ * and reminder dates keep working. Entries without a MAL id are dropped.
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function getAnilistUpcoming(pages = 2): Promise<JikanAnime[]> {
+  const gql = `
+    query ($page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { total currentPage lastPage hasNextPage perPage }
+        media(type: ANIME, status: NOT_YET_RELEASED, isAdult: false, sort: POPULARITY_DESC) {
+          ${MEDIA_FIELDS}
+          startDate { year month day }
+        }
+      }
+    }
+  `;
+
+  type UpcomingMedia = AnilistMedia & {
+    startDate: { year: number | null; month: number | null; day: number | null } | null;
+  };
+
+  const seen = new Set<number>();
+  const out: JikanAnime[] = [];
+  for (let page = 1; page <= pages; page++) {
+    const data = await anilistFetch<{
+      Page: { pageInfo: AnilistPage["pageInfo"]; media: UpcomingMedia[] };
+    }>(gql, { page, perPage: PER_PAGE }, { revalidate: ONE_DAY_SECONDS });
+
+    for (const m of data.Page.media) {
+      if (m.idMal == null || seen.has(m.idMal)) continue;
+      seen.add(m.idMal);
+      const shaped = toJikanShape(m);
+      // Full premiere date (when known) → the page's season buckets + the
+      // reminder's scheduled_date. Year-only dates stay null (season/year on
+      // the shape already group those).
+      const { year, month, day } = m.startDate ?? {};
+      if (year != null && month != null && day != null) {
+        shaped.aired = {
+          from: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00+00:00`,
+          to: null,
+        };
+      }
+      out.push(shaped);
+    }
+
+    if (!data.Page.pageInfo.hasNextPage) break;
+  }
+  return out;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Airing schedule (outage fallback for /schedule + the home mini-schedule)   */
 /* -------------------------------------------------------------------------- */

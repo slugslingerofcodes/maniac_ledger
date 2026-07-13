@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Home", href: "/manga" },
   { label: "Search", href: "/manga/search" },
   { label: "Library", href: "/manga/library" },
+  { label: "Miscellaneous", href: "/manga/miscellaneous" },
 ] as const;
 
 function isActive(pathname: string, href: string) {

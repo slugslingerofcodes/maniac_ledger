@@ -860,14 +860,14 @@ interface JikanMangaByIdResponse {
   data: JikanManga;
 }
 
-/** Jikan `/manga` type filter values (subset we expose as tabs). */
-export type JikanMangaType = "manga" | "manhwa" | "manhua";
+/** Jikan `/manga` type filter values (the format tabs). */
+export type JikanMangaType = "manga" | "manhwa" | "manhua" | "lightnovel";
 
 /**
  * Search manga by title and/or MAL genre ids (`/manga`, SFW only). With an empty
  * query it browses by member count so the best-known titles surface first —
  * same pattern as {@link searchAnime}. `type` narrows to a media kind
- * (manga / manhwa / manhua). Cached 1h.
+ * (manga / manhwa / manhua / lightnovel). Cached 1h.
  *
  * @throws {JikanError} On any non-2xx response.
  */
@@ -880,6 +880,34 @@ export function searchManga(
   const params = new URLSearchParams({ sfw: "true", page: String(page) });
   if (query) params.set("q", query);
   if (genreIds.length > 0) params.set("genres", genreIds.join(","));
+  if (type) params.set("type", type);
+  if (!query) {
+    params.set("order_by", "members");
+    params.set("sort", "desc");
+  }
+  return jikanFetch<JikanMangaSearchResponse>(`/manga?${params.toString()}`, {
+    revalidate: ONE_HOUR_SECONDS,
+  });
+}
+
+/**
+ * Search the adult manga catalog (MAL genre 12 "Hentai", SFW filtering off) —
+ * powers the manga side's miscellaneous section. Optional `type` narrows to
+ * manga / manhwa / manhua; with no query it browses by member count.
+ *
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function searchAdultManga(
+  query: string,
+  page = 1,
+  type?: JikanMangaType,
+): Promise<JikanMangaSearchResponse> {
+  const params = new URLSearchParams({
+    sfw: "false",
+    page: String(page),
+    genres: String(MAL_GENRE_HENTAI),
+  });
+  if (query) params.set("q", query);
   if (type) params.set("type", type);
   if (!query) {
     params.set("order_by", "members");

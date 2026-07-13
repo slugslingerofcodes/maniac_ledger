@@ -11,23 +11,26 @@ import { SourceNotice } from "@/components/SourceNotice";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebounce } from "@/hooks/use-debounce";
+import { genreChipStyle } from "@/lib/genre-color";
+import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
 import type { JikanManga, JikanMangaType } from "@/lib/jikan";
 
 type Status = "loading" | "success" | "error";
-type FormatTab = "all" | JikanMangaType;
 
-const FORMAT_TABS: { value: FormatTab; label: string }[] = [
-  { value: "all", label: "All" },
+/** The format tabs — each gets its own search bar + genre filter. */
+const FORMAT_TABS: { value: JikanMangaType; label: string }[] = [
   { value: "manga", label: "Manga" },
   { value: "manhwa", label: "Manhwa" },
   { value: "manhua", label: "Manhua" },
+  { value: "lightnovel", label: "Light Novels" },
 ];
 
 export default function MangaSearchPage() {
+  const [format, setFormat] = useState<JikanMangaType>("manga");
   const [query, setQuery] = useState("");
+  const [genreIds, setGenreIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
-  const [format, setFormat] = useState<FormatTab>("all");
   const debouncedQuery = useDebounce(query, 400);
 
   const [results, setResults] = useState<JikanManga[]>([]);
@@ -48,15 +51,18 @@ export default function MangaSearchPage() {
       .filter((id): id is number => id != null),
   );
 
+  function toggleGenre(id: number) {
+    setPage(1);
+    setGenreIds((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
+    );
+  }
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    searchMangaAction(
-      debouncedQuery,
-      page,
-      format === "all" ? undefined : format,
-    )
+    searchMangaAction(debouncedQuery, page, format, genreIds)
       .then((res) => {
         if (cancelled) return;
         if (res.ok) {
@@ -75,7 +81,7 @@ export default function MangaSearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, page, format]);
+  }, [debouncedQuery, page, format, genreIds]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function goToPage(n: number) {
@@ -86,42 +92,77 @@ export default function MangaSearchPage() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <h1 className="text-gradient mb-4 text-2xl font-semibold tracking-tight">
-        Search manga
+        Search
       </h1>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Search manga… (or leave empty to browse popular)"
-          aria-label="Search manga"
-          className="h-10 max-w-md"
-        />
-        {/* Format tabs: All / Manga / Manhwa / Manhua */}
-        <div className="inline-flex overflow-hidden rounded-lg border border-border">
-          {FORMAT_TABS.map((tab) => (
+      {/* Format tabs: Manga / Manhwa / Manhua / Light Novels */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {FORMAT_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            aria-pressed={format === tab.value}
+            onClick={() => {
+              setFormat(tab.value);
+              setPage(1);
+            }}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              format === tab.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Per-tab filter system: search bar + genre chips. */}
+      <Input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setPage(1);
+        }}
+        placeholder={`Search ${FORMAT_TABS.find((t) => t.value === format)!.label.toLowerCase()}… (or browse popular)`}
+        aria-label="Search"
+        className="mb-3 h-10 max-w-md"
+      />
+
+      <div className="mb-6 flex flex-wrap gap-1.5">
+        {GENRE_OPTIONS.map((g) => {
+          const active = genreIds.includes(g.id);
+          return (
             <button
-              key={tab.value}
+              key={g.id}
               type="button"
-              aria-pressed={format === tab.value}
-              onClick={() => {
-                setFormat(tab.value);
-                setPage(1);
-              }}
+              onClick={() => toggleGenre(g.id)}
+              aria-pressed={active}
               className={cn(
-                "px-3 py-2 text-sm font-medium transition-colors",
-                format === tab.value
+                "rounded-full px-3 py-1 text-xs font-medium transition",
+                active
                   ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:text-foreground",
+                  : "hover:brightness-125",
               )}
+              style={active ? undefined : genreChipStyle(g.name)}
             >
-              {tab.label}
+              {g.name}
             </button>
-          ))}
-        </div>
+          );
+        })}
+        {genreIds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setGenreIds([]);
+              setPage(1);
+            }}
+            className="rounded-full px-3 py-1 text-xs font-medium text-destructive hover:underline"
+          >
+            Clear ✕
+          </button>
+        ) : null}
       </div>
 
       {status === "success" ? (
@@ -138,13 +179,13 @@ export default function MangaSearchPage() {
 
       {status === "error" ? (
         <p className="py-24 text-center text-sm text-muted-foreground">
-          Manga search is unavailable right now. Please try again.
+          Search is unavailable right now. Please try again.
         </p>
       ) : null}
 
       {status === "success" && results.length === 0 ? (
         <p className="py-24 text-center text-sm text-muted-foreground">
-          No manga found.
+          Nothing found — try another title or fewer genres.
         </p>
       ) : null}
 

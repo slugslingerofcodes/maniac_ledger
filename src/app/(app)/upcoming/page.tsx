@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { UpcomingCard } from "@/components/anime/UpcomingCard";
+import { SourceNotice } from "@/components/SourceNotice";
+import { getAnilistUpcoming } from "@/lib/anilist";
 import { getUpcomingSeasons, type JikanAnime, type JikanSeason } from "@/lib/jikan";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -67,18 +69,25 @@ export default async function UpcomingPage() {
   // Protected route: redirects to /login when there is no session.
   await requireUser();
 
+  // MAL (Jikan) primary; AniList fallback so the tab survives MAL outages.
   let upcoming: JikanAnime[];
+  let source: "mal" | "anilist" = "mal";
   try {
     upcoming = await getUpcomingSeasons(2);
   } catch {
-    return (
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-        <Header />
-        <p className="mt-6 text-sm text-destructive">
-          Couldn&apos;t load upcoming anime right now. Please try again later.
-        </p>
-      </main>
-    );
+    try {
+      upcoming = await getAnilistUpcoming(2);
+      source = "anilist";
+    } catch {
+      return (
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+          <Header />
+          <p className="mt-6 text-sm text-destructive">
+            Couldn&apos;t load upcoming anime right now. Please try again later.
+          </p>
+        </main>
+      );
+    }
   }
 
   // Which of these the user already has a reminder for (RLS-scoped to them).
@@ -93,6 +102,10 @@ export default async function UpcomingPage() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <Header />
+
+      <div className="mt-4">
+        <SourceNotice source={source} anilistLabel="Upcoming via AniList" />
+      </div>
 
       {groups.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">

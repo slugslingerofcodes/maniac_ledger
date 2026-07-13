@@ -22,6 +22,7 @@ const FORMAT_TABS: { value: MangaFormatFilter; label: string }[] = [
   { value: "Manga", label: "Manga" },
   { value: "Manhwa", label: "Manhwa" },
   { value: "Manhua", label: "Manhua" },
+  { value: "Light Novel", label: "Light Novels" },
 ];
 
 export default function MangaLibraryPage() {

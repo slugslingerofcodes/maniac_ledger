@@ -132,6 +132,8 @@ export type Database = {
           notes: string | null;
           /** Times re-completed (0 = first watch). Migration 0017. */
           rewatch_count: number;
+          /** Hidden from feed/public profiles/friends (misc tab). Migration 0023. */
+          is_private: boolean;
           started_at: string | null;
           completed_at: string | null;
           last_watched_at: string | null;
@@ -147,6 +149,7 @@ export type Database = {
           score?: number | null;
           notes?: string | null;
           rewatch_count?: number;
+          is_private?: boolean;
           started_at?: string | null;
           completed_at?: string | null;
           last_watched_at?: string | null;
@@ -162,6 +165,7 @@ export type Database = {
           score?: number | null;
           notes?: string | null;
           rewatch_count?: number;
+          is_private?: boolean;
           started_at?: string | null;
           completed_at?: string | null;
           last_watched_at?: string | null;
@@ -692,6 +696,118 @@ export type Database = {
           },
         ];
       };
+      manga: {
+        Row: {
+          id: string;
+          mal_id: number | null;
+          title: string;
+          title_english: string | null;
+          synopsis: string | null;
+          cover_url: string | null;
+          score: number | null;
+          status: string | null;
+          /** MAL media kind: "Manga" | "Manhwa" | "Manhua" | "Light Novel" | … */
+          type: string | null;
+          chapters: number | null;
+          volumes: number | null;
+          year: number | null;
+          authors: string[];
+          genres: string[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          mal_id?: number | null;
+          title: string;
+          title_english?: string | null;
+          synopsis?: string | null;
+          cover_url?: string | null;
+          score?: number | null;
+          status?: string | null;
+          type?: string | null;
+          chapters?: number | null;
+          volumes?: number | null;
+          year?: number | null;
+          authors?: string[];
+          genres?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          mal_id?: number | null;
+          title?: string;
+          title_english?: string | null;
+          synopsis?: string | null;
+          cover_url?: string | null;
+          score?: number | null;
+          status?: string | null;
+          type?: string | null;
+          chapters?: number | null;
+          volumes?: number | null;
+          year?: number | null;
+          authors?: string[];
+          genres?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      manga_progress: {
+        Row: {
+          id: string;
+          user_id: string;
+          manga_id: string;
+          status: Database["public"]["Enums"]["reading_status"];
+          chapters_read: number;
+          volumes_read: number;
+          score: number | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          manga_id: string;
+          status?: Database["public"]["Enums"]["reading_status"];
+          chapters_read?: number;
+          volumes_read?: number;
+          score?: number | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          manga_id?: string;
+          status?: Database["public"]["Enums"]["reading_status"];
+          chapters_read?: number;
+          volumes_read?: number;
+          score?: number | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "manga_progress_manga_id_fkey";
+            columns: ["manga_id"];
+            isOneToOne: false;
+            referencedRelation: "manga";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "manga_progress_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       anime_watched_count: {
@@ -718,6 +834,12 @@ export type Database = {
         | "watching"
         | "completed"
         | "plan_to_watch"
+        | "on_hold"
+        | "dropped";
+      reading_status:
+        | "reading"
+        | "completed"
+        | "plan_to_read"
         | "on_hold"
         | "dropped";
     };

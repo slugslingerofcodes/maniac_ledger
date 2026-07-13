@@ -338,6 +338,36 @@ export function searchAnime(
   });
 }
 
+/** MAL genre ids for the adult "miscellaneous" section. */
+export const MAL_GENRE_ECCHI = 9;
+export const MAL_GENRE_HENTAI = 12;
+
+/**
+ * Search the adult MAL catalog with **SFW filtering OFF** — powers the
+ * login-gated "miscellaneous" (ecchi / hentai) section. Same shape and
+ * pagination as {@link searchAnime}; with no query it browses by MAL member
+ * count so the best-known titles surface first. Pass the ecchi and/or hentai
+ * genre id(s) to constrain the catalog.
+ *
+ * @throws {JikanError} On any non-2xx response (e.g. 429 when rate limited).
+ */
+export function searchAdultAnime(
+  query: string,
+  page = 1,
+  genreIds: number[] = [],
+): Promise<JikanSearchResponse> {
+  const params = new URLSearchParams({ sfw: "false", page: String(page) });
+  if (query) params.set("q", query);
+  if (genreIds.length > 0) params.set("genres", genreIds.join(","));
+  if (!query) {
+    params.set("order_by", "members");
+    params.set("sort", "desc");
+  }
+  return jikanFetch<JikanSearchResponse>(`/anime?${params.toString()}`, {
+    revalidate: ONE_HOUR_SECONDS,
+  });
+}
+
 /** ~3 req/sec → space requests ~350ms apart; cache windows in seconds. */
 const ONE_DAY_SECONDS = 86_400;
 const ONE_HOUR_SECONDS = 3_600;
@@ -786,4 +816,108 @@ export async function getAllAnimeEpisodes(
     if (!pagination.has_next_page) break;
   }
   return all;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Manga (the /manga endpoints — powers the separate manga framework)          */
+/* -------------------------------------------------------------------------- */
+
+/** Serialization window for a manga, e.g. `{ from: "1997-07-22T…", to: null }`. */
+export interface JikanPublished {
+  from: string | null;
+  to: string | null;
+}
+
+export interface JikanManga {
+  mal_id: number;
+  title: string;
+  title_english: string | null;
+  title_synonyms?: string[];
+  synopsis: string | null;
+  /** "Manga", "Light Novel", "One-shot", etc. */
+  type?: string | null;
+  chapters: number | null;
+  volumes: number | null;
+  /** "Finished", "Publishing", "On Hiatus", "Discontinued". */
+  status: string;
+  score: number | null;
+  scored_by?: number | null;
+  members?: number | null;
+  images: JikanImages;
+  genres: JikanNamedEntity[];
+  /** Mangaka / writers, as named entities. */
+  authors?: JikanNamedEntity[];
+  published?: JikanPublished;
+  relations?: JikanRelationGroup[];
+}
+
+export interface JikanMangaSearchResponse {
+  data: JikanManga[];
+  pagination: JikanPagination;
+}
+
+interface JikanMangaByIdResponse {
+  data: JikanManga;
+}
+
+/** Jikan `/manga` type filter values (subset we expose as tabs). */
+export type JikanMangaType = "manga" | "manhwa" | "manhua";
+
+/**
+ * Search manga by title and/or MAL genre ids (`/manga`, SFW only). With an empty
+ * query it browses by member count so the best-known titles surface first —
+ * same pattern as {@link searchAnime}. `type` narrows to a media kind
+ * (manga / manhwa / manhua). Cached 1h.
+ *
+ * @throws {JikanError} On any non-2xx response.
+ */
+export function searchManga(
+  query: string,
+  page = 1,
+  genreIds: number[] = [],
+  type?: JikanMangaType,
+): Promise<JikanMangaSearchResponse> {
+  const params = new URLSearchParams({ sfw: "true", page: String(page) });
+  if (query) params.set("q", query);
+  if (genreIds.length > 0) params.set("genres", genreIds.join(","));
+  if (type) params.set("type", type);
+  if (!query) {
+    params.set("order_by", "members");
+    params.set("sort", "desc");
+  }
+  return jikanFetch<JikanMangaSearchResponse>(`/manga?${params.toString()}`, {
+    revalidate: ONE_HOUR_SECONDS,
+  });
+}
+
+/** Top / most-popular manga (`/top/manga`, MAL rank order). Cached 24h. */
+export function getTopManga(limit = 24): Promise<JikanMangaSearchResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return jikanFetch<JikanMangaSearchResponse>(`/top/manga?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/** Most-popular manga by MAL member count. Cached 24h. */
+export function getTopMangaByPopularity(
+  limit = 18,
+): Promise<JikanMangaSearchResponse> {
+  const params = new URLSearchParams({
+    filter: "bypopularity",
+    limit: String(limit),
+  });
+  return jikanFetch<JikanMangaSearchResponse>(`/top/manga?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/**
+ * Fetch a single manga by its MyAnimeList id (`/manga/{id}/full`). Cached 1h.
+ *
+ * @throws {JikanError} On any non-2xx response (e.g. 404 for an unknown id).
+ */
+export function getMangaById(malId: number): Promise<JikanManga> {
+  return jikanFetch<JikanMangaByIdResponse>(`/manga/${malId}/full`, {
+    revalidate: ONE_HOUR_SECONDS,
+  }).then((r) => r.data);
 }

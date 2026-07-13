@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Megaphone, ShieldCheck } from "lucide-react";
+import { BookOpen, Clapperboard, Megaphone, ShieldCheck } from "lucide-react";
 
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
@@ -94,6 +94,28 @@ export default async function ProfilePage() {
       <ImportExportCard />
 
       <PushToggle />
+
+      <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Switch experience
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition hover:ring-2 hover:ring-primary/40"
+          >
+            <Clapperboard className="size-4 text-primary" aria-hidden />
+            Anime
+          </Link>
+          <Link
+            href="/manga"
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition hover:ring-2 hover:ring-primary/40"
+          >
+            <BookOpen className="size-4 text-primary" aria-hidden />
+            Manga
+          </Link>
+        </div>
+      </div>
 
       <Link
         href="/announcements"

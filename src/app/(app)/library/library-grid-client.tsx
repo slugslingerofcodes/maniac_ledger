@@ -4,10 +4,14 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { getUserLibrary } from "@/app/actions/library";
+import {
+  getUserLibrary,
+  removeFromLibraryAction,
+  type LibraryEntryItem,
+} from "@/app/actions/library";
 import { bulkUpdateStatus } from "@/app/actions/progress";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import { genreChipStyle } from "@/lib/genre-color";
@@ -78,6 +82,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<WatchStatus>("completed");
   const [bulkPending, startBulk] = useTransition();
+  const [, startRemove] = useTransition();
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -91,6 +96,32 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   function exitSelectMode() {
     setSelectMode(false);
     setSelected(new Set());
+  }
+
+  /** Remove a single entry from the library, optimistically, with a confirm. */
+  function removeItem(id: string, title: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Remove “${title}” from your library?`)
+    ) {
+      return;
+    }
+    const prev = queryClient.getQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY);
+    // Optimistically drop it from the cached list (the grid animates it out).
+    queryClient.setQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY, (old) =>
+      (old ?? []).filter((i) => i.id !== id),
+    );
+    startRemove(async () => {
+      const res = await removeFromLibraryAction(id);
+      if (res.ok) {
+        toast.success(`Removed “${title}”.`);
+      } else {
+        // Revert to the pre-remove list and surface the error.
+        if (prev) queryClient.setQueryData(LIBRARY_QUERY_KEY, prev);
+        else queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
+        toast.error(res.error);
+      }
+    });
   }
 
   function applyBulk() {
@@ -258,7 +289,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                       : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
                   }
                 >
-                  <div className="relative">
+                  <div className="group/lib relative">
                     <LibraryCard item={item} />
                     {selectMode ? (
                       <button
@@ -286,7 +317,17 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                           ) : null}
                         </span>
                       </button>
-                    ) : null}
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id, item.title)}
+                        aria-label={`Remove ${item.title} from library`}
+                        title="Remove from library"
+                        className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
+                      >
+                        <Trash2 className="size-4" aria-hidden />
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               ))}

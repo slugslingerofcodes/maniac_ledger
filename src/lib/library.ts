@@ -116,6 +116,7 @@ export async function resolveAnimeIdByMalId(malId: number): Promise<string> {
  */
 export async function addToLibrary(
   jikanAnime: JikanAnime,
+  opts: { isPrivate?: boolean } = {},
 ): Promise<AddToLibraryResult> {
   const supabase = await createClient();
 
@@ -130,13 +131,28 @@ export async function addToLibrary(
   // 1. Upsert the catalog row, deduped by mal_id. Refreshes metadata on repeat.
   const animeId = await upsertCatalogAnime(supabase, jikanAnime);
 
-  // 2. Add it to the user's library.
-  const { error: progressError } = await supabase.from("user_progress").insert({
+  // 2. Add it to the user's library. `is_private` (migration 0023) keeps the
+  //    entry off the feed / public profiles / friend views — used by the
+  //    miscellaneous (adult) tab.
+  const row = {
     user_id: user.id,
     anime_id: animeId,
-    status: "plan_to_watch",
+    status: "plan_to_watch" as const,
     episodes_watched: 0,
-  });
+    is_private: opts.isPrivate ?? false,
+  };
+  let { error: progressError } = await supabase
+    .from("user_progress")
+    .insert(row);
+
+  // Migration 0023 not applied yet → retry without the column so adds keep
+  // working (the entry just isn't flagged private until the migration runs).
+  if (progressError && /is_private/i.test(progressError.message)) {
+    const { is_private: _isPrivate, ...withoutFlag } = row;
+    ({ error: progressError } = await supabase
+      .from("user_progress")
+      .insert(withoutFlag));
+  }
 
   if (progressError) {
     // 23505 = unique (user_id, anime_id) violation → already in their library.

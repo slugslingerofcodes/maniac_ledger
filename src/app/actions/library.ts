@@ -88,13 +88,15 @@ export type AddToLibraryActionResult =
 /**
  * Server Action wrapper around `addToLibrary`. Adds the anime, revalidates the
  * library page so it reflects the new entry, and returns a serializable result
- * the client can use to drive its UI.
+ * the client can use to drive its UI. `opts.isPrivate` (the miscellaneous tab)
+ * keeps the entry off the feed, public profiles, and friend views.
  */
 export async function addToLibraryAction(
   anime: JikanAnime,
+  opts: { isPrivate?: boolean } = {},
 ): Promise<AddToLibraryActionResult> {
   try {
-    const result = await addToLibrary(anime);
+    const result = await addToLibrary(anime, opts);
     revalidatePath("/library");
 
     // Only worth resolving on a fresh add — a repeat add hasn't changed the
@@ -122,6 +124,54 @@ export async function addToLibraryAction(
       error: err instanceof Error ? err.message : "Failed to add to library.",
     };
   }
+}
+
+export type RemoveFromLibraryResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * Removes an anime from the signed-in user's library: deletes their
+ * `user_progress` row and any per-episode watch rows for that title. RLS scopes
+ * every delete to the current user, so no explicit `user_id` filter is needed
+ * (see the RLS note in CLAUDE.md). The shared catalog row is left intact — it's
+ * community data other users may still be tracking.
+ */
+export async function removeFromLibraryAction(
+  animeId: string,
+): Promise<RemoveFromLibraryResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "You must be signed in to remove anime." };
+  }
+
+  // Best-effort: clear this title's per-episode watch rows first so it doesn't
+  // linger in the watched-count view. Scoped to the user by RLS.
+  const { data: eps } = await supabase
+    .from("episodes")
+    .select("id")
+    .eq("anime_id", animeId);
+  const episodeIds = (eps ?? []).map((e) => e.id);
+  if (episodeIds.length > 0) {
+    await supabase.from("episode_progress").delete().in("episode_id", episodeIds);
+  }
+
+  const { error } = await supabase
+    .from("user_progress")
+    .delete()
+    .eq("anime_id", animeId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/library");
+  revalidatePath("/");
+  return { ok: true };
 }
 
 /**

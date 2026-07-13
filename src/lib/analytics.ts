@@ -5,7 +5,11 @@ import { track as vercelTrack } from "@vercel/analytics";
  * props shape (Vercel only accepts string | number | boolean | null values).
  */
 export type AnalyticsEvents = {
-  anime_added: { malId: number; title: string; source: "search" | "recommendation" };
+  anime_added: {
+    malId: number;
+    title: string;
+    source: "search" | "recommendation" | "miscellaneous";
+  };
   episode_marked_watched: { animeId: string; episodeId: string };
   status_changed: { animeId: string; status: string };
   recommendation_clicked: { malId: number; title: string };

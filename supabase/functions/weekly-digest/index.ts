@@ -93,11 +93,14 @@ Deno.serve(async (req) => {
     }
   }
 
-  // A shared pool of well-rated catalog titles for the picks section.
+  // A shared pool of well-rated catalog titles for the picks section. Hentai
+  // rows are excluded — the shared catalog also holds titles added from the
+  // adult "miscellaneous" tab, and picks land in every user's inbox.
   const { data: pool } = await supabase
     .from("anime")
     .select("id, title, poster_url, score")
     .not("score", "is", null)
+    .not("genres", "cs", "{Hentai}")
     .order("score", { ascending: false })
     .limit(60);
 

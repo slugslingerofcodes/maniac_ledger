@@ -18,26 +18,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/hooks/use-user";
+import { NAV_ITEMS } from "@/lib/nav-items";
 import { createClient } from "@/lib/supabase/client";
 import { getDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
-
-const NAV_ITEMS = [
-  { label: "Library", href: "/library" },
-  { label: "My Progress", href: "/progress" },
-  { label: "Search", href: "/search" },
-  { label: "Schedule", href: "/schedule" },
-  { label: "Seasons", href: "/seasons" },
-  { label: "Upcoming", href: "/upcoming" },
-  { label: "Movies", href: "/movies" },
-  { label: "Lists", href: "/lists" },
-  { label: "Friends", href: "/friends" },
-  { label: "Feed", href: "/feed" },
-  { label: "Store", href: "/store" },
-  { label: "News", href: "/news" },
-  { label: "Songs", href: "/songs" },
-  { label: "Recommendations", href: "/recommendations" },
-] as const;
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");

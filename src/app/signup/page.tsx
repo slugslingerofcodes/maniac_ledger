@@ -45,6 +45,19 @@ export default async function SignupPage(props: {
         <CardContent className="flex flex-col gap-4">
           <form className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                name="username"
+                type="text"
+                placeholder="e.g. slime_king"
+                autoComplete="username"
+                minLength={2}
+                maxLength={32}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"

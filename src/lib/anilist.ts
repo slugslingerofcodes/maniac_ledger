@@ -2,6 +2,9 @@ import { GENRE_OPTIONS } from "@/lib/genres";
 import type {
   JikanAnime,
   JikanImageSet,
+  JikanManga,
+  JikanMangaSearchResponse,
+  JikanMangaType,
   JikanSearchResponse,
 } from "@/lib/jikan";
 import type {
@@ -732,4 +735,314 @@ export async function randomAnilistAnime(): Promise<JikanAnime> {
   }
   const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
   return toJikanShape(pick);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Manga (outage fallback for the manga framework)                             */
+/* -------------------------------------------------------------------------- */
+
+interface AnilistMangaMedia {
+  id: number;
+  idMal: number | null;
+  title: { romaji: string | null; english: string | null };
+  description: string | null;
+  /** MANGA | NOVEL | ONE_SHOT */
+  format: string | null;
+  status: string | null;
+  chapters: number | null;
+  volumes: number | null;
+  averageScore: number | null;
+  popularity: number | null;
+  startDate: { year: number | null } | null;
+  coverImage: {
+    extraLarge: string | null;
+    large: string | null;
+    medium: string | null;
+  } | null;
+  genres: string[] | null;
+  /** JP / KR / CN / TW — drives the Manga/Manhwa/Manhua display type. */
+  countryOfOrigin: string | null;
+  staff?: {
+    edges: { role: string | null; node: { name: { full: string | null } | null } }[];
+  } | null;
+}
+
+/** AniList MediaStatus → MAL's manga status strings. */
+const MANGA_STATUS_TO_JIKAN: Record<string, string> = {
+  FINISHED: "Finished",
+  RELEASING: "Publishing",
+  NOT_YET_RELEASED: "Not yet published",
+  CANCELLED: "Discontinued",
+  HIATUS: "On Hiatus",
+};
+
+/** Display media kind from AniList format + country of origin. */
+function mangaTypeOf(m: AnilistMangaMedia): string {
+  if (m.format === "NOVEL") return "Light Novel";
+  if (m.format === "ONE_SHOT") return "One-shot";
+  switch (m.countryOfOrigin) {
+    case "KR":
+      return "Manhwa";
+    case "CN":
+    case "TW":
+      return "Manhua";
+    default:
+      return "Manga";
+  }
+}
+
+/** Author names from the staff credits ("Story & Art", "Story", "Art", …). */
+function mangaAuthorsOf(m: AnilistMangaMedia): { mal_id: number; type: string; name: string; url: string }[] {
+  const names: string[] = [];
+  for (const e of m.staff?.edges ?? []) {
+    const role = (e.role ?? "").toLowerCase();
+    const name = e.node?.name?.full;
+    if (!name) continue;
+    if (role.includes("story") || role.includes("art") || role.includes("creator")) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names.map((name) => ({ mal_id: 0, type: "people", name, url: "" }));
+}
+
+function toJikanMangaShape(m: AnilistMangaMedia): JikanManga {
+  const cover =
+    m.coverImage?.extraLarge ?? m.coverImage?.large ?? m.coverImage?.medium ?? null;
+  const imageSet: JikanImageSet = {
+    image_url: cover,
+    small_image_url: m.coverImage?.medium ?? cover,
+    large_image_url: cover,
+  };
+  return {
+    mal_id: m.idMal!,
+    title: m.title.romaji ?? m.title.english ?? `AniList #${m.id}`,
+    title_english: m.title.english,
+    synopsis: stripHtml(m.description),
+    type: mangaTypeOf(m),
+    chapters: m.chapters,
+    volumes: m.volumes,
+    status: m.status ? (MANGA_STATUS_TO_JIKAN[m.status] ?? m.status) : "Unknown",
+    score: m.averageScore != null ? Math.round(m.averageScore) / 10 : null,
+    scored_by: null,
+    members: m.popularity,
+    images: { jpg: imageSet, webp: imageSet },
+    genres: (m.genres ?? []).map((name) => ({
+      mal_id: 0,
+      type: "genre",
+      name,
+      url: "",
+    })),
+    authors: mangaAuthorsOf(m),
+    // Year only — enough for `yearOf()` when cataloging fallback rows.
+    published: {
+      from: m.startDate?.year != null ? `${m.startDate.year}-01-01T00:00:00Z` : null,
+      to: null,
+    },
+  };
+}
+
+const MANGA_MEDIA_FIELDS = `
+  id
+  idMal
+  title { romaji english }
+  description
+  format
+  status
+  chapters
+  volumes
+  averageScore
+  popularity
+  startDate { year }
+  coverImage { extraLarge large medium }
+  genres
+  countryOfOrigin
+`;
+
+/** Format-tab value → AniList countryOfOrigin filter. */
+const MANGA_TYPE_TO_COUNTRY: Record<JikanMangaType, string> = {
+  manga: "JP",
+  manhwa: "KR",
+  manhua: "CN",
+};
+
+/**
+ * Manga search against AniList, returned in the Jikan manga response shape —
+ * the fallback engine when MAL is down. The format tabs map to AniList's
+ * `countryOfOrigin` (JP / KR / CN); with no query it browses by popularity.
+ * Entries without a MAL id are dropped (detail links are mal_id-keyed).
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function searchAnilistManga(
+  query: string,
+  page = 1,
+  type?: JikanMangaType,
+): Promise<JikanMangaSearchResponse> {
+  const vars: Record<string, unknown> = { page, perPage: PER_PAGE };
+  const defs: string[] = ["$page: Int", "$perPage: Int"];
+  const args: string[] = [
+    "type: MANGA",
+    query.trim() ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
+  ];
+  if (query.trim()) {
+    vars.search = query.trim();
+    defs.push("$search: String");
+    args.push("search: $search");
+  }
+  if (type) {
+    vars.country = MANGA_TYPE_TO_COUNTRY[type];
+    defs.push("$country: CountryCode");
+    args.push("countryOfOrigin: $country");
+    // Every format tab means comics, not novels — without this, the Manhwa /
+    // Manhua tabs would include Korean/Chinese light novels (format NOVEL).
+    args.push("format_in: [MANGA, ONE_SHOT]");
+  }
+
+  const gql = `
+    query (${defs.join(", ")}) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { total currentPage lastPage hasNextPage perPage }
+        media(${args.join(", ")}) {
+          ${MANGA_MEDIA_FIELDS}
+        }
+      }
+    }
+  `;
+
+  const data = await anilistFetch<{
+    Page: { pageInfo: AnilistPage["pageInfo"]; media: AnilistMangaMedia[] };
+  }>(gql, vars, { revalidate: ONE_HOUR_SECONDS });
+  const { pageInfo, media } = data.Page;
+
+  const seen = new Set<number>();
+  const results = media
+    .filter((m) => {
+      if (m.idMal == null || seen.has(m.idMal)) return false;
+      seen.add(m.idMal);
+      return true;
+    })
+    .map(toJikanMangaShape);
+
+  return {
+    data: results,
+    pagination: {
+      last_visible_page: Math.max(1, pageInfo.lastPage),
+      has_next_page: pageInfo.hasNextPage,
+      current_page: pageInfo.currentPage,
+      items: {
+        count: results.length,
+        total: pageInfo.total,
+        per_page: pageInfo.perPage,
+      },
+    },
+  };
+}
+
+/**
+ * A single manga by MAL id — the detail-page fallback when Jikan is down.
+ * Includes staff credits so authors render. Returns null when AniList has no
+ * matching entry (rather than throwing) so callers can fall through to the
+ * local catalog. Cached 1h.
+ */
+export async function getAnilistMangaByMalId(
+  malId: number,
+): Promise<JikanManga | null> {
+  const gql = `
+    query ($idMal: Int) {
+      Media(idMal: $idMal, type: MANGA) {
+        ${MANGA_MEDIA_FIELDS}
+        staff(sort: RELEVANCE, perPage: 8) {
+          edges { role node { name { full } } }
+        }
+      }
+    }
+  `;
+  const data = await anilistFetch<{ Media: AnilistMangaMedia | null }>(
+    gql,
+    { idMal: malId },
+    { revalidate: ONE_HOUR_SECONDS },
+  );
+  if (!data.Media || data.Media.idMal == null) return null;
+  return toJikanMangaShape(data.Media);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Adult anime (outage fallback for the miscellaneous tab)                    */
+/* -------------------------------------------------------------------------- */
+
+/** Misc-tab mode → AniList genre names. `genre_in` is OR semantics. */
+const ADULT_MODE_GENRES: Record<"ecchi" | "hentai" | "both", string[]> = {
+  ecchi: ["Ecchi"],
+  hentai: ["Hentai"],
+  both: ["Ecchi", "Hentai"],
+};
+
+/**
+ * Adult (ecchi / hentai) anime search against AniList — the fallback engine
+ * for /api/anime/misc-search when MAL is down. Unlike `searchAnilist` this
+ * deliberately does NOT pass `isAdult: false`; the genre filter scopes the
+ * catalog instead. Returned in the Jikan response shape.
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function searchAnilistAdultAnime(
+  query: string,
+  page = 1,
+  mode: "ecchi" | "hentai" | "both" = "both",
+): Promise<JikanSearchResponse> {
+  const vars: Record<string, unknown> = {
+    page,
+    perPage: PER_PAGE,
+    genres: ADULT_MODE_GENRES[mode],
+  };
+  const defs = ["$page: Int", "$perPage: Int", "$genres: [String]"];
+  const args = [
+    "type: ANIME",
+    "genre_in: $genres",
+    query.trim() ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
+  ];
+  if (query.trim()) {
+    vars.search = query.trim();
+    defs.push("$search: String");
+    args.push("search: $search");
+  }
+
+  const gql = `
+    query (${defs.join(", ")}) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { total currentPage lastPage hasNextPage perPage }
+        media(${args.join(", ")}) {
+          ${MEDIA_FIELDS}
+        }
+      }
+    }
+  `;
+
+  const data = await anilistFetch<{ Page: AnilistPage }>(gql, vars, {
+    revalidate: ONE_HOUR_SECONDS,
+  });
+  const { pageInfo, media } = data.Page;
+
+  const seen = new Set<number>();
+  const results = media
+    .filter((m) => {
+      if (m.idMal == null || seen.has(m.idMal)) return false;
+      seen.add(m.idMal);
+      return true;
+    })
+    .map(toJikanShape);
+
+  return {
+    data: results,
+    pagination: {
+      last_visible_page: Math.max(1, pageInfo.lastPage),
+      has_next_page: pageInfo.hasNextPage,
+      current_page: pageInfo.currentPage,
+      items: {
+        count: results.length,
+        total: pageInfo.total,
+        per_page: pageInfo.perPage,
+      },
+    },
+  };
 }

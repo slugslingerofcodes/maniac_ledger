@@ -56,6 +56,10 @@ function toJikanShape(row: AnimeRow): JikanAnime {
  * Title search over the local catalog (title + english title, best-scored
  * first). Genre ids are translated to names and AND-matched against the
  * row's `genres` array. Returns [] when nothing matches or RLS blocks reads.
+ *
+ * Hentai-genre rows are excluded: titles added from the miscellaneous (adult)
+ * tab live in the same shared catalog, and this function feeds SFW surfaces
+ * (the public search API's catalog merge) — mirroring MAL's own `sfw=true`.
  */
 export async function searchCatalog(
   q: string,
@@ -74,6 +78,7 @@ export async function searchCatalog(
     .from("anime")
     .select("*")
     .not("mal_id", "is", null)
+    .not("genres", "cs", "{Hentai}")
     .order("score", { ascending: false, nullsFirst: false })
     .limit(limit);
   if (s) {
@@ -94,14 +99,62 @@ export async function searchCatalog(
     .map(toJikanShape);
 }
 
-/** A random row from the local catalog, or null when it's empty/unreadable. */
+/** Misc-tab mode → the MAL genre names stored on catalog rows. */
+const ADULT_GENRE_NAMES: Record<"ecchi" | "hentai" | "both", string[]> = {
+  ecchi: ["Ecchi"],
+  hentai: ["Hentai"],
+  both: ["Ecchi", "Hentai"],
+};
+
+/**
+ * Adult-title search over the local catalog — the last-resort fallback for the
+ * miscellaneous tab when both MAL and AniList are down. Matches rows whose
+ * `genres` array overlaps the mode's genre names (OR semantics), optionally
+ * narrowed by a title substring. Only returns what users have already
+ * browsed/added, best-scored first.
+ */
+export async function searchAdultCatalog(
+  q: string,
+  mode: "ecchi" | "hentai" | "both" = "both",
+  limit = 50,
+): Promise<JikanAnime[]> {
+  const s = q.replace(/[%_,()]/g, " ").trim();
+
+  const supabase = await createClient();
+  let query = supabase
+    .from("anime")
+    .select("*")
+    .not("mal_id", "is", null)
+    .overlaps("genres", ADULT_GENRE_NAMES[mode])
+    .order("score", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  if (s) {
+    query = query.or(`title.ilike.%${s}%,title_english.ilike.%${s}%`);
+  }
+
+  const { data } = await query;
+  const seen = new Set<number>();
+  return (data ?? [])
+    .filter((row) => {
+      if (row.mal_id == null || seen.has(row.mal_id)) return false;
+      seen.add(row.mal_id);
+      return true;
+    })
+    .map(toJikanShape);
+}
+
+/**
+ * A random row from the local catalog, or null when it's empty/unreadable.
+ * Excludes Hentai-genre rows, matching MAL's `/random/anime?sfw=true`.
+ */
 export async function randomCatalogAnime(): Promise<JikanAnime | null> {
   const supabase = await createClient();
 
   const { count } = await supabase
     .from("anime")
     .select("id", { count: "exact", head: true })
-    .not("mal_id", "is", null);
+    .not("mal_id", "is", null)
+    .not("genres", "cs", "{Hentai}");
   if (!count) return null;
 
   const offset = Math.floor(Math.random() * count);
@@ -109,6 +162,7 @@ export async function randomCatalogAnime(): Promise<JikanAnime | null> {
     .from("anime")
     .select("*")
     .not("mal_id", "is", null)
+    .not("genres", "cs", "{Hentai}")
     .range(offset, offset);
 
   const row = data?.[0];

@@ -25,17 +25,30 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect("/choose");
 }
 
 export async function signup(formData: FormData) {
   const supabase = await createClient();
   const origin = await getOrigin();
 
+  const username = String(formData.get("username") ?? "").trim();
+  if (username.length < 2) {
+    redirect(
+      `/signup?message=${encodeURIComponent(
+        "Please choose a username (at least 2 characters).",
+      )}`,
+    );
+  }
+
   const { error } = await supabase.auth.signUp({
     email: String(formData.get("email")),
     password: String(formData.get("password")),
-    options: { emailRedirectTo: `${origin}/auth/confirm` },
+    // Stored as user_metadata.username — the display name read by getDisplayName.
+    options: {
+      emailRedirectTo: `${origin}/auth/confirm`,
+      data: { username: username.slice(0, 32) },
+    },
   });
 
   if (error) {

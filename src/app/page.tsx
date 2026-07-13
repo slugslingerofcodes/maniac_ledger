@@ -13,6 +13,7 @@ import { TrendingPosterMarquee } from "@/components/PosterMarquee";
 import { VortexBackdrop } from "@/components/VortexBackdrop";
 import { SiteHeader } from "@/components/site-header";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
+import { getAnilistAiringSchedule } from "@/lib/anilist";
 import {
   getJustFinished,
   getSchedules,
@@ -244,7 +245,8 @@ const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
 /** Yesterday / today / tomorrow (JST) with each day's releases, time-sorted. */
 async function SchedulePanel() {
   try {
-    const all = await getSchedules(3);
+    // MAL primary, AniList fallback (JST slots derived from next airing eps).
+    const all = await getSchedules(3).catch(() => getAnilistAiringSchedule());
     const todayName = todayInJst();
     const todayIdx = JST_DAYS.indexOf(todayName);
 

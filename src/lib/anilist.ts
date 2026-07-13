@@ -1,4 +1,5 @@
 import { GENRE_OPTIONS } from "@/lib/genres";
+import { JST_DAYS, JST_OFFSET_MS } from "@/lib/jst";
 import type {
   JikanAnime,
   JikanImageSet,
@@ -985,6 +986,70 @@ const ADULT_MODE_GENRES: Record<"ecchi" | "hentai" | "both", string[]> = {
  *
  * @throws {AnilistError} On any failed request.
  */
+/* -------------------------------------------------------------------------- */
+/* Airing schedule (outage fallback for /schedule + the home mini-schedule)   */
+/* -------------------------------------------------------------------------- */
+
+/** How many popularity-ranked pages of currently-releasing shows to fetch. */
+const SCHEDULE_PAGES = 3;
+
+/**
+ * The weekly airing board from AniList — the fallback for Jikan's
+ * `/schedules` grid. Fetches currently-releasing anime and derives each
+ * show's JST broadcast slot from `nextAiringEpisode.airingAt` (a unix
+ * timestamp), emitting Jikan-style `broadcast.day` ("Mondays") and
+ * `broadcast.time` ("HH:MM") the schedule UIs already consume. Entries with
+ * no MAL id or no scheduled next episode are dropped — the board can't place
+ * them. Cached 1h.
+ *
+ * @throws {AnilistError} On any failed request.
+ */
+export async function getAnilistAiringSchedule(): Promise<JikanAnime[]> {
+  const gql = `
+    query ($page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { total currentPage lastPage hasNextPage perPage }
+        media(type: ANIME, status: RELEASING, isAdult: false, sort: POPULARITY_DESC) {
+          ${MEDIA_FIELDS}
+          nextAiringEpisode { airingAt }
+        }
+      }
+    }
+  `;
+
+  type ScheduleMedia = AnilistMedia & {
+    nextAiringEpisode: { airingAt: number } | null;
+  };
+
+  const seen = new Set<number>();
+  const out: JikanAnime[] = [];
+  for (let page = 1; page <= SCHEDULE_PAGES; page++) {
+    const data = await anilistFetch<{
+      Page: { pageInfo: AnilistPage["pageInfo"]; media: ScheduleMedia[] };
+    }>(gql, { page, perPage: PER_PAGE }, { revalidate: ONE_HOUR_SECONDS });
+
+    for (const m of data.Page.media) {
+      const airingAt = m.nextAiringEpisode?.airingAt;
+      if (m.idMal == null || airingAt == null || seen.has(m.idMal)) continue;
+      seen.add(m.idMal);
+
+      // airingAt → JST wall clock (UTC fields of a +9h-shifted Date read as JST).
+      const jst = new Date(airingAt * 1000 + JST_OFFSET_MS);
+      const day = JST_DAYS[jst.getUTCDay()]!;
+      const time = `${String(jst.getUTCHours()).padStart(2, "0")}:${String(
+        jst.getUTCMinutes(),
+      ).padStart(2, "0")}`;
+
+      const shaped = toJikanShape(m);
+      shaped.broadcast = { day, time, timezone: "Asia/Tokyo", string: null };
+      out.push(shaped);
+    }
+
+    if (!data.Page.pageInfo.hasNextPage) break;
+  }
+  return out;
+}
+
 export async function searchAnilistAdultAnime(
   query: string,
   page = 1,

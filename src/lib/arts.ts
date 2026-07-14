@@ -14,3 +14,15 @@ export type ArtPiece = {
   artistHref: string | null;
   sourceUrl: string | null;
 };
+
+/** A fan-art post from the imageboard source (Safebooru — all SFW-rated). */
+export type FanArt = {
+  id: number;
+  /** Grid-sized image (sample), falling back to the full file. */
+  url: string;
+  /** Full-resolution file for the lightbox. */
+  fullUrl: string;
+  /** The Safebooru post page (credits/source live there). */
+  postUrl: string;
+  score: number | null;
+};

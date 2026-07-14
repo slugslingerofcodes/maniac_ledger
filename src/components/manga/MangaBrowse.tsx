@@ -58,6 +58,15 @@ export function MangaBrowse({
       .map((i) => i.malId)
       .filter((id): id is number => id != null),
   );
+  const libraryMdIds = new Set(
+    (library ?? [])
+      .map((i) => i.mangadexId)
+      .filter((id): id is string => id != null),
+  );
+  const inLibrary = (m: JikanManga) =>
+    m.mal_id != null
+      ? libraryMalIds.has(m.mal_id)
+      : m.mangadex_id != null && libraryMdIds.has(m.mangadex_id);
 
   function toggleGenre(id: number) {
     setPage(1);
@@ -211,9 +220,9 @@ export function MangaBrowse({
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {results.map((manga) => (
               <MangaPosterCard
-                key={manga.mal_id}
+                key={manga.mal_id ?? manga.mangadex_id}
                 manga={manga}
-                alreadyInLibrary={libraryMalIds.has(manga.mal_id)}
+                alreadyInLibrary={inLibrary(manga)}
               />
             ))}
           </div>

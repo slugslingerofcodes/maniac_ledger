@@ -26,11 +26,17 @@ export function MangaPosterCard({
 }) {
   const cover = coverOf(manga);
   const title = manga.title_english ?? manga.title;
+  // MAL-linked titles use the MAL-keyed detail page; MangaDex-only titles
+  // (no MAL entry) open on the md route.
+  const href =
+    manga.mal_id != null
+      ? `/manga/${manga.mal_id}`
+      : `/manga/md/${manga.mangadex_id}`;
 
   return (
     <div className="group relative isolate flex flex-col gap-2">
       <Link
-        href={`/manga/${manga.mal_id}`}
+        href={href}
         aria-label={`View details for ${title}`}
         className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
       >

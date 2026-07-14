@@ -20,6 +20,7 @@ import {
   searchAdultMangaCatalog,
   searchMangaCatalog,
 } from "@/lib/manga-catalog-fallback";
+import { searchMangaDexManga } from "@/lib/mangadex";
 import { addToMangaLibrary } from "@/lib/manga";
 import { createClient } from "@/lib/supabase/server";
 import type { ReadingStatus } from "@/types/manga";
@@ -28,6 +29,8 @@ import type { ReadingStatus } from "@/types/manga";
 export type MangaEntryItem = {
   id: string;
   malId: number | null;
+  /** MangaDex uuid — the detail-link key for titles with no MAL entry. */
+  mangadexId: string | null;
   title: string;
   titleEnglish: string | null;
   coverUrl: string | null;
@@ -51,13 +54,13 @@ export async function getUserMangaLibrary(): Promise<MangaEntryItem[]> {
   let { data, error } = await supabase
     .from("manga_progress")
     .select(
-      "chapters_read, status, score, manga:manga_id (id, mal_id, title, title_english, cover_url, chapters, genres, type)",
+      "chapters_read, status, score, manga:manga_id (id, mal_id, mangadex_id, title, title_english, cover_url, chapters, genres, type)",
     )
     .order("updated_at", { ascending: false });
 
-  // Table created from the earlier 0022 draft (no `type` column) → retry
-  // without it; the format tabs just won't discriminate until it's re-run.
-  if (error && /type/i.test(error.message)) {
+  // Table created from an earlier 0022/0024 draft (missing columns) → retry
+  // with the core columns; format tabs / md links degrade until re-run.
+  if (error && /type|mangadex/i.test(error.message)) {
     const retry = await supabase
       .from("manga_progress")
       .select(
@@ -72,6 +75,7 @@ export async function getUserMangaLibrary(): Promise<MangaEntryItem[]> {
   return (data ?? []).map((row) => ({
     id: row.manga.id,
     malId: row.manga.mal_id,
+    mangadexId: "mangadex_id" in row.manga ? row.manga.mangadex_id : null,
     title: row.manga.title,
     titleEnglish: row.manga.title_english,
     coverUrl: row.manga.cover_url,
@@ -84,7 +88,7 @@ export async function getUserMangaLibrary(): Promise<MangaEntryItem[]> {
   }));
 }
 
-export type MangaSearchSource = "mal" | "anilist" | "catalog";
+export type MangaSearchSource = "mal" | "anilist" | "mangadex" | "catalog";
 
 export type MangaSearchResult =
   | {
@@ -98,12 +102,15 @@ export type MangaSearchResult =
     }
   | { ok: false; error: string };
 
-/** Dedupe a manga list by mal_id, preserving order. */
+/** Dedupe a manga list (by mal_id, or mangadex_id for MAL-less titles). */
 function dedupeManga(list: JikanManga[]): JikanManga[] {
-  const seen = new Set<number>();
-  return list.filter((m) =>
-    seen.has(m.mal_id) ? false : (seen.add(m.mal_id), true),
-  );
+  const seen = new Set<string>();
+  return list.filter((m) => {
+    const key = m.mal_id != null ? `mal:${m.mal_id}` : `md:${m.mangadex_id ?? ""}`;
+    if (!key.split(":")[1] || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** MAL genre ids → names, for the catalog fallback's genre matching. */
@@ -114,13 +121,39 @@ function genreNamesOf(genreIds: number[]): string[] {
 }
 
 /**
+ * Enrich page-1 text-query results with MangaDex titles the primary engine
+ * missed — including titles that exist on neither MAL nor AniList (no MAL
+ * link), which is how "missing" manga become findable. Best-effort; skipped
+ * for genre-filtered and light-novel queries (MangaDex can't express those).
+ */
+async function withMangaDexExtras(
+  results: JikanManga[],
+  query: string,
+  page: number,
+  type?: JikanMangaType,
+  genreIds: number[] = [],
+): Promise<JikanManga[]> {
+  if (!query.trim() || page !== 1 || genreIds.length > 0 || type === "lightnovel") {
+    return results;
+  }
+  try {
+    const md = await searchMangaDexManga(query, 1, type);
+    return dedupeManga([...results, ...md.results]);
+  } catch {
+    return results;
+  }
+}
+
+/**
  * Search manga, optionally narrowed to a media kind (manga / manhwa / manhua /
  * lightnovel) and MAL genre ids (AND semantics). With an empty query it
  * browses the most popular titles.
  *
  * Fallback chain (same as the anime search API): MAL (Jikan `/manga`) →
  * AniList (country-of-origin / format mapped from the tab, genres translated
- * to AniList names) → the local `manga` catalog (degraded).
+ * to AniList names) → MangaDex → the local `manga` catalog (degraded). Text
+ * queries additionally merge MangaDex extras onto page 1, so titles missing
+ * from MAL/AniList still show up.
  */
 export async function searchMangaAction(
   query: string,
@@ -132,7 +165,13 @@ export async function searchMangaAction(
     const res = await searchManga(query.trim(), page, genreIds, type);
     return {
       ok: true,
-      results: dedupeManga(res.data),
+      results: await withMangaDexExtras(
+        dedupeManga(res.data),
+        query,
+        page,
+        type,
+        genreIds,
+      ),
       totalPages: Math.max(res.pagination.last_visible_page, 1),
       source: "mal",
       degraded: false,
@@ -146,7 +185,13 @@ export async function searchMangaAction(
     const res = await searchAnilistManga(query, page, type, genreIds);
     return {
       ok: true,
-      results: dedupeManga(res.data),
+      results: await withMangaDexExtras(
+        dedupeManga(res.data),
+        query,
+        page,
+        type,
+        genreIds,
+      ),
       totalPages: Math.max(res.pagination.last_visible_page, 1),
       source: "anilist",
       degraded: false,
@@ -155,7 +200,25 @@ export async function searchMangaAction(
     console.error("[searchMangaAction] AniList fallback failed:", err);
   }
 
-  // Both live APIs down → the local catalog keeps known titles searchable.
+  // Third engine: MangaDex — also the only source for titles with no MAL
+  // entry. It can't express our genre filter or the light-novel format, so
+  // those queries skip straight to the catalog.
+  if (genreIds.length === 0 && type !== "lightnovel") {
+    try {
+      const res = await searchMangaDexManga(query, page, type);
+      return {
+        ok: true,
+        results: dedupeManga(res.results),
+        totalPages: res.totalPages,
+        source: "mangadex",
+        degraded: false,
+      };
+    } catch (err) {
+      console.error("[searchMangaAction] MangaDex fallback failed:", err);
+    }
+  }
+
+  // All live APIs down → the local catalog keeps known titles searchable.
   try {
     const results = await searchMangaCatalog(query, type, genreNamesOf(genreIds));
     return { ok: true, results, totalPages: 1, source: "catalog", degraded: true };

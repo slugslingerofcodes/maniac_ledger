@@ -13,6 +13,7 @@ import { RewatchButton } from "@/components/anime/RewatchButton";
 import { WatchOrder } from "@/components/anime/WatchOrder";
 import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
 import { AddToListButton } from "@/components/lists/AddToListButton";
+import { PosterLightbox } from "@/components/PosterLightbox";
 import { ScoreRing } from "@/components/ScoreRing";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -361,18 +362,23 @@ export default async function AnimeDetailPage({
             {/* Poster floating on the left; shares a view-transition name with
                 the library card so navigation morphs the poster into place. */}
             <ViewTransition name={`poster-${anime.id}`}>
-            <div className="relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10 sm:-mb-12 sm:w-52">
+            <div className="w-40 shrink-0 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
-                <Image
-                  src={anime.poster_url}
-                  alt={anime.title}
-                  fill
-                  priority
-                  sizes="(max-width: 640px) 160px, 208px"
-                  className="object-cover"
-                />
+                // Click-to-zoom: opens the full poster in a lightbox.
+                <PosterLightbox src={anime.poster_url} alt={anime.title}>
+                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10">
+                    <Image
+                      src={anime.poster_url}
+                      alt={anime.title}
+                      fill
+                      priority
+                      sizes="(max-width: 640px) 160px, 208px"
+                      className="object-cover"
+                    />
+                  </div>
+                </PosterLightbox>
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                <div className="relative flex aspect-[2/3] w-full items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground shadow-xl ring-1 ring-foreground/10">
                   No image
                 </div>
               )}

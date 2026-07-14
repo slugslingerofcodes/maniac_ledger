@@ -12,10 +12,13 @@ import { topMangaCatalog } from "@/lib/manga-catalog-fallback";
 export const dynamic = "force-dynamic";
 
 const dedupe = (list: JikanManga[]) => {
-  const seen = new Set<number>();
-  return list.filter((m) =>
-    seen.has(m.mal_id) ? false : (seen.add(m.mal_id), true),
-  );
+  const seen = new Set<string>();
+  return list.filter((m) => {
+    const key = m.mal_id != null ? `mal:${m.mal_id}` : `md:${m.mangadex_id ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /** Popular manga: MAL → AniList (popularity browse) → local catalog. */
@@ -47,7 +50,7 @@ async function PopularManga() {
       {degraded ? <SourceNotice source="catalog" degraded /> : null}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         {list.map((manga) => (
-          <MangaPosterCard key={manga.mal_id} manga={manga} />
+          <MangaPosterCard key={manga.mal_id ?? manga.mangadex_id} manga={manga} />
         ))}
       </div>
     </section>

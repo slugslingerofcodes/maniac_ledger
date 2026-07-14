@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: "Search", href: "/manga/search" },
   { label: "Light Novels", href: "/manga/lightnovels" },
   { label: "Library", href: "/manga/library" },
+  { label: "Arts", href: "/manga/arts" },
   { label: "Miscellaneous", href: "/manga/miscellaneous" },
 ] as const;
 
@@ -35,7 +36,7 @@ export function MangaNav() {
           <span className="tracking-tight">manga_maniacs</span>
         </Link>
 
-        <nav className="ml-2 flex items-center gap-1">
+        <nav className="scrollbar-subtle ml-2 flex items-center gap-1 overflow-x-auto">
           {NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (

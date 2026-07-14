@@ -225,9 +225,11 @@ function AdultMangaBrowser() {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {results.map((manga) => (
               <MangaPosterCard
-                key={manga.mal_id}
+                key={manga.mal_id ?? manga.mangadex_id}
                 manga={manga}
-                alreadyInLibrary={libraryMalIds.has(manga.mal_id)}
+                alreadyInLibrary={
+                  manga.mal_id != null && libraryMalIds.has(manga.mal_id)
+                }
               />
             ))}
           </div>

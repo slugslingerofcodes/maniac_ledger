@@ -23,15 +23,59 @@ function yearOf(manga: JikanManga): number | null {
 }
 
 /**
- * Upserts the shared catalog row for a Jikan manga (deduped by `mal_id`,
- * refreshing metadata on repeat) and returns its catalog uuid. Mirrors
- * `upsertCatalogAnime`. Falls back to reading the existing row's id if the
- * conflict-update is RLS-denied.
+ * Upserts the shared catalog row for a manga and returns its catalog uuid.
+ * MAL-linked records dedupe on `mal_id` (refreshing metadata on repeat);
+ * MangaDex-only records (no MAL entry) key on `mangadex_id` instead — those
+ * need migration 0025's unique constraint. Mirrors `upsertCatalogAnime`.
+ * Falls back to reading the existing row's id if the conflict-update is
+ * RLS-denied.
  */
 export async function upsertCatalogManga(
   supabase: ServerClient,
   manga: JikanManga,
 ): Promise<string> {
+  // MangaDex-only path: no mal_id to conflict on — find-or-insert by uuid.
+  if (manga.mal_id == null) {
+    if (!manga.mangadex_id) {
+      throw new Error("Manga record has neither a MAL nor a MangaDex id.");
+    }
+    const { data: existing } = await supabase
+      .from("manga")
+      .select("id")
+      .eq("mangadex_id", manga.mangadex_id)
+      .maybeSingle();
+    if (existing) return existing.id;
+    const { data: inserted, error: insErr } = await supabase
+      .from("manga")
+      .insert({
+        mal_id: null,
+        mangadex_id: manga.mangadex_id,
+        title: manga.title,
+        title_english: manga.title_english,
+        synopsis: manga.synopsis,
+        cover_url: coverOf(manga),
+        score: manga.score,
+        status: manga.status ?? null,
+        type: manga.type ?? null,
+        chapters: manga.chapters,
+        volumes: manga.volumes,
+        year: yearOf(manga),
+        authors: (manga.authors ?? []).map((a) => a.name),
+        genres: (manga.genres ?? []).map((g) => g.name),
+      })
+      .select("id")
+      .single();
+    if (inserted) return inserted.id;
+    // Unique-violation race (another request inserted first) → re-read.
+    const { data: raced } = await supabase
+      .from("manga")
+      .select("id")
+      .eq("mangadex_id", manga.mangadex_id)
+      .maybeSingle();
+    if (raced) return raced.id;
+    throw new Error(insErr?.message ?? "Could not save this manga to the catalog.");
+  }
+
   const row = {
     mal_id: manga.mal_id,
     title: manga.title,

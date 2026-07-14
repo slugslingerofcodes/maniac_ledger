@@ -829,7 +829,10 @@ export interface JikanPublished {
 }
 
 export interface JikanManga {
-  mal_id: number;
+  /** Null for MangaDex-only titles (no MAL entry); they key on `mangadex_id`. */
+  mal_id: number | null;
+  /** MangaDex uuid, when the record came from (or is linked to) MangaDex. */
+  mangadex_id?: string | null;
   title: string;
   title_english: string | null;
   title_synonyms?: string[];

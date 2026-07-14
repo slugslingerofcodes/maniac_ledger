@@ -150,7 +150,13 @@ function MangaCard({ item }: { item: MangaEntryItem }) {
   const percent = hasTotal
     ? Math.min(100, Math.round((item.chaptersRead / item.totalChapters!) * 100))
     : 0;
-  const href = item.malId != null ? `/manga/${item.malId}` : "/manga";
+  // MAL-keyed detail page; MangaDex-only titles open on the md route.
+  const href =
+    item.malId != null
+      ? `/manga/${item.malId}`
+      : item.mangadexId != null
+        ? `/manga/md/${item.mangadexId}`
+        : "/manga";
 
   return (
     <Link href={href} className="group block">

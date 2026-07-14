@@ -29,12 +29,19 @@ export async function ensureMangaChapters(row: {
   title: string;
   title_english: string | null;
   status: string | null;
+  /** Media kind — novels have no chapter source, so they're skipped. */
+  type?: string | null;
   /** MAL's total chapter count, when known — fills numbering gaps. */
   chapters?: number | null;
   mangadex_id?: string | null;
   chapters_synced_at?: string | null;
 }): Promise<void> {
-  if (row.mal_id == null) return;
+  // Needs at least one key to resolve chapters from.
+  if (row.mal_id == null && !row.mangadex_id) return;
+  // MangaDex hosts comics, not prose — a light novel "chapter list" from a
+  // title search would be its manga adaptation's, i.e. wrong. Novels get a
+  // volume list on the detail page instead.
+  if ((row.type ?? "").toLowerCase().includes("novel")) return;
 
   try {
     const supabase = await createClient();
@@ -64,9 +71,9 @@ export async function ensureMangaChapters(row: {
       }
     }
 
-    // Resolve (or reuse) the MangaDex id.
+    // Resolve (or reuse) the MangaDex id. MangaDex-only rows already carry it.
     let mdId = row.mangadex_id ?? null;
-    if (!mdId) {
+    if (!mdId && row.mal_id != null) {
       mdId = await resolveMangaDexId(row.mal_id, [
         row.title,
         row.title_english,

@@ -1,16 +1,16 @@
 /**
  * Data-source notice shared by every surface with a fallback engine chain
  * (anime misc tab, manga search/home/detail). Renders the amber outage banner
- * when results came from the local catalog, a quiet attribution line when
- * AniList served them, and nothing when the primary source (MAL) did.
- * Server- and client-component safe (no hooks).
+ * when results came from the local catalog, a quiet attribution line when a
+ * secondary engine (AniList / MangaDex) served them, and nothing when the
+ * primary source (MAL) did. Server- and client-component safe (no hooks).
  */
 export function SourceNotice({
   source,
   degraded,
   anilistLabel = "Results via AniList",
 }: {
-  /** Which engine served the data: "mal" | "anilist" | "catalog". */
+  /** Which engine served the data: "mal" | "anilist" | "mangadex" | "catalog". */
   source: string;
   /** True when live APIs were unreachable (local-catalog data). */
   degraded?: boolean;
@@ -25,10 +25,12 @@ export function SourceNotice({
       </p>
     );
   }
-  if (source === "anilist") {
+  if (source === "anilist" || source === "mangadex") {
     return (
       <p className="mb-4 text-center text-[11px] text-muted-foreground">
-        {anilistLabel}
+        {source === "mangadex"
+          ? anilistLabel.replace("AniList", "MangaDex")
+          : anilistLabel}
       </p>
     );
   }

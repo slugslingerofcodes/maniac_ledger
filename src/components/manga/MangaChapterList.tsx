@@ -19,14 +19,18 @@ function chapterLabel(n: number): string {
 /**
  * The chapter list on the manga detail page — collapsible, newest-first
  * toggle, scrollable so 1000-chapter series don't swallow the page. Data comes
- * from the shared `manga_chapters` catalog (synced from MangaDex).
+ * from the shared `manga_chapters` catalog (synced from MangaDex). Light
+ * novels pass `unit="volume"` and a generated volume list instead (there is
+ * no chapter source for prose).
  */
 export function MangaChapterList({
   chapters,
   chaptersRead,
+  unit = "chapter",
 }: {
   chapters: ChapterListItem[];
   chaptersRead: number;
+  unit?: "chapter" | "volume";
 }) {
   const [open, setOpen] = useState(true);
   const [newestFirst, setNewestFirst] = useState(true);
@@ -35,6 +39,8 @@ export function MangaChapterList({
 
   const ordered = newestFirst ? [...chapters].reverse() : chapters;
   const latest = chapters[chapters.length - 1]!;
+  const heading = unit === "volume" ? "Volumes" : "Chapters";
+  const abbrev = unit === "volume" ? "vol" : "ch";
 
   return (
     <section className="mt-8">
@@ -49,9 +55,9 @@ export function MangaChapterList({
             className={cn("size-4 transition-transform", open ? "" : "-rotate-90")}
             aria-hidden
           />
-          Chapters
+          {heading}
           <span className="text-sm font-normal text-muted-foreground">
-            {chapters.length} · latest ch {chapterLabel(latest.number)}
+            {chapters.length} · latest {abbrev} {chapterLabel(latest.number)}
           </span>
         </button>
         {open ? (

@@ -87,7 +87,9 @@ function FanArtSection() {
   const [arts, setArts] = useState<FanArt[]>([]);
   const [tag, setTag] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("loading");
-  const [pending, startTransition] = useTransition();
+  // Load-more spinner: the fetch runs in the effect, so a useTransition around
+  // setPage wouldn't cover it — track appends explicitly.
+  const [appending, setAppending] = useState(false);
 
   // New query → fresh grid; further pages append (deduped by post id).
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -113,6 +115,9 @@ function FanArtSection() {
       })
       .catch(() => {
         if (!cancelled && page === 1) setStatus("error");
+      })
+      .finally(() => {
+        if (!cancelled) setAppending(false);
       });
     return () => {
       cancelled = true;
@@ -196,14 +201,17 @@ function FanArtSection() {
             <Button
               type="button"
               variant="outline"
-              disabled={pending}
-              onClick={() => startTransition(() => setPage((p) => p + 1))}
+              disabled={appending}
+              onClick={() => {
+                setAppending(true);
+                setPage((p) => p + 1);
+              }}
             >
               <RefreshCw
-                className={cn("mr-2 size-4", pending ? "animate-spin" : "")}
+                className={cn("mr-2 size-4", appending ? "animate-spin" : "")}
                 aria-hidden
               />
-              Load more
+              {appending ? "Loading…" : "Load more"}
             </Button>
           </div>
         </>

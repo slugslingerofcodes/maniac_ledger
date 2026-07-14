@@ -1,4 +1,4 @@
-import { getMangaById, type JikanManga } from "@/lib/jikan";
+import type { JikanManga } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 
 /** The request-scoped Supabase server client (RLS runs as the signed-in user). */
@@ -123,24 +123,6 @@ export async function upsertCatalogManga(
     throw new Error(error?.message ?? "Could not save this manga to the catalog.");
   }
   return data.id;
-}
-
-/**
- * Resolves a MyAnimeList manga id to a catalog uuid, backfilling from Jikan if
- * it isn't cataloged yet. Used by the `/manga/[malId]` detail page.
- */
-export async function resolveMangaIdByMalId(malId: number): Promise<string> {
-  const supabase = await createClient();
-
-  const { data: existing } = await supabase
-    .from("manga")
-    .select("id")
-    .eq("mal_id", malId)
-    .maybeSingle();
-  if (existing) return existing.id;
-
-  const manga = await getMangaById(malId);
-  return upsertCatalogManga(supabase, manga);
 }
 
 /**

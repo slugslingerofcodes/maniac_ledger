@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
+import { getAnilistAnimeByMalId } from "@/lib/anilist";
 import { resolveAndAssignFranchise } from "@/lib/franchise";
 import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { addToLibrary } from "@/lib/library";
@@ -183,11 +184,19 @@ export async function removeFromLibraryAction(
 export async function addToLibraryByMalId(
   malId: number,
 ): Promise<AddToLibraryActionResult> {
-  let anime: JikanAnime;
+  let anime: JikanAnime | null = null;
   try {
     anime = await getAnimeById(malId);
   } catch {
-    return { ok: false, error: "Couldn't find that anime on MyAnimeList." };
+    // MAL down → AniList carries the same record keyed by MAL id.
+    try {
+      anime = await getAnilistAnimeByMalId(malId);
+    } catch {
+      /* both down */
+    }
+  }
+  if (!anime) {
+    return { ok: false, error: "Couldn't find that anime right now." };
   }
   return addToLibraryAction(anime);
 }

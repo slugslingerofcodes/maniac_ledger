@@ -1056,6 +1056,36 @@ const ADULT_MODE_GENRES: Record<"ecchi" | "hentai" | "both", string[]> = {
  * @throws {AnilistError} On any failed request.
  */
 /* -------------------------------------------------------------------------- */
+/* Single anime by MAL id (outage fallback for /anime/mal/[malId])            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A single anime by MAL id, in the Jikan shape — lets detail links resolve
+ * (and the catalog backfill) when Jikan is down. Deliberately NO `isAdult`
+ * filter: by-id lookups must also resolve the miscellaneous tab's Rx titles
+ * (same policy as {@link getAnimeExtraInfo}). Returns null when AniList has
+ * no entry for the id. Cached 1h.
+ */
+export async function getAnilistAnimeByMalId(
+  malId: number,
+): Promise<JikanAnime | null> {
+  const gql = `
+    query ($idMal: Int) {
+      Media(idMal: $idMal, type: ANIME) {
+        ${MEDIA_FIELDS}
+      }
+    }
+  `;
+  const data = await anilistFetch<{ Media: AnilistMedia | null }>(
+    gql,
+    { idMal: malId },
+    { revalidate: ONE_HOUR_SECONDS },
+  );
+  if (!data.Media || data.Media.idMal == null) return null;
+  return toJikanShape(data.Media);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Upcoming anime (outage fallback for /upcoming)                             */
 /* -------------------------------------------------------------------------- */
 

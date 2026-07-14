@@ -1,3 +1,4 @@
+import { getAnilistAnimeByMalId } from "@/lib/anilist";
 import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 import type { AiringStatus } from "@/types/anime";
@@ -83,7 +84,10 @@ export async function upsertCatalogAnime(
 /**
  * Resolves a MyAnimeList id to a catalog uuid so it can be opened on the
  * `/anime/[id]` detail page. Returns the existing row's id if the anime is
- * already in the shared catalog; otherwise backfills it from Jikan first.
+ * already in the shared catalog; otherwise backfills it from Jikan — or from
+ * AniList (which carries the same record keyed by MAL id) when Jikan is down,
+ * so detail links from AniList-served results (search fallback, the
+ * miscellaneous tab) keep opening through MAL outages.
  * Used by the `/anime/mal/[malId]` redirect (e.g. clicking a search result).
  */
 export async function resolveAnimeIdByMalId(malId: number): Promise<string> {
@@ -96,9 +100,16 @@ export async function resolveAnimeIdByMalId(malId: number): Promise<string> {
     .maybeSingle();
   if (existing) return existing.id;
 
-  // Not in the catalog yet — fetch from Jikan and contribute it.
-  const jikanAnime = await getAnimeById(malId);
-  return upsertCatalogAnime(supabase, jikanAnime);
+  // Not in the catalog yet — fetch from Jikan (AniList fallback) and
+  // contribute it.
+  let anime: JikanAnime | null = null;
+  try {
+    anime = await getAnimeById(malId);
+  } catch (err) {
+    anime = await getAnilistAnimeByMalId(malId);
+    if (!anime) throw err; // neither source knows the id
+  }
+  return upsertCatalogAnime(supabase, anime);
 }
 
 /**

@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Home", href: "/manga" },
   { label: "Search", href: "/manga/search" },
   { label: "Light Novels", href: "/manga/lightnovels" },
+  { label: "Web", href: "/manga/web" },
   { label: "Library", href: "/manga/library" },
   { label: "Arts", href: "/manga/arts" },
   { label: "Miscellaneous", href: "/manga/miscellaneous" },

@@ -1,5 +1,6 @@
 "use client";
 
+import { searchMangaAction } from "@/app/actions/manga";
 import { MangaBrowse } from "@/components/manga/MangaBrowse";
 
 /** Dedicated light-novel tab: search + genre filters, pinned to MAL's
@@ -9,7 +10,13 @@ export default function LightNovelsPage() {
     <MangaBrowse
       title="Light Novels"
       subtitle="Search and track light novels — separate from the comic tabs."
-      formats={[{ value: "lightnovel", label: "Light Novels" }]}
+      tabs={[
+        {
+          key: "lightnovel",
+          label: "Light Novels",
+          run: (q, p, g) => searchMangaAction(q, p, "lightnovel", g),
+        },
+      ]}
     />
   );
 }

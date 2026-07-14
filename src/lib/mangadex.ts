@@ -202,6 +202,75 @@ export async function searchMangaDexManga(
   };
 }
 
+/** The MangaDex "Web Comic" format tag. */
+const WEB_COMIC_TAG = "e197df38-d0e7-43b5-9b09-2842d0c326dd";
+
+/**
+ * MAL genre name → MangaDex tag uuid (genres + themes we expose as chips).
+ * Names absent here (e.g. demographics like Shounen) simply don't filter the
+ * MangaDex query — MangaDex models those separately.
+ */
+const MD_GENRE_TAG: Record<string, string> = {
+  Action: "391b0423-d847-456f-aff0-8b0cfc03066b",
+  Adventure: "87cc87cd-a395-47af-b27a-93258283bbc6",
+  Comedy: "4d32cc48-9f00-4cca-9b5a-a839f0764984",
+  Drama: "b9af3a63-f058-46de-a9a0-e0c13906197a",
+  Fantasy: "cdc58593-87dd-415e-bbc0-2ec27bf404cc",
+  Horror: "cdad7e68-1419-41dd-bdce-27753074a640",
+  Mystery: "ee968100-4191-4968-93d3-f82d72be7e46",
+  Romance: "423e2eae-a7a2-4a8b-ac03-a8351462d71d",
+  "Sci-Fi": "256c8bd9-4904-4360-bf4f-508a76d67183",
+  "Slice of Life": "e5301a23-ebd9-49dd-a0cb-2add944c7fe9",
+  Sports: "69964a64-2f90-4d33-beeb-f3ed2875eb4c",
+  Supernatural: "eabc5b4c-6aff-42f3-b657-3e90cbd00b75",
+  Isekai: "ace04997-f6bd-436e-b261-779182193d3d",
+  School: "caaa44eb-cd40-4177-b930-79d3ef2afe87",
+  Psychological: "3b60b75c-a2d7-4860-ab56-05f391bb889c",
+  Mecha: "50880a9d-5440-4732-9afb-8f457127e836",
+  Music: "f42fbf9e-188a-447b-9fdc-f19dc1e4d685",
+  Historical: "33771934-028e-4cb3-8744-691e866a923e",
+  "Martial Arts": "799c202e-7daa-44eb-9cf7-8a3c0441531e",
+};
+
+/**
+ * Webcomic search against MangaDex — titles carrying the "Web Comic" format
+ * tag (webtoons and other web-first comics), which has no MAL/AniList
+ * equivalent. Genre names AND-match via MangaDex's own tag uuids. With no
+ * query it browses by follower count. SFW ratings only.
+ */
+export async function searchMangaDexWebComics(
+  query: string,
+  page = 1,
+  genreNames: string[] = [],
+): Promise<{ results: JikanManga[]; totalPages: number }> {
+  const limit = 40;
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String((page - 1) * limit),
+    includedTagsMode: "AND",
+  });
+  params.append("includedTags[]", WEB_COMIC_TAG);
+  for (const name of genreNames) {
+    const uuid = MD_GENRE_TAG[name];
+    if (uuid) params.append("includedTags[]", uuid);
+  }
+  if (query.trim()) {
+    params.set("title", query.trim().slice(0, 100));
+    params.set("order[relevance]", "desc");
+  } else {
+    params.set("order[followedCount]", "desc");
+  }
+  params.append("includes[]", "cover_art");
+  params.append("contentRating[]", "safe");
+  params.append("contentRating[]", "suggestive");
+
+  const res = await mdFetch<MdMangaSearch>(`/manga?${params.toString()}`);
+  return {
+    results: res.data.map(toJikanMangaShape),
+    totalPages: Math.max(1, Math.ceil((res.total ?? res.data.length) / limit)),
+  };
+}
+
 /**
  * A single MangaDex manga by uuid, in the Jikan shape — powers the
  * /manga/md/[mangadexId] detail page and the MAL-keyed detail page's

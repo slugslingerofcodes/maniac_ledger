@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getUserMangaLibrary, searchMangaAction } from "@/app/actions/manga";
+import {
+  getUserMangaLibrary,
+  type MangaSearchResult,
+} from "@/app/actions/manga";
 import { MANGA_LIBRARY_QUERY_KEY } from "@/components/manga/MangaLibraryGridClient";
 import { MangaPosterCard } from "@/components/manga/MangaPosterCard";
 import { Pagination } from "@/components/anime/Pagination";
@@ -14,32 +17,56 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { genreChipStyle } from "@/lib/genre-color";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
-import type { JikanManga, JikanMangaType } from "@/lib/jikan";
+import type { JikanManga } from "@/lib/jikan";
 
 type Status = "loading" | "success" | "error";
 
-export type MangaFormatTab = { value: JikanMangaType; label: string };
+/**
+ * One browse tab: a label plus the search function it runs. The function takes
+ * the query, page, and selected MAL genre ids and returns the shared
+ * MangaSearchResult. Different tabs plug in different engines (searchMangaAction
+ * for MAL-first formats, searchWebComicsAction for MangaDex webcomics, etc.).
+ */
+export type MangaBrowseTab = {
+  key: string;
+  label: string;
+  run: (
+    query: string,
+    page: number,
+    genreIds: number[],
+  ) => Promise<MangaSearchResult>;
+};
 
 /**
- * Shared browse/search UI for the manga framework: format tabs (hidden when
- * only one), a search bar, MAL-genre chip filters, and a poster grid — all
- * running on `searchMangaAction`'s MAL → AniList → catalog chain. Used by
- * /manga/search (comic formats) and /manga/lightnovels (pinned to novels).
+ * Shared browse/search UI for the manga framework: tabs (hidden when only one),
+ * a search bar, MAL-genre chip filters, and a poster grid. Each tab supplies
+ * its own `run` function, so the same UI powers /manga/search, /manga/
+ * lightnovels, and /manga/web with different data sources.
  */
 export function MangaBrowse({
   title,
   subtitle,
-  formats,
+  tabs,
 }: {
   title: string;
   subtitle?: string;
-  formats: MangaFormatTab[];
+  tabs: MangaBrowseTab[];
 }) {
-  const [format, setFormat] = useState<JikanMangaType>(formats[0]!.value);
+  const [tabKey, setTabKey] = useState<string>(tabs[0]!.key);
   const [query, setQuery] = useState("");
   const [genreIds, setGenreIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(query, 400);
+
+  const activeTab = tabs.find((t) => t.key === tabKey) ?? tabs[0]!;
+  // Callers pass fresh tab objects each render, so the fetch effect keys off
+  // tabKey (stable) and reads the current tab's run via a ref — avoids a
+  // re-run loop. The ref is refreshed in its own effect (never during render),
+  // declared first so it's current before the fetch effect below reads it.
+  const runRef = useRef(activeTab.run);
+  useEffect(() => {
+    runRef.current = activeTab.run;
+  });
 
   const [results, setResults] = useState<JikanManga[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -79,7 +106,8 @@ export function MangaBrowse({
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    searchMangaAction(debouncedQuery, page, format, genreIds)
+    runRef
+      .current(debouncedQuery, page, genreIds)
       .then((res) => {
         if (cancelled) return;
         if (res.ok) {
@@ -98,7 +126,7 @@ export function MangaBrowse({
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, page, format, genreIds]);
+  }, [debouncedQuery, page, tabKey, genreIds]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function goToPage(n: number) {
@@ -106,8 +134,7 @@ export function MangaBrowse({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const activeLabel =
-    formats.find((t) => t.value === format)?.label ?? formats[0]!.label;
+  const activeLabel = activeTab.label;
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
@@ -120,20 +147,20 @@ export function MangaBrowse({
         <div className="mb-4" />
       )}
 
-      {formats.length > 1 ? (
+      {tabs.length > 1 ? (
         <div className="mb-4 flex flex-wrap gap-1.5">
-          {formats.map((tab) => (
+          {tabs.map((tab) => (
             <button
-              key={tab.value}
+              key={tab.key}
               type="button"
-              aria-pressed={format === tab.value}
+              aria-pressed={tabKey === tab.key}
               onClick={() => {
-                setFormat(tab.value);
+                setTabKey(tab.key);
                 setPage(1);
               }}
               className={cn(
                 "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-                format === tab.value
+                tabKey === tab.key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground",
               )}

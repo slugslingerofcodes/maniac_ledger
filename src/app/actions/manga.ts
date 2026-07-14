@@ -20,7 +20,10 @@ import {
   searchAdultMangaCatalog,
   searchMangaCatalog,
 } from "@/lib/manga-catalog-fallback";
-import { searchMangaDexManga } from "@/lib/mangadex";
+import {
+  searchMangaDexManga,
+  searchMangaDexWebComics,
+} from "@/lib/mangadex";
 import { addToMangaLibrary } from "@/lib/manga";
 import { createClient } from "@/lib/supabase/server";
 import type { ReadingStatus } from "@/types/manga";
@@ -224,6 +227,46 @@ export async function searchMangaAction(
     return { ok: true, results, totalPages: 1, source: "catalog", degraded: true };
   } catch {
     return { ok: false, error: "Manga search is unavailable right now." };
+  }
+}
+
+/**
+ * Webcomic search for the /manga/web "Webcomics" tab — MangaDex-native (the
+ * "Web Comic" format tag has no MAL/AniList equivalent), genre-filtered via
+ * MangaDex tags, with the local catalog as the outage fallback.
+ */
+export async function searchWebComicsAction(
+  query: string,
+  page = 1,
+  genreIds: number[] = [],
+): Promise<MangaSearchResult> {
+  try {
+    const res = await searchMangaDexWebComics(
+      query,
+      page,
+      genreNamesOf(genreIds),
+    );
+    return {
+      ok: true,
+      results: dedupeManga(res.results),
+      totalPages: res.totalPages,
+      source: "mangadex",
+      degraded: false,
+    };
+  } catch (err) {
+    console.error("[searchWebComicsAction] MangaDex failure:", err);
+  }
+  // MangaDex down → best-effort catalog search (the webcomic format isn't
+  // stored on rows, so this just returns matching cataloged titles).
+  try {
+    const results = await searchMangaCatalog(
+      query,
+      undefined,
+      genreNamesOf(genreIds),
+    );
+    return { ok: true, results, totalPages: 1, source: "catalog", degraded: true };
+  } catch {
+    return { ok: false, error: "Webcomics are unavailable right now." };
   }
 }
 

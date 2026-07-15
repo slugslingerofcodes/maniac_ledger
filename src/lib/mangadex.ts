@@ -183,13 +183,20 @@ export async function searchMangaDexManga(
     limit: String(limit),
     offset: String((page - 1) * limit),
   });
-  if (query.trim()) {
+  const searching = Boolean(query.trim());
+  if (searching) {
     params.set("title", query.trim().slice(0, 100));
     params.set("order[relevance]", "desc");
   } else {
     params.set("order[followedCount]", "desc");
   }
-  const lang = type ? MD_TYPE_TO_LANG[type] : undefined;
+  // `originalLanguage` is where a title was *first published*, which mis-files
+  // English-first webtoons: "The Beginning After the End" is `en`, so a ko/zh/ja
+  // tab filter hid it on EVERY tab (verified — found with no filter, missing
+  // under each). When the user is searching by name, relevance beats tab purity,
+  // so don't narrow by language; browsing (no query) keeps the filter so the
+  // Manga / Manhwa / Manhua tabs still mean something.
+  const lang = searching ? undefined : type ? MD_TYPE_TO_LANG[type] : undefined;
   if (lang) params.append("originalLanguage[]", lang);
   params.append("includes[]", "cover_art");
   params.append("contentRating[]", "safe");

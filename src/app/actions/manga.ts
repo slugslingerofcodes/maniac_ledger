@@ -124,10 +124,17 @@ function genreNamesOf(genreIds: number[]): string[] {
 }
 
 /**
- * Enrich page-1 text-query results with MangaDex titles the primary engine
- * missed — including titles that exist on neither MAL nor AniList (no MAL
- * link), which is how "missing" manga become findable. Best-effort; skipped
- * for genre-filtered and light-novel queries (MangaDex can't express those).
+ * Enrich page-1 results with MangaDex titles the primary engine missed —
+ * including titles that exist on neither MAL nor AniList (no MAL link), which
+ * is how "missing" manga become findable.
+ *
+ * This runs for *browsing* as well as searching, and that matters most on the
+ * Manhua tab: MAL's manga API is frequently down, and the AniList fallback
+ * drops every entry lacking a MAL id (detail links are mal_id-keyed) — 31 of
+ * the top 50 Chinese titles have no MAL entry, so the tab rendered 19 of 50.
+ * MangaDex carries those titles with a `mangadex_id`, so they're linkable via
+ * /manga/md/[id] and the gap closes. Best-effort; still skipped for
+ * genre-filtered and light-novel queries, which MangaDex can't express.
  */
 async function withMangaDexExtras(
   results: JikanManga[],
@@ -136,7 +143,7 @@ async function withMangaDexExtras(
   type?: JikanMangaType,
   genreIds: number[] = [],
 ): Promise<JikanManga[]> {
-  if (!query.trim() || page !== 1 || genreIds.length > 0 || type === "lightnovel") {
+  if (page !== 1 || genreIds.length > 0 || type === "lightnovel") {
     return results;
   }
   try {

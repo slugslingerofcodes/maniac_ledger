@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ShojiDoors } from "@/components/ShojiDoors";
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "./providers";
 
@@ -57,6 +58,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <Providers>
           {children}
+          {/* Route-change shōji doors — root level so they outlive navigation
+              and can close *and* reopen across every route (anime + manga). */}
+          <ShojiDoors />
           <Toaster />
           <ServiceWorkerRegister />
         </Providers>

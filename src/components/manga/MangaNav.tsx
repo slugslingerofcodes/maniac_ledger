@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Clapperboard } from "lucide-react";
+import { Clapperboard } from "lucide-react";
 
+import { SiteBanner } from "@/components/SiteBanner";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -13,6 +14,7 @@ const NAV_ITEMS = [
   { label: "Web", href: "/manga/web" },
   { label: "Library", href: "/manga/library" },
   { label: "Arts", href: "/manga/arts" },
+  { label: "Posters", href: "/manga/posters" },
   { label: "Miscellaneous", href: "/manga/miscellaneous" },
 ] as const;
 
@@ -32,12 +34,15 @@ export function MangaNav() {
   return (
     <header className="glass sticky top-0 z-40 w-full border-b border-border">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link href="/manga" className="flex items-center gap-2 font-semibold">
-          <BookOpen className="size-5 text-primary" aria-hidden />
-          <span className="tracking-tight">manga_maniacs</span>
+        <Link
+          href="/manga"
+          aria-label="manga_maniacs"
+          className="flex shrink-0 items-center"
+        >
+          <SiteBanner />
         </Link>
 
-        <nav className="scrollbar-subtle ml-2 flex items-center gap-1 overflow-x-auto">
+        <nav className="scrollbar-subtle flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (
@@ -46,7 +51,7 @@ export function MangaNav() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   active
                     ? "bg-primary/15 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -58,7 +63,7 @@ export function MangaNav() {
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

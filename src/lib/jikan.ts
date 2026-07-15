@@ -7,6 +7,17 @@
  * spaces calls at least `MIN_REQUEST_INTERVAL_MS` apart. For UI that fires on
  * keystrokes (a search box), wrap your handler with the exported `debounce`
  * helper so you aren't issuing a request per character.
+ *
+ * Caching: callers pass `revalidate`, which is honoured by the process-local
+ * TTL cache below — NOT by Next. Next's layers are both inert in this app:
+ * `fetch`'s `next.revalidate` only applies to requests reached *before* a
+ * request-time API, and every page reads `cookies()` (auth) first; and
+ * `unstable_cache` is skipped wherever `dynamic = "force-dynamic"` is set,
+ * because it bails when `fetchCache === 'force-no-store'`, which force-dynamic
+ * implies. Both were measured re-fetching on every single request, which is why
+ * the home page took ~48s. Blanket `fetchCache = 'default-cache'` is not an
+ * option either: Supabase's auth calls set no cache option, so it would
+ * force-cache them. Hence a cache we control outright.
  */
 
 const JIKAN_BASE_URL = "https://api.jikan.moe/v4";
@@ -224,20 +235,17 @@ function rememberLastGood(path: string, value: unknown) {
   }
 }
 
-async function jikanFetch<T>(
+/** The live network call: serial rate-limited, with last-good fallback. */
+async function jikanFetchLive<T>(
   path: string,
-  // Opt into Next's Data Cache for endpoints that change slowly (e.g. the
-  // upcoming season). Omitted → default fetch behavior.
-  opts?: { revalidate?: number },
+  revalidate?: number,
 ): Promise<T> {
   const fallbackEligible = !path.startsWith("/random");
   return rateLimited(async () => {
     try {
       const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
         headers: { Accept: "application/json" },
-        ...(opts?.revalidate != null
-          ? { next: { revalidate: opts.revalidate } }
-          : {}),
+        ...(revalidate != null ? { next: { revalidate } } : {}),
       });
 
       if (!res.ok) {
@@ -275,6 +283,111 @@ async function jikanFetch<T>(
       throw err;
     }
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Response cache                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Process-local TTL cache keyed by path, plus in-flight de-duplication.
+ *
+ * Next's own caching cannot be relied on here (see the note at the top of this
+ * file): `fetch`-level `revalidate` is ignored because every page reads
+ * `cookies()` first, and `unstable_cache` is bypassed outright wherever
+ * `dynamic = "force-dynamic"` is set (it checks `fetchCache !== 'force-no-store'`,
+ * and force-dynamic implies exactly that). Measured: three identical requests
+ * produced three live Jikan fetches through both routes. So we cache here,
+ * where nothing can silently switch it off.
+ *
+ * Trade-off: this is per-instance, so a cold start still pays full price; warm
+ * instances (the common case) serve repeat loads with zero Jikan calls. The
+ * de-dupe also collapses the duplicate calls a single render makes — the home
+ * page asks for `/top/anime` twice (hero + rail), which is now one request.
+ */
+const CACHE_MAX = 500;
+/**
+ * How long a *failure* is remembered. When MAL is down Jikan 504s on every
+ * endpoint, and without this the home page re-queues ~20 doomed calls through
+ * the 350ms serial queue on every single load — minutes of waiting to render
+ * the same empty rails. Kept short so recovery is picked up quickly.
+ */
+const FAILURE_TTL_SECONDS = 60;
+
+type CacheEntry =
+  | { ok: true; value: unknown; expiresAt: number }
+  | { ok: false; error: unknown; expiresAt: number };
+
+const responseCache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+function cacheGet(path: string): CacheEntry | undefined {
+  const hit = responseCache.get(path);
+  if (!hit) return undefined;
+  if (hit.expiresAt <= Date.now()) {
+    responseCache.delete(path);
+    return undefined;
+  }
+  // Refresh LRU position.
+  responseCache.delete(path);
+  responseCache.set(path, hit);
+  return hit;
+}
+
+function cacheSet(path: string, entry: CacheEntry) {
+  responseCache.set(path, entry);
+  if (responseCache.size > CACHE_MAX) {
+    const oldest = responseCache.keys().next().value;
+    if (oldest != null) responseCache.delete(oldest);
+  }
+}
+
+/**
+ * Cached entry point. `revalidate` omitted → always live (e.g. `/random`).
+ * Otherwise the response is served from the TTL cache for that many seconds, so
+ * a warm page costs zero Jikan calls and never waits on the 350ms serial queue.
+ */
+async function jikanFetch<T>(
+  path: string,
+  opts?: { revalidate?: number },
+): Promise<T> {
+  const ttl = opts?.revalidate;
+  if (ttl == null) return jikanFetchLive<T>(path);
+
+  const hit = cacheGet(path);
+  if (hit) {
+    if (hit.ok) return hit.value as T;
+    // Upstream was down moments ago — fail fast instead of re-queueing.
+    throw hit.error;
+  }
+
+  // Collapse concurrent callers for the same path onto one request.
+  const pending = inFlight.get(path);
+  if (pending) return pending as Promise<T>;
+
+  const request = jikanFetchLive<T>(path, ttl)
+    .then((value) => {
+      cacheSet(path, { ok: true, value, expiresAt: Date.now() + ttl * 1000 });
+      return value;
+    })
+    .catch((err: unknown) => {
+      // Don't negative-cache rate limits: callers back off on 429 themselves,
+      // and the next caller may well be inside the budget again.
+      if (!(err instanceof JikanError && err.status === 429)) {
+        cacheSet(path, {
+          ok: false,
+          error: err,
+          expiresAt: Date.now() + FAILURE_TTL_SECONDS * 1000,
+        });
+      }
+      throw err;
+    })
+    .finally(() => {
+      inFlight.delete(path);
+    });
+
+  inFlight.set(path, request);
+  return request;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -415,6 +528,26 @@ export function getTopAnime(limit = 24): Promise<JikanSearchResponse> {
     limit: String(limit),
   });
   return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
+    revalidate: ONE_DAY_SECONDS,
+  });
+}
+
+/** One promotional image for an anime (`/anime/{id}/pictures`). */
+export interface JikanPicture {
+  jpg?: JikanImageSet;
+  webp?: JikanImageSet;
+}
+
+/**
+ * Every promotional poster / key visual MAL holds for an anime. Studios publish
+ * a different number per title — teasers, per-cour keys, character visuals — so
+ * counts range from one to dozens. Cached a day: this art effectively never
+ * changes once published.
+ */
+export function getAnimePictures(
+  malId: number,
+): Promise<{ data: JikanPicture[] }> {
+  return jikanFetch<{ data: JikanPicture[] }>(`/anime/${malId}/pictures`, {
     revalidate: ONE_DAY_SECONDS,
   });
 }

@@ -23,17 +23,17 @@ export default async function LoginPage(props: {
 
   return (
     <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-      <ImageBackdrop src="/auth-bg.png" />
+      <ImageBackdrop src="/auth-bg.webp" />
       <Card className="glass w-full max-w-sm">
         <CardHeader>
-          <div className="relative mb-2 aspect-[11/6] w-full overflow-hidden rounded-lg ring-1 ring-foreground/10">
+          <div className="relative mb-2 aspect-video w-full overflow-hidden rounded-xl ring-1 ring-foreground/10">
             <Image
-              src="/auth-crest.png"
-              alt="anime_maniacs"
+              src="/auth-crest.webp"
+              alt="Anime Maniac"
               fill
               priority
               sizes="384px"
-              className="object-contain"
+              className="object-cover"
             />
           </div>
           <CardTitle>Sign in</CardTitle>

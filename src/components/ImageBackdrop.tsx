@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
  * - `overlay`: replace the default scrim (e.g. a stronger flat darken when the
  *   backdrop sits behind dense content).
  *
- * Uses next/image (`fill`) so the source is optimized (resized + AVIF/WebP).
+ * Uses next/image (`fill`), but note `images.unoptimized` is on (next.config.ts),
+ * so the source is served as-is — pass an already right-sized WebP.
  */
 export function ImageBackdrop({
   src,

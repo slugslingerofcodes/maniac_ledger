@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, GFS_Didot } from "next/font/google";
+import { Plus_Jakarta_Sans, Geist_Mono, Sora, GFS_Didot } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -8,14 +8,26 @@ import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Body + UI face: Plus Jakarta Sans — warm, rounded, modern, crisp at small
+// sizes. Self-hosted by next/font; `display: swap` avoids invisible text.
+const sans = Plus_Jakarta_Sans({
+  variable: "--font-sans-src",
   subsets: ["latin"],
+  display: "swap",
+});
+
+// Display face for headings/hero: Sora pairs cleanly with Jakarta and gives
+// section titles real personality.
+const display = Sora({
+  variable: "--font-display-src",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 // Didot-style serif for the brand wordmark. GFS Didot is the free, web-safe
@@ -24,6 +36,7 @@ const didot = GFS_Didot({
   variable: "--font-didot-src",
   weight: "400",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -39,7 +52,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
+      className={`dark ${sans.variable} ${display.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>

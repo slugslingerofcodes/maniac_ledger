@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 
+import { SiteBanner } from "@/components/SiteBanner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,17 +79,13 @@ export function AppNav() {
           <span className="hidden sm:inline">Menu</span>
         </button>
 
-        {/* Logo / wordmark */}
-        <Link href="/" aria-label="anime_maniacs" className="flex items-center">
-          <Image
-            src="/wordmark.png"
-            alt="anime_maniacs"
-            width={1600}
-            height={600}
-            priority
-            sizes="150px"
-            className="h-11 w-auto"
-          />
+        {/* Logo / brand banner */}
+        <Link
+          href="/"
+          aria-label="anime_maniacs"
+          className="flex shrink-0 items-center"
+        >
+          <SiteBanner />
         </Link>
 
         {/* Right side — account */}

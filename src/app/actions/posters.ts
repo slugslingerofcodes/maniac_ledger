@@ -19,7 +19,14 @@ export type AnimePoster = {
 };
 
 export type PostersResult =
-  | { ok: true; posters: AnimePoster[]; animeCount: number; degraded: boolean }
+  | {
+      ok: true;
+      posters: AnimePoster[];
+      animeCount: number;
+      degraded: boolean;
+      /** Another page of anime exists upstream. */
+      hasMore: boolean;
+    }
   | { ok: false; error: string };
 
 /**
@@ -56,18 +63,30 @@ function posterUrlsOf(
  * Every poster MAL has for the anime matching `query`, flattened into one list.
  *
  * An empty query browses the current top titles instead, so the tab is never
- * blank on arrival. Poster fetches run in parallel — they still serialise
- * inside the Jikan queue, but a failure for one title never sinks the rest
- * (`allSettled`), which matters because MAL 504s on individual endpoints fairly
- * often.
+ * blank on arrival. `page` walks further down that list — each page is another
+ * batch of up to MAX_ANIME titles and all of their posters, which is what the
+ * grid's "Load more" appends. Poster fetches run in parallel — they still
+ * serialise inside the Jikan queue, but a failure for one title never sinks the
+ * rest (`allSettled`), which matters because MAL 504s on individual endpoints
+ * fairly often.
  */
-export async function fetchAnimePosters(query: string): Promise<PostersResult> {
+export async function fetchAnimePosters(
+  query: string,
+  page = 1,
+): Promise<PostersResult> {
   const q = query.trim();
 
   let anime: JikanAnime[] = [];
+  let hasMore = false;
   try {
-    const res = q ? await searchAnime(q, 1) : await getTopAnime(MAX_ANIME);
+    // Both engines page in MAX_ANIME-sized batches. Pushing the limit down to
+    // Jikan is what keeps paging honest: taking a slice of its default 25-result
+    // page would drop the rest, and page 2 would resume past them.
+    const res = q
+      ? await searchAnime(q, page, [], { limit: MAX_ANIME })
+      : await getTopAnime(MAX_ANIME, page);
     anime = res.data.slice(0, MAX_ANIME);
+    hasMore = res.pagination.has_next_page;
   } catch {
     return {
       ok: false,
@@ -78,7 +97,7 @@ export async function fetchAnimePosters(query: string): Promise<PostersResult> {
   }
 
   if (anime.length === 0) {
-    return { ok: true, posters: [], animeCount: 0, degraded: false };
+    return { ok: true, posters: [], animeCount: 0, degraded: false, hasMore: false };
   }
 
   const settled = await Promise.allSettled(
@@ -114,5 +133,6 @@ export async function fetchAnimePosters(query: string): Promise<PostersResult> {
     posters,
     animeCount: anime.length,
     degraded: failures > 0,
+    hasMore,
   };
 }

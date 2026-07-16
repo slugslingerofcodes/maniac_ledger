@@ -2,11 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BookOpen, Clapperboard } from "lucide-react";
 
+import { ImageBackdrop } from "@/components/ImageBackdrop";
+
 export const metadata: Metadata = { title: "Choose · anime_maniacs" };
 
 export default function ChoosePage() {
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-16 text-foreground">
+    // No bg-background: the backdrop below sits at -z-10, and an opaque page
+    // background would paint straight over it.
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16 text-foreground">
+      {/* This artwork belongs to the pick-a-side screen alone — every other
+          page uses the ambient backdrop chosen in the profile. */}
+      <ImageBackdrop src="/choose-bg.webp" fixed />
+
       <div className="mb-10 text-center">
         <h1 className="text-gradient text-3xl font-bold tracking-tight sm:text-5xl">
           What are you here for?

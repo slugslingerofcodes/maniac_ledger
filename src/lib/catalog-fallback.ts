@@ -99,6 +99,32 @@ export async function searchCatalog(
     .map(toJikanShape);
 }
 
+/**
+ * The catalog's best-scored titles — the browse counterpart to
+ * {@link searchCatalog}, for surfaces that show "top anime" with no query
+ * (e.g. the posters tab's empty state) when every live engine is down.
+ * Same exclusions as search: SFW only, mal_id required.
+ */
+export async function browseCatalog(limit = 24): Promise<JikanAnime[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("anime")
+    .select("*")
+    .not("mal_id", "is", null)
+    .not("genres", "cs", "{Hentai}")
+    .order("score", { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  const seen = new Set<number>();
+  return (data ?? [])
+    .filter((row) => {
+      if (row.mal_id == null || seen.has(row.mal_id)) return false;
+      seen.add(row.mal_id);
+      return true;
+    })
+    .map(toJikanShape);
+}
+
 /** Misc-tab mode → the MAL genre names stored on catalog rows. */
 const ADULT_GENRE_NAMES: Record<"ecchi" | "hentai" | "both", string[]> = {
   ecchi: ["Ecchi"],

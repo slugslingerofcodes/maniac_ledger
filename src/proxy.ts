@@ -13,9 +13,15 @@ export const config = {
      * Match all request paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico and common image assets
+     * - favicon.ico and common image/video assets
      * Always run on routes that may set/refresh auth cookies.
+     *
+     * Video matters as much as images here: a <video> streams via HTTP range
+     * requests, so every seek/buffer would otherwise cost a Supabase
+     * `getUser()` round-trip in the proxy — and 307 away entirely for
+     * signed-out viewers. These are decorative files in public/, public by
+     * nature.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4|webm)$).*)",
   ],
 };

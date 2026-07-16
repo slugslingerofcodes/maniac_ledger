@@ -4,7 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { fetchAnimePosters, type AnimePoster } from "@/app/actions/posters";
+import {
+  fetchAnimePosters,
+  type AnimePoster,
+  type PostersSource,
+} from "@/app/actions/posters";
 import { PosterLightbox } from "@/components/PosterLightbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +19,18 @@ type Loaded = {
   query: string;
   posters: AnimePoster[];
   degraded: boolean;
+  source: PostersSource;
   error: string | null;
 };
+
+/** Degraded-mode notice, worded by which engine actually answered. */
+function degradedNotice(source: PostersSource): string {
+  if (source === "anilist")
+    return " · MyAnimeList is down — showing each title's cover from AniList";
+  if (source === "catalog")
+    return " · live sources are down — showing covers from the local catalog";
+  return " · some titles couldn’t be loaded";
+}
 
 /**
  * Anime Posters — every key visual MAL holds for a title, in one grid.
@@ -42,12 +56,14 @@ export default function AnimePostersPage() {
                 query: debouncedQuery,
                 posters: res.posters,
                 degraded: res.degraded,
+                source: res.source,
                 error: null,
               }
             : {
                 query: debouncedQuery,
                 posters: [],
                 degraded: false,
+                source: "mal",
                 error: res.error,
               },
         );
@@ -58,6 +74,7 @@ export default function AnimePostersPage() {
           query: debouncedQuery,
           posters: [],
           degraded: false,
+          source: "mal",
           error: "Couldn't load posters right now.",
         });
       });
@@ -108,7 +125,7 @@ export default function AnimePostersPage() {
         <>
           <p className="mb-3 text-xs text-muted-foreground">
             {posters.length} poster{posters.length === 1 ? "" : "s"}
-            {degraded ? " · some titles couldn’t be loaded" : ""}
+            {degraded ? degradedNotice(loaded?.source ?? "mal") : ""}
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {posters.map((p) => (

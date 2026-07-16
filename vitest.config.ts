@@ -11,8 +11,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
+    // Node by default; component tests opt into jsdom per file with a
+    // `// @vitest-environment jsdom` docblock (environmentMatchGlobs is gone
+    // in Vitest 4). The data-layer suites neither need nor want a DOM.
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     // Module-level caches in `jikan.ts` are per-process state; `restoreMocks`
     // plus per-file `vi.resetModules()` keeps files from leaking into each other.
     restoreMocks: true,

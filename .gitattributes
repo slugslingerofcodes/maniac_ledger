@@ -1,0 +1,5 @@
+# .mjs scripts must stay LF: a CRLF after the shebang line breaks esbuild's
+# shebang stripping, which made Vitest fail to import scripts/check-schema.mjs
+# with a bare "SyntaxError: Invalid or unexpected token" after any checkout
+# on Windows (core.autocrlf converts on the way out).
+*.mjs text eol=lf

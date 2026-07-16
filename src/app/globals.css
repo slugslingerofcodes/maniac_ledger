@@ -287,6 +287,10 @@ html:not(.dark) .text-gradient {
   animation: marquee-x var(--marquee-duration, 60s) linear infinite;
   will-change: transform;
 }
+/* Let the eye rest on a poster without chasing it. */
+.marquee-track:hover {
+  animation-play-state: paused;
+}
 .marquee-reverse {
   animation-direction: reverse;
 }
@@ -435,6 +439,55 @@ html:not(.dark) .text-gradient {
   background-size: 200% 100%;
   background-repeat: no-repeat;
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+/* --------------------------------------------------------------------------
+   Micro-feedback. All gated on prefers-reduced-motion: the flash/pop/sweep
+   simply don't run when the user has asked for less motion.
+--------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* Row highlight that sweeps down the episode list when a cascade fills
+     earlier episodes (delay staggered per row inline). */
+  @keyframes cascade-flash {
+    0% {
+      background-color: transparent;
+    }
+    30% {
+      background-color: oklch(0.65 0.2 290 / 18%);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+  .cascade-flash {
+    animation: cascade-flash 0.7s ease-out both;
+  }
+
+  /* "+ Add" → "✓ Added" pop (used via animate-[pop-in_…]). */
+  @keyframes pop-in {
+    0% {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.12);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* ScoreRing arc sweep: dashoffset animates from the full circumference
+     (91.1 = 2π·14.5, fixed by the 32px viewBox) to its inline target. */
+  @keyframes ring-sweep {
+    from {
+      stroke-dashoffset: 91.1;
+    }
+  }
+  .ring-sweep {
+    animation: ring-sweep 0.6s ease-out;
+  }
 }
 
 /* Slow "ken burns" drift for full-bleed image backdrops. */

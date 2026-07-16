@@ -12,8 +12,10 @@ import {
   useTransition,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { PosterTransition } from "@/components/PosterTransition";
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { NaturalSearchBox } from "@/components/anime/NaturalSearchBox";
@@ -44,7 +46,9 @@ import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { track } from "@/lib/analytics";
+import { posterTransitionName } from "@/lib/view-transition";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useRecentSearches } from "@/hooks/use-recent-searches";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import {
   displayTitle,
@@ -74,6 +78,7 @@ export default function SearchPage() {
 function SearchPageInner() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
+  const [recentSearches, recordSearch] = useRecentSearches();
   const [titleLang] = useTitleLanguage();
   const debouncedQuery = useDebounce(query, 400);
 
@@ -180,6 +185,8 @@ function SearchPageInner() {
         setDegraded(Boolean(body.degraded));
         setResolvedQuery(hasQuery ? q : "the selected filters");
         setStatus("success");
+        // Remember queries that actually found something (never typos).
+        if (hasQuery && unique.length > 0) recordSearch(q);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -187,7 +194,7 @@ function SearchPageInner() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, filters, page]);
+  }, [debouncedQuery, filters, page, recordSearch]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
@@ -238,6 +245,21 @@ function SearchPageInner() {
             <p className="text-sm text-muted-foreground">
               Start typing or pick a filter to discover anime…
             </p>
+            {recentSearches.length > 0 ? (
+              <div className="flex max-w-lg flex-wrap items-center justify-center gap-2">
+                <span className="text-xs text-muted-foreground">Recent:</span>
+                {recentSearches.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setQuery(s)}
+                    className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -354,13 +376,29 @@ function PosterCard({
         className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
       >
         {poster ? (
-          <Image
-            src={poster}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-          />
+          <PosterTransition name={posterTransitionName(anime.mal_id)}>
+          <span className="absolute inset-0">
+            {/* Blur-up: the small thumb (already cached by the browser from
+                the grid) paints instantly behind the large poster. */}
+            {anime.images?.jpg?.image_url && anime.images.jpg.image_url !== poster ? (
+              <Image
+                src={anime.images.jpg.image_url}
+                alt=""
+                aria-hidden
+                fill
+                sizes="64px"
+                className="scale-105 object-cover blur-md"
+              />
+            ) : null}
+            <Image
+              src={poster}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          </span>
+          </PosterTransition>
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
             No image
@@ -444,7 +482,17 @@ function AddButton({
         disabled={added || pending || !online}
         onClick={onAdd}
       >
-        {added ? "Added ✓" : "+ Add"}
+        {added ? (
+          // Keyed so the pop replays on the flip, not on unrelated re-renders.
+          <span
+            key="added"
+            className="inline-flex items-center gap-1 motion-safe:animate-[pop-in_0.35s_ease-out]"
+          >
+            <Check className="size-4" aria-hidden /> Added
+          </span>
+        ) : (
+          "+ Add"
+        )}
       </Button>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>

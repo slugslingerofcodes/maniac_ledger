@@ -77,6 +77,13 @@ export async function ContinueWatching() {
                   <p className="mt-0.5 text-xs text-zinc-300">
                     Episode {nextEp}
                     {hasTotal ? ` of ${total}` : ""}
+                    {/* The decision-relevant number: how much is left, not
+                        just where you are. */}
+                    {hasTotal && total! - row.episodes_watched > 0 ? (
+                      <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium text-white">
+                        {total! - row.episodes_watched} left
+                      </span>
+                    ) : null}
                   </p>
                   {hasTotal ? (
                     <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">

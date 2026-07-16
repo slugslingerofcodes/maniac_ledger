@@ -10,6 +10,7 @@ import {
   type PostersSource,
 } from "@/app/actions/posters";
 import { PosterLightbox } from "@/components/PosterLightbox";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -112,15 +113,27 @@ export default function AnimePostersPage() {
       {loading ? (
         <PosterGridSkeleton />
       ) : error ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          {error}
-        </p>
+        <div className="flex flex-col items-start gap-3" role="status">
+          <p className="text-sm text-muted-foreground">{error}</p>
+          {query.trim() ? (
+            <Button size="sm" variant="outline" onClick={() => setQuery("")}>
+              Browse top titles instead
+            </Button>
+          ) : null}
+        </div>
       ) : posters.length === 0 ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          {debouncedQuery.trim()
-            ? `No posters found for “${debouncedQuery.trim()}”.`
-            : "No posters to show right now."}
-        </p>
+        <div className="flex flex-col items-start gap-3" role="status">
+          <p className="text-sm text-muted-foreground">
+            {debouncedQuery.trim()
+              ? `No posters found for “${debouncedQuery.trim()}”.`
+              : "No posters to show right now."}
+          </p>
+          {debouncedQuery.trim() ? (
+            <Button size="sm" variant="outline" onClick={() => setQuery("")}>
+              Clear search
+            </Button>
+          ) : null}
+        </div>
       ) : (
         <>
           <p className="mb-3 text-xs text-muted-foreground">

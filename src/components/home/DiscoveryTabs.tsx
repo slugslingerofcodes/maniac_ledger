@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { PosterTransition } from "@/components/PosterTransition";
 import Image from "next/image";
 import Link from "next/link";
 
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
+import { posterTransitionName } from "@/lib/view-transition";
 
 /** Serializable card payload for the discovery grid. */
 export type DiscoveryItem = {
@@ -70,6 +72,7 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
             href={`/anime/mal/${item.malId}`}
             className="group flex flex-col gap-1.5"
           >
+            <PosterTransition name={posterTransitionName(item.malId)}>
             <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
               {item.posterUrl ? (
                 <Image
@@ -85,6 +88,7 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
                 </div>
               )}
             </div>
+            </PosterTransition>
             <p className="line-clamp-1 text-xs font-medium group-hover:text-primary">
               <span aria-hidden className="mr-1 text-emerald-400">
                 ●

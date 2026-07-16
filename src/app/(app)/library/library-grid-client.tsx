@@ -12,7 +12,7 @@ import {
   removeFromLibraryAction,
   type LibraryEntryItem,
 } from "@/app/actions/library";
-import { bulkUpdateStatus } from "@/app/actions/progress";
+import { bulkUpdateStatus, upsertProgress } from "@/app/actions/progress";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import { genreChipStyle } from "@/lib/genre-color";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
@@ -98,23 +98,38 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
     setSelected(new Set());
   }
 
-  /** Remove a single entry from the library, optimistically, with a confirm. */
-  function removeItem(id: string, title: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Remove “${title}” from your library?`)
-    ) {
-      return;
-    }
+  /**
+   * Remove a single entry, optimistically, with an undo toast instead of a
+   * confirm dialog — faster than asking first, safer than no recourse. Undo
+   * re-creates the row with the same status/episodes/score (per-episode check
+   * marks are gone by then; the episode counter is what's restorable).
+   */
+  function removeItem(item: LibraryEntryItem) {
     const prev = queryClient.getQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY);
     // Optimistically drop it from the cached list (the grid animates it out).
     queryClient.setQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY, (old) =>
-      (old ?? []).filter((i) => i.id !== id),
+      (old ?? []).filter((i) => i.id !== item.id),
     );
     startRemove(async () => {
-      const res = await removeFromLibraryAction(id);
+      const res = await removeFromLibraryAction(item.id);
       if (res.ok) {
-        toast.success(`Removed “${title}”.`);
+        toast(`Removed “${item.title}”`, {
+          duration: 6000,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              if (prev) queryClient.setQueryData(LIBRARY_QUERY_KEY, prev);
+              void upsertProgress(item.id, {
+                status: item.status,
+                episodes_watched: item.episodesWatched,
+                score: item.score,
+              }).then((restored) => {
+                if (!restored.ok) toast.error("Couldn’t restore the entry.");
+                queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
+              });
+            },
+          },
+        });
       } else {
         // Revert to the pre-remove list and surface the error.
         if (prev) queryClient.setQueryData(LIBRARY_QUERY_KEY, prev);
@@ -320,7 +335,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => removeItem(item.id, item.title)}
+                        onClick={() => removeItem(item)}
                         aria-label={`Remove ${item.title} from library`}
                         title="Remove from library"
                         className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"

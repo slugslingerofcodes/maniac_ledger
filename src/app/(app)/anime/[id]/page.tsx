@@ -1,4 +1,4 @@
-import { Suspense, ViewTransition } from "react";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,6 +6,8 @@ import { Music2 } from "lucide-react";
 
 import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
+import { ParallaxY } from "@/components/ParallaxY";
+import { PosterTransition } from "@/components/PosterTransition";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
@@ -24,6 +26,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AnimeInfoGrid, type AnimeInfo } from "@/components/anime/AnimeInfoGrid";
 import { ensureEpisodes } from "@/lib/episodes";
+import { genreChipStyle } from "@/lib/genre-color";
+import { posterTransitionName } from "@/lib/view-transition";
 import { getAnimeExtraInfo, type AnimeExtraInfo } from "@/lib/anilist";
 import {
   getAnimeExtras,
@@ -358,9 +362,10 @@ export default async function AnimeDetailPage({
 
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-end">
             {/* Poster floating on the left; shares a view-transition name with
-                the library card so navigation morphs the poster into place. */}
-            <ViewTransition name={`poster-${anime.id}`}>
-            <div className="w-40 shrink-0 sm:-mb-12 sm:w-52">
+                every grid card (see posterTransitionName) so navigating from
+                any surface morphs the poster into place. */}
+            <PosterTransition name={posterTransitionName(anime.mal_id, anime.id)}>
+            <ParallaxY className="w-40 shrink-0 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
                 // Click-to-zoom: opens the full poster in a lightbox.
                 <PosterLightbox src={anime.poster_url} alt={anime.title}>
@@ -380,8 +385,8 @@ export default async function AnimeDetailPage({
                   No image
                 </div>
               )}
-            </div>
-            </ViewTransition>
+            </ParallaxY>
+            </PosterTransition>
 
             {/* Title / score / studio / season */}
             <div className="flex min-w-0 flex-col gap-3">
@@ -426,8 +431,14 @@ export default async function AnimeDetailPage({
 
               {genres.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
+                  {/* Same per-genre tints as the library/movies grids, so a
+                      genre reads as the same color everywhere. */}
                   {genres.slice(0, 6).map((g) => (
-                    <Badge key={g} variant="outline">
+                    <Badge
+                      key={g}
+                      className="border-transparent"
+                      style={genreChipStyle(g)}
+                    >
                       {g}
                     </Badge>
                   ))}

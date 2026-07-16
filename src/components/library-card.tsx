@@ -1,4 +1,4 @@
-import { ViewTransition } from "react";
+import { PosterTransition } from "@/components/PosterTransition";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -7,11 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { posterTransitionName } from "@/lib/view-transition";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { AnimeType, WatchStatus } from "@/types/anime";
 
 export type LibraryCardItem = {
   id: string;
+  /** MAL id when known — keys the poster morph (see posterTransitionName). */
+  malId?: number | null;
   title: string;
   posterUrl: string | null;
   type: AnimeType | null;
@@ -41,7 +44,7 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
       </div>
     ) : null}
     <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
-      <ViewTransition name={`poster-${item.id}`}>
+      <PosterTransition name={posterTransitionName(item.malId, item.id)}>
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
@@ -76,7 +79,7 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
           ) : null}
         </div>
       </div>
-      </ViewTransition>
+      </PosterTransition>
 
       <CardContent className="flex flex-col gap-2.5 p-3">
         <h3

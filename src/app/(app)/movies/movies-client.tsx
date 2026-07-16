@@ -3,6 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { PosterTransition } from "@/components/PosterTransition";
+
+import { posterTransitionName } from "@/lib/view-transition";
 
 import { Pagination } from "@/components/anime/Pagination";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +147,7 @@ export function MoviesClient() {
                   href={`/anime/mal/${movie.mal_id}`}
                   className="group flex flex-col gap-2"
                 >
+                  <PosterTransition name={posterTransitionName(movie.mal_id)}>
                   <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                     {poster ? (
                       <Image
@@ -164,6 +168,7 @@ export function MoviesClient() {
                       </Badge>
                     ) : null}
                   </div>
+                  </PosterTransition>
                   <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                     {movie.title_english ?? movie.title}
                   </p>

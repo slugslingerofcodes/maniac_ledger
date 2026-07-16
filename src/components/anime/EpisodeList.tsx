@@ -12,6 +12,7 @@ import {
   toggleEpisode,
 } from "@/app/actions/progress";
 import { track } from "@/lib/analytics";
+import { celebrateCompletion } from "@/lib/celebrate";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/types/anime";
 
@@ -22,20 +23,6 @@ type Props = {
   // for the DB call — only for the analytics event.
   animeId: string;
 };
-
-/** Toast + confetti burst when the final episode of a series is marked. */
-async function celebrateCompletion() {
-  toast.success("Series complete — every episode watched! 🎉");
-  // Skip the burst (and loading its chunk at all) under reduced motion.
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const confetti = (await import("canvas-confetti")).default;
-  confetti({
-    particleCount: 130,
-    spread: 75,
-    origin: { y: 0.7 },
-    disableForReducedMotion: true,
-  });
-}
 
 export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   // Confirmed server state. Seeded once from props; updated when an action
@@ -57,6 +44,14 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
   );
 
   const [isPending, startTransition] = useTransition();
+
+  // The most recent cascade fill: episode id → its position in the cascade,
+  // plus a stamp so replaying the same cascade re-runs the flash. Drives a
+  // staggered row highlight so back-filling 1–6 is visible, not instant.
+  const [cascade, setCascade] = useState<{
+    order: Map<string, number>;
+    stamp: number;
+  } | null>(null);
 
   // Per-episode 1–5 star ratings (migration 0017). null → feature unavailable
   // (column missing), so the star row is hidden entirely.
@@ -141,6 +136,11 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
         (e) => e.number <= target.number && !watched.has(e.id),
       );
       if (toAdd.length === 0) return;
+      // Show the fill sweeping down the list (earliest episode first).
+      setCascade({
+        order: new Map(toAdd.map((e, i) => [e.id, i])),
+        stamp: Date.now(),
+      });
       for (const e of toAdd) applyOptimistic(e.id);
 
       const res = await markEpisodesUpTo(target.id);
@@ -194,12 +194,22 @@ export function EpisodeList({ episodes, initialWatchedIds, animeId }: Props) {
         {episodes.map((ep) => {
           const isWatched = optimisticWatched.has(ep.id);
           const checkboxId = `ep-${ep.id}`;
+          const cascadeIndex = cascade?.order.get(ep.id);
           return (
             <li
               key={ep.id}
               id={`ep-${ep.number}`}
-              className="flex scroll-mt-24 items-center gap-3 bg-card px-4 py-2.5 text-sm"
+              className="relative flex scroll-mt-24 items-center gap-3 bg-card px-4 py-2.5 text-sm"
             >
+              {cascadeIndex != null ? (
+                // Keyed on the stamp so a repeat cascade replays the sweep.
+                <span
+                  key={cascade!.stamp}
+                  aria-hidden
+                  className="cascade-flash pointer-events-none absolute inset-0"
+                  style={{ animationDelay: `${cascadeIndex * 45}ms` }}
+                />
+              ) : null}
               <input
                 id={checkboxId}
                 type="checkbox"

@@ -41,6 +41,9 @@ export function ScoreRing({
         stroke="oklch(1 0 0 / 14%)"
         strokeWidth={STROKE}
       />
+      {/* Dash offset (not a dash pattern) so the arc can sweep in via the
+          ring-sweep keyframe — from the full circumference to this target.
+          Pure CSS: still server-renderable, skipped under reduced motion. */}
       <circle
         cx="16"
         cy="16"
@@ -49,8 +52,10 @@ export function ScoreRing({
         stroke={color}
         strokeWidth={STROKE}
         strokeLinecap="round"
-        strokeDasharray={`${frac * C} ${C - frac * C}`}
+        strokeDasharray={C}
+        strokeDashoffset={(1 - frac) * C}
         transform="rotate(-90 16 16)"
+        className="ring-sweep"
       />
       <text
         x="16"

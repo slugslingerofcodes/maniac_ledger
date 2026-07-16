@@ -24,7 +24,7 @@ export async function LibraryGrid() {
   const { data, error } = await supabase
     .from("user_progress")
     .select(
-      "episodes_watched, status, score, anime:anime_id (id, title, poster_url, type, total_episodes)",
+      "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
     )
     .order("created_at", { ascending: false })
     .limit(PREVIEW_LIMIT + 1);
@@ -61,6 +61,12 @@ export async function LibraryGrid() {
           key={row.anime.id}
           item={{
             id: row.anime.id,
+            // Deliberately NOT the mal id: the home page also renders
+            // DiscoveryTabs, and the same anime appearing in both would
+            // duplicate a view-transition name on one page — the browser
+            // then skips the morph entirely. uuid names here can't collide;
+            // this preview strip just doesn't morph (the /library grid does).
+            malId: null,
             title: row.anime.title,
             posterUrl: row.anime.poster_url,
             type: row.anime.type,

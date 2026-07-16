@@ -4,6 +4,7 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { AppBackdrop } from "@/components/AppBackdrop";
 import { AppNav } from "@/components/AppNav";
 import { BottomTabBar } from "@/components/BottomTabBar";
+import { CommandPalette } from "@/components/CommandPalette";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -11,6 +12,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* App-wide backdrop; path-aware (library uses its own poster wall). */}
       <AppBackdrop />
       <AppNav />
+      <CommandPalette />
       <AnnouncementBanner />
       {/* Bottom padding on mobile so the fixed tab bar doesn't cover content. */}
       <div className="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">

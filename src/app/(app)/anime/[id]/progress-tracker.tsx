@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { track } from "@/lib/analytics";
+import { celebrateCompletion } from "@/lib/celebrate";
 import { cn } from "@/lib/utils";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { WatchStatus } from "@/types/anime";
@@ -83,6 +84,10 @@ export function ProgressTracker({
           kind: "success",
           text: inLibrary ? "Progress saved." : "Added to your library.",
         });
+        // Finishing here should feel the same as ticking the last episode.
+        if (status === "completed" && initial.status !== "completed") {
+          void celebrateCompletion("Marked completed — nice one! 🎉");
+        }
         track("status_changed", { animeId, status });
         router.refresh();
       } else {

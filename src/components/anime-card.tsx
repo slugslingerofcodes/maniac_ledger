@@ -1,3 +1,4 @@
+import { PosterTransition } from "@/components/PosterTransition";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -5,11 +6,14 @@ import { ScoreRing } from "@/components/ScoreRing";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { posterTransitionName } from "@/lib/view-transition";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { AnimeType, WatchStatus } from "@/types/anime";
 
 export type AnimeCardItem = {
   id: string;
+  /** MAL id when known — keys the poster morph (see posterTransitionName). */
+  malId?: number | null;
   title: string;
   posterUrl: string | null;
   type: AnimeType | null;
@@ -35,6 +39,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
       </div>
     ) : null}
     <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
+      <PosterTransition name={posterTransitionName(item.malId, item.id)}>
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
@@ -55,6 +60,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
           </span>
         ) : null}
       </div>
+      </PosterTransition>
 
       <CardContent className="flex flex-col gap-2 p-3">
         <h3 className="line-clamp-2 text-sm font-medium leading-snug" title={item.title}>

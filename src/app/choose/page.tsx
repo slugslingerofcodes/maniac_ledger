@@ -12,7 +12,7 @@ export default function ChoosePage() {
     // background would paint straight over it.
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16 text-foreground">
       {/* This artwork belongs to the pick-a-side screen alone — every other
-          page uses the ambient backdrop chosen in the profile. */}
+          page keeps the ambient vortex backdrop. */}
       <ImageBackdrop src="/choose-bg.webp" fixed />
 
       <div className="mb-10 text-center">

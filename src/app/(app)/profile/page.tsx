@@ -4,7 +4,6 @@ import { BookOpen, Clapperboard, Megaphone, ShieldCheck } from "lucide-react";
 
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
-import { BackgroundCard } from "@/components/profile/BackgroundCard";
 import { ImportExportCard } from "@/components/profile/ImportExportCard";
 import { PushToggle } from "@/components/profile/PushToggle";
 import { SocialSettingsCard } from "@/components/profile/SocialSettingsCard";
@@ -91,8 +90,6 @@ export default async function ProfilePage() {
       </div>
 
       <SocialSettingsCard suggestedUsername={username || name} />
-
-      <BackgroundCard />
 
       <ImportExportCard />
 

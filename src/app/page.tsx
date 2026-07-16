@@ -10,8 +10,8 @@ import { ShareBanner } from "@/components/home/ShareBanner";
 import { WatchingAiring } from "@/components/home/WatchingAiring";
 import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList";
 import { LibraryGrid } from "@/components/library-grid";
-import { AmbientBackdrop } from "@/components/AmbientBackdrop";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
+import { VortexBackdrop } from "@/components/VortexBackdrop";
 import { SiteHeader } from "@/components/site-header";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import { getAnilistAiringSchedule } from "@/lib/anilist";
@@ -283,7 +283,7 @@ export default function Home() {
     // No bg-background here: the fixed vortex backdrop sits at -z-10 and an
     // opaque page background would cover it. The hero paints its own.
     <div className="relative flex min-h-screen flex-col">
-      <AmbientBackdrop />
+      <VortexBackdrop />
       <SiteHeader />
       <Suspense fallback={<HeroFallback />}>
         <HeroSection />

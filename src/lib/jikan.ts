@@ -403,12 +403,6 @@ export type JikanSearchOptions = {
   /** Premiere window, YYYY-MM-DD (maps year / year-range filters). */
   startDate?: string;
   endDate?: string;
-  /**
-   * Results per page (Jikan caps this at 25; its default is 25). Set it when
-   * the caller pages in smaller batches — otherwise taking a slice of each
-   * 25-result page silently skips whatever the slice dropped.
-   */
-  limit?: number;
 };
 
 /**
@@ -438,7 +432,6 @@ export function searchAnime(
   });
   if (query) params.set("q", query);
   if (genreIds.length > 0) params.set("genres", genreIds.join(","));
-  if (opts.limit != null) params.set("limit", String(opts.limit));
   if (opts.type) params.set("type", opts.type);
   if (opts.status) params.set("status", opts.status);
   if (opts.startDate) params.set("start_date", opts.startDate);
@@ -529,11 +522,10 @@ export async function getUpcomingSeasons(pages = 2): Promise<JikanAnime[]> {
  * @param limit Max results (Jikan caps the page at 25).
  * @throws {JikanError} On any non-2xx response.
  */
-export function getTopAnime(limit = 24, page = 1): Promise<JikanSearchResponse> {
+export function getTopAnime(limit = 24): Promise<JikanSearchResponse> {
   const params = new URLSearchParams({
     filter: "airing",
     limit: String(limit),
-    page: String(page),
   });
   return jikanFetch<JikanSearchResponse>(`/top/anime?${params.toString()}`, {
     revalidate: ONE_DAY_SECONDS,

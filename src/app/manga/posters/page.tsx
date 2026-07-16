@@ -6,19 +6,16 @@ import { useEffect, useState } from "react";
 
 import { fetchAnimePosters, type AnimePoster } from "@/app/actions/posters";
 import { PosterLightbox } from "@/components/PosterLightbox";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebounce } from "@/hooks/use-debounce";
 
-/** What the last completed fetch returned, tagged with the request it answered. */
+/** What the last completed fetch returned, tagged with the query it answered. */
 type Loaded = {
   query: string;
-  page: number;
   posters: AnimePoster[];
   degraded: boolean;
   error: string | null;
-  hasMore: boolean;
 };
 
 /**
@@ -32,77 +29,49 @@ type Loaded = {
 export default function AnimePostersPage() {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounce(query, 450);
-  const [page, setPage] = useState(1);
-  // Bumped to re-run the *same* page after a failure — MAL 504s often enough
-  // that a dead end with no way back is a real outcome, not a hypothetical.
-  const [retry, setRetry] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-
-  // A new search restarts paging. Adjusting during render is React's sanctioned
-  // alternative to a reset effect (and keeps the lint rule happy).
-  const [seenQuery, setSeenQuery] = useState(debouncedQuery);
-  if (seenQuery !== debouncedQuery) {
-    setSeenQuery(debouncedQuery);
-    setPage(1);
-  }
 
   useEffect(() => {
     let active = true;
-    fetchAnimePosters(debouncedQuery, page)
+    fetchAnimePosters(debouncedQuery)
       .then((res) => {
         if (!active) return;
-        setLoaded((prev) => {
-          // Page 1 replaces; later pages append to what's already shown.
-          const base =
-            page > 1 && prev && prev.query === debouncedQuery ? prev.posters : [];
-          if (!res.ok) {
-            return {
-              query: debouncedQuery,
-              page,
-              posters: base,
-              degraded: false,
-              error: res.error,
-              // Page 1 failing means there's nothing to page through. A later
-              // page failing is retryable — keep the control on screen.
-              hasMore: page > 1,
-            };
-          }
-          const seen = new Set(base.map((p) => p.id));
-          return {
-            query: debouncedQuery,
-            page,
-            posters: [...base, ...res.posters.filter((p) => !seen.has(p.id))],
-            degraded: res.degraded,
-            error: null,
-            hasMore: res.hasMore,
-          };
-        });
+        setLoaded(
+          res.ok
+            ? {
+                query: debouncedQuery,
+                posters: res.posters,
+                degraded: res.degraded,
+                error: null,
+              }
+            : {
+                query: debouncedQuery,
+                posters: [],
+                degraded: false,
+                error: res.error,
+              },
+        );
       })
       .catch(() => {
         if (!active) return;
-        setLoaded((prev) => ({
+        setLoaded({
           query: debouncedQuery,
-          page,
-          posters: page > 1 && prev ? prev.posters : [],
+          posters: [],
           degraded: false,
           error: "Couldn't load posters right now.",
-          hasMore: page > 1,
-        }));
+        });
       });
     return () => {
       active = false;
     };
-  }, [debouncedQuery, page, retry]);
+  }, [debouncedQuery]);
 
   // Derived, not stored: we're loading whenever what we hold doesn't answer
   // what we last asked for. Keeps every setState inside the promise callback.
-  const settled = loaded?.query === debouncedQuery && loaded?.page === page;
-  const loadingFirst = !settled && page === 1;
-  const loadingMore = !settled && page > 1;
-  const posters = loaded?.query === debouncedQuery ? loaded.posters : [];
-  const error = settled ? (loaded?.error ?? null) : null;
+  const loading = loaded?.query !== debouncedQuery;
+  const posters = loaded?.posters ?? [];
+  const error = loaded?.error ?? null;
   const degraded = loaded?.degraded ?? false;
-  const hasMore = settled ? (loaded?.hasMore ?? false) : false;
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
@@ -123,9 +92,9 @@ export default function AnimePostersPage() {
         className="mb-6 max-w-md"
       />
 
-      {loadingFirst ? (
+      {loading ? (
         <PosterGridSkeleton />
-      ) : error && posters.length === 0 ? (
+      ) : error ? (
         <p className="text-sm text-muted-foreground" role="status">
           {error}
         </p>
@@ -145,32 +114,6 @@ export default function AnimePostersPage() {
             {posters.map((p) => (
               <PosterTile key={p.id} poster={p} />
             ))}
-          </div>
-
-          <div className="mt-6 flex flex-col items-center gap-2">
-            {error ? (
-              <p className="text-xs text-muted-foreground" role="status">
-                {error}
-              </p>
-            ) : null}
-            {hasMore || loadingMore ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={loadingMore}
-                // After a failure, re-run the page that failed rather than
-                // advancing past it — otherwise a retry would skip its titles.
-                onClick={() =>
-                  error ? setRetry((n) => n + 1) : setPage((p) => p + 1)
-                }
-              >
-                {loadingMore ? "Loading…" : error ? "Try again" : "Load more"}
-              </Button>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                That’s every poster we have for this.
-              </p>
-            )}
           </div>
         </>
       )}

@@ -1,7 +1,6 @@
-import { PosterTransition } from "@/components/PosterTransition";
 import Image from "next/image";
-import Link from "next/link";
 
+import { MorphLink } from "@/components/MorphLink";
 import { ScoreRing } from "@/components/ScoreRing";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +32,11 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
     : 0;
 
   return (
-    <Link href={`/anime/${item.id}`} className="group relative isolate block">
+    <MorphLink
+      href={`/anime/${item.id}`}
+      name={posterTransitionName(item.malId, item.id)}
+      className="group relative isolate block"
+    >
     {/* Ambient glow: the poster itself, blurred, spilling past the card. */}
     {item.posterUrl ? (
       <div
@@ -44,8 +47,7 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
       </div>
     ) : null}
     <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
-      <PosterTransition name={posterTransitionName(item.malId, item.id)}>
-      <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
+      <div data-morph className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
             src={item.posterUrl}
@@ -79,7 +81,6 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
           ) : null}
         </div>
       </div>
-      </PosterTransition>
 
       <CardContent className="flex flex-col gap-2.5 p-3">
         <h3
@@ -117,6 +118,6 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
         </div>
       </CardContent>
     </Card>
-    </Link>
+    </MorphLink>
   );
 }

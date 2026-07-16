@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AnimeCard, type AnimeCardItem } from "@/components/anime-card";
+// AnimeCard renders through MorphLink, which calls useRouter.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
+const { AnimeCard } = await import("@/components/anime-card");
+type AnimeCardItem = import("@/components/anime-card").AnimeCardItem;
 
 // globals:false means testing-library cannot auto-register its cleanup.
 afterEach(cleanup);

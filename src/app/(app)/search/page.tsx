@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -15,7 +14,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
-import { PosterTransition } from "@/components/PosterTransition";
+import { MorphLink } from "@/components/MorphLink";
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { NaturalSearchBox } from "@/components/anime/NaturalSearchBox";
@@ -370,14 +369,14 @@ function PosterCard({
           <Image src={poster} alt="" fill sizes="200px" className="object-cover" />
         </div>
       ) : null}
-      <Link
+      <MorphLink
         href={`/anime/mal/${anime.mal_id}`}
-        aria-label={`View details for ${title}`}
+        name={posterTransitionName(anime.mal_id)}
+        ariaLabel={`View details for ${title}`}
         className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
       >
         {poster ? (
-          <PosterTransition name={posterTransitionName(anime.mal_id)}>
-          <span className="absolute inset-0">
+          <span data-morph className="absolute inset-0">
             {/* Blur-up: the small thumb (already cached by the browser from
                 the grid) paints instantly behind the large poster. */}
             {anime.images?.jpg?.image_url && anime.images.jpg.image_url !== poster ? (
@@ -398,7 +397,6 @@ function PosterCard({
               className="object-cover transition-transform duration-300 group-hover:scale-105"
             />
           </span>
-          </PosterTransition>
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
             No image
@@ -423,7 +421,7 @@ function PosterCard({
             </p>
           ) : null}
         </div>
-      </Link>
+      </MorphLink>
 
       <AddButton anime={anime} alreadyInLibrary={alreadyInLibrary} />
     </div>

@@ -61,12 +61,11 @@ export async function LibraryGrid() {
           key={row.anime.id}
           item={{
             id: row.anime.id,
-            // Deliberately NOT the mal id: the home page also renders
-            // DiscoveryTabs, and the same anime appearing in both would
-            // duplicate a view-transition name on one page — the browser
-            // then skips the morph entirely. uuid names here can't collide;
-            // this preview strip just doesn't morph (the /library grid does).
-            malId: null,
+            // MorphLink applies the view-transition-name only to the clicked
+            // poster, so the same anime appearing in both this strip and
+            // DiscoveryTabs no longer collides — the real mal id is safe and
+            // is what the detail hero matches on.
+            malId: row.anime.mal_id,
             title: row.anime.title,
             posterUrl: row.anime.poster_url,
             type: row.anime.type,

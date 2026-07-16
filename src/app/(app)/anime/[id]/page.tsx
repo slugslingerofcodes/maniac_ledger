@@ -7,7 +7,6 @@ import { Music2 } from "lucide-react";
 import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
 import { ParallaxY } from "@/components/ParallaxY";
-import { PosterTransition } from "@/components/PosterTransition";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
@@ -361,15 +360,20 @@ export default async function AnimeDetailPage({
           </Link>
 
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-end">
-            {/* Poster floating on the left; shares a view-transition name with
-                every grid card (see posterTransitionName) so navigating from
-                any surface morphs the poster into place. */}
-            <PosterTransition name={posterTransitionName(anime.mal_id, anime.id)}>
+            {/* Poster floating on the left. `data-vtn` + the inline
+                view-transition-name make this the morph target: a grid poster
+                with the same name (see posterTransitionName) animates into it
+                on navigation — MorphLink drives the transition and polls for
+                this element by its data-vtn. */}
             <ParallaxY className="w-40 shrink-0 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
                 // Click-to-zoom: opens the full poster in a lightbox.
                 <PosterLightbox src={anime.poster_url} alt={anime.title}>
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10">
+                  <div
+                    data-vtn={posterTransitionName(anime.mal_id, anime.id)}
+                    style={{ viewTransitionName: posterTransitionName(anime.mal_id, anime.id) }}
+                    className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10"
+                  >
                     <Image
                       src={anime.poster_url}
                       alt={anime.title}
@@ -386,7 +390,6 @@ export default async function AnimeDetailPage({
                 </div>
               )}
             </ParallaxY>
-            </PosterTransition>
 
             {/* Title / score / studio / season */}
             <div className="flex min-w-0 flex-col gap-3">

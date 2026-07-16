@@ -1,10 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { PosterTransition } from "@/components/PosterTransition";
 
+import { MorphLink } from "@/components/MorphLink";
 import { posterTransitionName } from "@/lib/view-transition";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
@@ -194,13 +193,13 @@ export function SeasonsClient() {
                 anime.images?.jpg?.image_url ??
                 null;
               return (
-                <Link
+                <MorphLink
                   key={anime.mal_id}
                   href={`/anime/mal/${anime.mal_id}`}
+                  name={posterTransitionName(anime.mal_id)}
                   className="group flex flex-col gap-2"
                 >
-                  <PosterTransition name={posterTransitionName(anime.mal_id)}>
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
+                  <div data-morph className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                     {poster ? (
                       <Image
                         src={poster}
@@ -225,11 +224,10 @@ export function SeasonsClient() {
                       </Badge>
                     ) : null}
                   </div>
-                  </PosterTransition>
                   <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                     {anime.title_english ?? anime.title}
                   </p>
-                </Link>
+                </MorphLink>
               );
             })}
           </div>

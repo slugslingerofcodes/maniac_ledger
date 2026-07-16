@@ -851,6 +851,32 @@ export type Database = {
           },
         ];
       };
+      /**
+       * Durable upstream-response cache (migration 0026). Reachable only with
+       * the service-role key — RLS is on with no policies/grants — so it is
+       * touched exclusively by `src/lib/http-cache.ts`.
+       */
+      http_cache: {
+        Row: {
+          key: string;
+          value: Json;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          key: string;
+          value: Json;
+          expires_at: string;
+          created_at?: string;
+        };
+        Update: {
+          key?: string;
+          value?: Json;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       anime_watched_count: {

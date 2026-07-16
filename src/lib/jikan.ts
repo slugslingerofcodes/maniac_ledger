@@ -5,20 +5,27 @@
  * Rate limits: Jikan allows roughly 3 requests/second (and ~60/minute). To stay
  * inside that budget, every request funnels through a small serial queue that
  * spaces calls at least `MIN_REQUEST_INTERVAL_MS` apart. For UI that fires on
- * keystrokes (a search box), wrap your handler with the exported `debounce`
- * helper so you aren't issuing a request per character.
+ * keystrokes (a search box), debounce the input with the `useDebounce` hook
+ * (`src/hooks/use-debounce.ts`) so you aren't issuing a request per character.
  *
- * Caching: callers pass `revalidate`, which is honoured by the process-local
- * TTL cache below — NOT by Next. Next's layers are both inert in this app:
- * `fetch`'s `next.revalidate` only applies to requests reached *before* a
- * request-time API, and every page reads `cookies()` (auth) first; and
- * `unstable_cache` is skipped wherever `dynamic = "force-dynamic"` is set,
- * because it bails when `fetchCache === 'force-no-store'`, which force-dynamic
- * implies. Both were measured re-fetching on every single request, which is why
- * the home page took ~48s. Blanket `fetchCache = 'default-cache'` is not an
- * option either: Supabase's auth calls set no cache option, so it would
- * force-cache them. Hence a cache we control outright.
+ * Caching: callers pass `revalidate`, which is honoured by the two tiers below
+ * — a process-local TTL cache and the shared `http_cache` table — NOT by Next.
+ * Next's layers are both inert in this app: `fetch`'s `next.revalidate` only
+ * applies to requests reached *before* a request-time API, and every page reads
+ * `cookies()` (auth) first; and `unstable_cache` is skipped wherever
+ * `dynamic = "force-dynamic"` is set, because it bails when
+ * `fetchCache === 'force-no-store'`, which force-dynamic implies. Both were
+ * measured re-fetching on every single request, which is why the home page took
+ * ~48s. Blanket `fetchCache = 'default-cache'` is not an option either:
+ * Supabase's auth calls set no cache option, so it would force-cache them.
+ * Hence caches we control outright. See `jikanFetch` for how the tiers stack.
+ *
+ * Server-only in practice: this module reaches the service-role-backed
+ * `http-cache`, and every runtime importer is a page, action, or route handler.
+ * Client components import only `type`s from here.
  */
+
+import { sharedCacheGet, sharedCacheSet } from "@/lib/http-cache";
 
 const JIKAN_BASE_URL = "https://api.jikan.moe/v4";
 
@@ -194,24 +201,6 @@ function rateLimited<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/**
- * Classic trailing-edge debounce. Use it to throttle search-as-you-type so a
- * burst of keystrokes results in a single Jikan call after the user pauses.
- *
- * @example
- *   const onType = debounce((q: string) => runSearch(q), 350);
- */
-export function debounce<Args extends unknown[]>(
-  fn: (...args: Args) => unknown,
-  delayMs: number = MIN_REQUEST_INTERVAL_MS,
-): (...args: Args) => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return (...args: Args) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
-  };
-}
-
 /* -------------------------------------------------------------------------- */
 /* Core fetch                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -342,10 +331,21 @@ function cacheSet(path: string, entry: CacheEntry) {
   }
 }
 
+/** Namespaced key for the shared tier, which other clients also use. */
+const sharedKey = (path: string) => `jikan:${path}`;
+
 /**
  * Cached entry point. `revalidate` omitted → always live (e.g. `/random`).
- * Otherwise the response is served from the TTL cache for that many seconds, so
- * a warm page costs zero Jikan calls and never waits on the 350ms serial queue.
+ *
+ * Three tiers, cheapest first:
+ *  1. the process-local TTL cache — zero I/O, but dies with the instance;
+ *  2. the shared `http_cache` table — one ~50ms Postgres round trip, survives
+ *     cold starts and is shared across instances (skipped entirely when
+ *     `SUPABASE_SERVICE_ROLE_KEY` is unset, see `http-cache.ts`);
+ *  3. Jikan itself — the 350ms serial queue.
+ *
+ * So a warm instance costs nothing, a cold start costs one query instead of a
+ * queued fetch, and only a genuine miss reaches MAL.
  */
 async function jikanFetch<T>(
   path: string,
@@ -361,15 +361,32 @@ async function jikanFetch<T>(
     throw hit.error;
   }
 
-  // Collapse concurrent callers for the same path onto one request.
+  // Collapse concurrent callers for the same path onto one request. This also
+  // means one shared-cache lookup per path, not one per caller.
   const pending = inFlight.get(path);
   if (pending) return pending as Promise<T>;
 
-  const request = jikanFetchLive<T>(path, ttl)
-    .then((value) => {
-      cacheSet(path, { ok: true, value, expiresAt: Date.now() + ttl * 1000 });
-      return value;
-    })
+  const request = (async () => {
+    // `http-cache` already fails soft, but don't rely on that from here: a
+    // cache lookup must never be the reason a page fails.
+    const shared = await sharedCacheGet<T>(sharedKey(path)).catch(() => undefined);
+    if (shared) {
+      // Promote into memory, but never past the shared entry's own expiry —
+      // otherwise a nearly-stale row would be held for a further full TTL.
+      cacheSet(path, {
+        ok: true,
+        value: shared.value,
+        expiresAt: Math.min(Date.now() + ttl * 1000, shared.expiresAt),
+      });
+      return shared.value;
+    }
+
+    const value = await jikanFetchLive<T>(path, ttl);
+    cacheSet(path, { ok: true, value, expiresAt: Date.now() + ttl * 1000 });
+    // Deliberately not awaited: nobody should wait on a cache write.
+    void sharedCacheSet(sharedKey(path), value, ttl);
+    return value;
+  })()
     .catch((err: unknown) => {
       // Don't negative-cache rate limits: callers back off on 429 themselves,
       // and the next caller may well be inside the budget again.

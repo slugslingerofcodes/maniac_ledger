@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -32,14 +32,24 @@ const CLOCKS = ZONES.map((z) => ({
   }),
 }));
 
-export function ScheduleClocks() {
-  const [now, setNow] = useState<Date | null>(null);
+/** Once-a-second tick as an external store — no setState-in-effect. */
+function subscribeTick(onChange: () => void) {
+  const t = setInterval(onChange, 1000);
+  return () => clearInterval(t);
+}
+/** Whole seconds, so the snapshot is stable within a tick (a fresh `Date`
+ * every getSnapshot call would loop useSyncExternalStore forever). */
+const getSeconds = () => Math.floor(Date.now() / 1000);
+// Server snapshot: null → SSR renders the placeholder, exactly as before.
+const getServerSeconds = () => null;
 
-  useEffect(() => {
-    setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+export function ScheduleClocks() {
+  const seconds = useSyncExternalStore(
+    subscribeTick,
+    getSeconds,
+    getServerSeconds,
+  );
+  const now = seconds == null ? null : new Date(seconds * 1000);
 
   return (
     <div className="flex flex-wrap items-stretch justify-center gap-3">

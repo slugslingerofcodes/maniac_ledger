@@ -1,29 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Link2, Share2, X } from "lucide-react";
 import { toast } from "sonner";
 
 const DISMISS_KEY = "share-banner-dismissed";
+const DISMISS_EVENT = "share-banner-dismiss";
+
+/*
+ * Dismissal read straight from localStorage via useSyncExternalStore — no
+ * setState-in-effect, and SSR (server snapshot: dismissed) renders nothing so
+ * the markup never disagrees with the stored choice.
+ */
+function subscribeDismiss(onChange: () => void) {
+  window.addEventListener(DISMISS_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(DISMISS_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+const getDismissed = () => localStorage.getItem(DISMISS_KEY) === "1";
+const getServerDismissed = () => true;
 
 /**
  * "Love the site?" share card for the home dashboard. Copy-link always works;
  * the share button uses the native share sheet where available. Dismissal is
- * remembered in localStorage. Renders nothing until mounted so SSR output
- * never disagrees with the stored dismissal.
+ * remembered in localStorage.
  */
 export function ShareBanner() {
-  const [visible, setVisible] = useState(false);
+  const dismissed = useSyncExternalStore(
+    subscribeDismiss,
+    getDismissed,
+    getServerDismissed,
+  );
 
-  useEffect(() => {
-    setVisible(localStorage.getItem(DISMISS_KEY) !== "1");
-  }, []);
-
-  if (!visible) return null;
+  if (dismissed) return null;
 
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, "1");
-    setVisible(false);
+    window.dispatchEvent(new Event(DISMISS_EVENT));
   };
 
   const copy = async () => {

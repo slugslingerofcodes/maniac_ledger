@@ -101,7 +101,7 @@ function currentRun(days: string[]): number {
   const today = dayOf(new Date().toISOString());
   const yesterday = dayOf(new Date(Date.now() - 86_400_000).toISOString());
   const set = new Set(days);
-  let cursor = set.has(today) ? today : set.has(yesterday) ? yesterday : null;
+  const cursor = set.has(today) ? today : set.has(yesterday) ? yesterday : null;
   if (!cursor) return 0;
   let run = 0;
   let t = Date.parse(cursor);

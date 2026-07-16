@@ -14,12 +14,30 @@ npm run build    # production build (Turbopack) — also runs the full TypeScrip
 npm run start    # serve the production build
 npm run lint     # ESLint (flat config, eslint-config-next)
 
+npm run test          # Vitest (unit; tests/**) — the data-layer gate
+npm run test:watch    # Vitest in watch mode
+npm run test:coverage # coverage over src/lib, src/app/api, src/app/actions
+npm run verify        # lint + test + build — run this before calling a change done
+
 npx shadcn@latest add <name>          # scaffold a shadcn/ui component into src/components/ui/
 vercel --prod                         # deploy (project is linked to Vercel; env vars live in the Vercel project)
 supabase functions deploy <name>      # deploy a Deno Edge Function (see supabase/functions/)
 ```
 
-There is no separate typecheck script and **no test runner** — `npm run build` is the typecheck and the only automated gate. "Does it build?" is the bar for a change being correct. The full go-live sequence (migrations → Edge Functions → cron → Vercel) is in `DEPLOY.md`.
+There is no separate typecheck script — `npm run build` is the typecheck. The automated gate is **`npm run verify`** (ESLint + Vitest + build); `"does it build?"` alone is not the bar, because the bugs this project actually shipped (a browse tab rendering 19 of 50 titles, ~48s page loads, a cache that was silently inert) were all invisible to `tsc`. Lint runs error-free (the three `no-unused-vars` warnings are intentional destructure-to-omit patterns in migration fallbacks) — keep it that way; a red gate stops being a gate. The full go-live sequence (migrations → Edge Functions → cron → Vercel) is in `DEPLOY.md`.
+
+### Testing
+
+Vitest, config in `vitest.config.ts`, specs in `tests/` (mirroring `src/`: `tests/lib`, `tests/api`, `tests/actions`). Node environment, no jsdom — the suite covers the **data layer**, not rendering.
+
+What's covered, and why it's the part worth covering: the **upstream fallback chains** (`/api/anime/search`: Jikan → AniList → catalog; `searchMangaAction`: MAL → AniList → MangaDex → catalog), the **Jikan cache/rate-limiter** (TTL, LRU, in-flight de-dupe, negative caching, last-good degradation), and the **catalog mappers**. Every one of those branches only runs during an *upstream outage*, so they're near-impossible to exercise by hand and trivial to break silently.
+
+Conventions worth keeping:
+- **Mock at the module boundary** (`vi.mock("@/lib/jikan")`), not `fetch`, except in `tests/lib/jikan.test.ts` where the fetch layer *is* the subject.
+- `jikan.ts` holds **module-level state** (cache, last-good map, rate-limit chain). Re-import it per test via `vi.resetModules()` or one test's cache silently satisfies the next one's fetches.
+- Its queue spaces calls 350ms apart with real `setTimeout` — drive **fake timers** forward (`vi.advanceTimersByTimeAsync`) or tests hang.
+- Supabase's query builder is fluent *and* thenable; `tests/helpers/supabase.ts` mocks it and records calls, so tests assert on the query that would have been sent (e.g. the `{Hentai}` exclusion).
+- **Verify a new test can fail.** These tests guard failure paths, so a test that passes for the wrong reason is the default outcome, not the exception — break the code deliberately, watch it go red, then revert.
 
 ## Next.js 16 specifics (these differ from older Next and from training data)
 
@@ -33,21 +51,35 @@ App Router project (TypeScript, RSC by default — add `"use client"` only for b
 
 ### Auth & the security model
 - Three Supabase clients, all typed `<Database>`: `src/lib/supabase/client.ts` (browser), `server.ts` (RSC/server actions; async cookies), `middleware.ts` (session refresh + the gate).
-- **The auth gate lives in `updateSession` (`src/lib/supabase/middleware.ts`)**: unauthenticated requests redirect to `/login` unless the path is in its `publicPaths` array (`/login`, `/signup`, `/reset-password`, `/auth`, `/api/anime/search`). Server-side guards are `requireUser()`/`getUser()` (`src/lib/supabase/auth.ts`); client equivalents are `useUser()`/`useAuthGuard()` (`src/hooks/`).
+- **The auth gate lives in `updateSession` (`src/lib/supabase/middleware.ts`)**: unauthenticated requests redirect to `/login` unless the path is in its `publicPaths` array (`/login`, `/signup`, `/reset-password`, `/auth`, `/api/anime/search`). Server-side guards are `requireUser()`/`getUser()` (`src/lib/supabase/auth.ts`); the client equivalent is `useUser()` (`src/hooks/`).
 - **RLS is the access boundary, not app code.** Queries against `user_progress`/`episode_progress` do **not** filter by user — Postgres RLS scopes rows to `auth.uid()`. A missing `eq("user_id", …)` is intentional. Catalog tables (`anime`, `episodes`) are readable by, and insertable by, any authenticated user ("catalog contributions").
 
 ### Routing layout — the `(app)` group
-`/search`, `/library`, `/upcoming`, `/recommendations`, and `/profile` live under `src/app/(app)/` and share `src/app/(app)/layout.tsx`, which renders the sticky `<AppNav/>` (avatar dropdown + mobile Sheet) plus the mobile `<BottomTabBar/>` (hidden at `md+`). Routes **outside** the group (`/`, `/anime/[id]`, the auth pages) still render the older `<SiteHeader/>`. This is a half-finished migration — both navs exist, but they now import the **shared `NAV_ITEMS` list from `src/lib/nav-items.ts`**, so a new authed route is added there once and both navs pick it up; prefer the `(app)` group for new authenticated pages. (The manga side has its own nav: `src/components/manga/MangaNav.tsx` + `MangaBottomTabBar`.)
+**Every authed anime-side route lives under `src/app/(app)/`** — including `/` and `/anime/[id]`, which route groups leave URL-transparent. They share `src/app/(app)/layout.tsx`, which mounts the sticky `<AppNav/>` (drawer + avatar dropdown), the mobile `<BottomTabBar/>` (hidden at `md+`), `<AnnouncementBanner/>`, and `<AppBackdrop/>`. Only the auth pages (`/login`, `/signup`, `/reset-password`), `/choose`, `/admin`, and the manga side sit outside it.
+
+Consequences worth knowing:
+- **There is one nav.** `AppNav` + `BottomTabBar` both read `NAV_ITEMS` (`src/lib/nav-items.ts`), so a new authed route is added there once and appears everywhere. (The older `SiteHeader` is gone; the manga side still has its own: `src/components/manga/MangaNav.tsx` + `MangaBottomTabBar`.)
+- **Pages must not render their own nav or backdrop.** The layout mounts both; `<AppBackdrop/>` picks by path (`/library` → none, `/search` → poster wall, `/anime/*` → galaxy, else vortex). A page-level backdrop stacks a second fixed layer under the first.
+- New authed pages go in the group and should render just their content — a `relative flex flex-1 flex-col` wrapper, not `min-h-screen` (the layout owns full height).
 
 ### Database — manual migrations + hand-maintained types
-- SQL migrations live in `supabase/migrations/` (`0001`…`0010`). **There is no migration runner**; they are applied by pasting into the Supabase SQL editor. Schema work means writing a migration there *and* updating the types. Migrations `0006`–`0010` (Realtime publication, `franchise_id`, notifications, the cron schedule, recommendations) may **not be applied yet** — features touching them fail at runtime until they are (see `DEPLOY.md`).
+- SQL migrations live in `supabase/migrations/` (`0001`…`0026`). **There is no migration runner**; they are applied by pasting into the Supabase SQL editor, and nothing records what ran. So schema work means three things, not one: write the migration, update `database.types.ts`, and add the new table/column to the manifest in `scripts/check-schema.mjs`.
+- **`npm run check:schema` is how you know**, instead of guessing: it probes the live database (anon key, `limit=0`, reads no rows) for every table/column the code needs and names the migration behind anything missing. Exit 1 on drift. `0001`–`0026` are currently all applied — verified by running it, not assumed. Realtime publications, pg_cron schedules, storage buckets, and bare constraints are invisible to PostgREST; the script lists those separately as manual checks.
 - `src/lib/database.types.ts` is **hand-maintained** to mirror the SQL (Row/Insert/Update per table, the `anime_watched_count` view, enums) and exports `Tables<T>`/`TablesInsert<T>`/`TablesUpdate<T>`/`Views<T>`/`Enums<T>`. `src/types/anime.ts` aliases these into domain names. **Edit both** `database.types.ts` and the migration when the schema changes, or queries silently lose type safety.
 - Tables: `anime` (+ `franchise_id` for grouping sequels) + `episodes` (shared catalog), `user_progress` + `episode_progress` (per-user), `notifications` (air-date reminders) and `recommendations` (AI picks). Per-episode watching feeds the `anime_watched_count` view (created `security_invoker = on` so RLS flows through it) and a trigger that maintains `user_progress.last_watched_at` for "Continue Watching". `user_progress`/`episode_progress` are in the `supabase_realtime` publication (with `REPLICA IDENTITY FULL`) — `useRealtimeProgress` (`src/hooks/`) subscribes and `router.refresh()`es the detail page on change.
 
 ### Jikan (MyAnimeList) integration
-- `src/lib/jikan.ts` is the typed v4 client. **All calls route through a serial rate-limit queue** (~350ms spacing, ~3 req/s) — do not add ad-hoc `fetch`es to `api.jikan.moe`; go through this client. It also exports `debounce`.
+- `src/lib/jikan.ts` is the typed v4 client. **All calls route through a serial rate-limit queue** (~350ms spacing, ~3 req/s) — do not add ad-hoc `fetch`es to `api.jikan.moe`; go through this client. Debounce search-as-you-type with `useDebounce` (`src/hooks/use-debounce.ts`).
 - `/api/anime/search` (`src/app/api/anime/search/route.ts`) is a Zod-validated, edge-cached proxy over `searchAnime` (a public path).
 - `src/lib/episodes.ts` `ensureEpisodes()` lazily backfills the `episodes` catalog from Jikan the first time an anime's detail page is opened (no-op afterward).
+
+**Caching — `revalidate` is honoured by us, not by Next.** Both of Next's layers are inert here: `fetch`'s `next.revalidate` only applies before a request-time API and every page reads `cookies()` first, and `unstable_cache` bails under `force-dynamic`. Measured: three identical requests → three live fetches, which is what made the home page take ~48s. So `jikanFetch` stacks three tiers itself:
+
+1. **process-local TTL cache** (LRU + in-flight de-dupe + 60s negative caching) — zero I/O, dies with the instance;
+2. **shared `http_cache` table** (`src/lib/http-cache.ts`, migration `0026`) — one ~50ms round trip, survives cold starts, shared across instances;
+3. **Jikan** — the 350ms serial queue.
+
+The shared tier is **service-role only**: `http_cache` has RLS on with *no policies and no grants*, so `anon`/`authenticated` can't touch it — a cache any signed-in user could write is a poisoning vector. It needs `SUPABASE_SERVICE_ROLE_KEY`; without it (or without `0026`) it disables itself and the app runs on tier 1 alone. Every tier **fails soft** — a cache problem must never break a page. Never put user data in `http_cache`.
 
 ### Writes — server actions + optimistic UI
 Mutations are `"use server"` actions, not API routes. Core: `src/lib/library.ts` (`addToLibrary` upsert) wrapped by `src/app/actions/library.ts` (`addToLibraryAction`, `addToLibraryByMalId`, `getUserLibrary`); `src/app/anime/[id]/actions.ts` (`updateProgress`); `src/app/actions/progress.ts` (`toggleEpisode`, `upsertProgress` — Zod-validated patch); `src/app/actions/notifications.ts` (`toggleNotify`); `src/app/actions/recommendations.ts` (`generateRecommendations`, `dismissRecommendation`). Client components call these and update optimistically (the search "+ Add" button, the episode checklist via `useOptimistic` in `src/components/anime/EpisodeList.tsx`), then the action `revalidatePath`s the affected routes.
@@ -76,4 +108,4 @@ Mutations are `"use server"` actions, not API routes. Core: `src/lib/library.ts`
 
 - Local: `.env.local` holds `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable anon key; RLS protects data). These are `NEXT_PUBLIC_*`, so they are **baked at build time**.
 - Production (Vercel): the same vars are set in the Vercel project; deploy with `vercel --prod`. Changing them requires a redeploy. After deploying schema-dependent code, the matching migration must be run in Supabase or DB calls fail at runtime.
-- Other secrets: `GEMINI_API_KEY` is a **server-only** Vercel var (recommendations); Resend keys (`RESEND_API_KEY`, `RESEND_FROM`) live in **Supabase Edge secrets**, not Vercel. The service worker and offline behavior only activate in a **production build** (the registrar is prod-gated). Full steps: `DEPLOY.md`.
+- Other secrets: `GEMINI_API_KEY` is a **server-only** Vercel var (recommendations); `SUPABASE_SERVICE_ROLE_KEY` is server-only too and **bypasses RLS** — it backs both `src/lib/supabase/admin.ts` (the `/admin` dashboard) and the shared cache (`src/lib/http-cache.ts`), so never import either from a Client Component and never prefix it `NEXT_PUBLIC_`. Resend keys (`RESEND_API_KEY`, `RESEND_FROM`) live in **Supabase Edge secrets**, not Vercel. The service worker and offline behavior only activate in a **production build** (the registrar is prod-gated). Full steps: `DEPLOY.md`.

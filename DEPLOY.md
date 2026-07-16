@@ -20,8 +20,38 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0012_avatars.sql` | public `avatars` storage bucket + per-user RLS (profile pictures) |
 | `supabase/migrations/0013_anime_chat.sql` | `anime_chat_messages` table + RLS + Realtime publication (per-anime chat) |
 | `supabase/migrations/0014_anime_genres.sql` | `anime.genres text[]` + GIN index (library genre filter; backfills on add/view) |
+| `supabase/migrations/0015_social.sql` | `profiles` + `follows` tables + RLS |
+| `supabase/migrations/0016_lists.sql` | `lists` + `list_items` tables + RLS |
+| `supabase/migrations/0017_rewatch_episode_ratings.sql` | `user_progress.rewatch_count`, `episode_progress.rating` |
+| `supabase/migrations/0018_push_subscriptions.sql` | `push_subscriptions` table + RLS |
+| `supabase/migrations/0020_friends.sql` | `friendships` table + RLS |
+| `supabase/migrations/0021_store.sql` | `products` + `product_requests` tables + RLS |
+| `supabase/migrations/0022_manga.sql` | `manga` (+ `type`) + `manga_progress` tables + RLS |
+| `supabase/migrations/0023_private_progress.sql` | `user_progress.is_private` (keeps misc-tab adds off the feed) |
+| `supabase/migrations/0024_manga_chapters.sql` | `manga.mangadex_id`, `manga.chapters_synced_at`, `manga_chapters` table |
+| `supabase/migrations/0025_mangadex_only_manga.sql` | unique constraint on `manga.mangadex_id` (MAL-less titles) |
+| `supabase/migrations/0026_http_cache.sql` | `http_cache` table (service-role only) + hourly purge job — the durable Jikan cache |
 
-(`0009` is run in step 3, after the Edge Functions are deployed.)
+(`0009` is run in step 3, after the Edge Functions are deployed; `0019` in step 3a.)
+
+**Verify rather than guess.** Nothing records which migrations have run, so after
+applying any of the above, confirm the database actually has what the code needs:
+
+```bash
+npm run check:schema     # anon key only, reads no rows; exit 1 on drift
+```
+
+It probes every table/column the app depends on via PostgREST and names the
+migration behind anything missing. Objects it *can't* see — Realtime publications
+(`0006`), pg_cron schedules (`0009`, `0019`, `0026`), the avatars bucket (`0012`),
+and bare constraints (`0025`) — are listed in its output as needing a manual check.
+
+> As of the last run, `0001`–`0026` are **all applied** (verified, not assumed).
+
+**`0026` is optional but recommended.** Without it — or without
+`SUPABASE_SERVICE_ROLE_KEY` (step 4) — the shared cache silently disables itself
+and the app runs on the in-process cache alone, exactly as it did before. Nothing
+breaks; cold starts just stay slow.
 
 **Make an administrator** (for the `/admin` dashboard) — after `0011`, flag a user,
 then have them sign out/in so the claim lands in their token:

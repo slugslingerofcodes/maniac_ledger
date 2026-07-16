@@ -100,10 +100,10 @@ export function SongsClient() {
 
   useEffect(() => {
     const q = debouncedQuery.trim();
-    if (q.length < 2) {
-      setResults([]);
-      return;
-    }
+    // Too short to search — nothing to fetch. Stale results from a longer
+    // query are hidden by the render-time gate below, not cleared here
+    // (setState directly in an effect trips react-hooks/set-state-in-effect).
+    if (q.length < 2) return;
     const controller = new AbortController();
     fetch(`/api/anime/search?q=${encodeURIComponent(q)}`, {
       signal: controller.signal,
@@ -199,7 +199,7 @@ export function SongsClient() {
           aria-label="Search anime themes"
           className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         />
-        {results.length > 0 ? (
+        {results.length > 0 && debouncedQuery.trim().length >= 2 ? (
           <ul className="absolute inset-x-0 top-12 z-30 overflow-hidden rounded-xl bg-popover ring-1 ring-border shadow-xl">
             {results.map((r) => (
               <li key={r.malId}>

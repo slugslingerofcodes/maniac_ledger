@@ -1,16 +1,15 @@
-import { SiteHeader } from "@/components/site-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Loading skeleton for the anime detail page. Mirrors page.tsx's exact
  * dimensions (poster aspect, hero overlap, the lg:grid-cols-[1fr_320px] split,
  * episode-row height) so there's no layout shift when the real content swaps in.
- * Shown automatically while the RSC awaits Jikan/ensureEpisodes.
+ * Shown automatically while the RSC awaits Jikan/ensureEpisodes. Nav and
+ * backdrop come from the (app) layout, so this mirrors page.tsx's Shell.
  */
 export default function Loading() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader />
+    <div className="relative flex flex-1 flex-col">
       <main className="flex-1">
         {/* Hero */}
         <section className="relative isolate overflow-hidden bg-muted/30">

@@ -11,8 +11,6 @@ import { WatchingAiring } from "@/components/home/WatchingAiring";
 import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList";
 import { LibraryGrid } from "@/components/library-grid";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
-import { VortexBackdrop } from "@/components/VortexBackdrop";
-import { SiteHeader } from "@/components/site-header";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import { getAnilistAiringSchedule } from "@/lib/anilist";
 import {
@@ -187,54 +185,55 @@ async function Discovery() {
   );
 }
 
+/*
+ * Best-effort sidebar panels: the fetch lives in try/catch, the JSX doesn't.
+ * React renders lazily, so JSX built inside a try block escapes it before any
+ * render error can fire (react-hooks/error-boundaries) — and a fetch failure
+ * is the only failure these panels are meant to swallow.
+ */
+
 async function TopAiringPanel() {
+  let items: SidebarListItem[];
   try {
     const { data } = await getTopAnime(10);
-    return (
-      <SidebarList title="Top Airing" items={dedupe(data).slice(0, 6).map(toSidebarItem)} />
-    );
+    items = dedupe(data).slice(0, 6).map(toSidebarItem);
   } catch {
     return null;
   }
+  return <SidebarList title="Top Airing" items={items} />;
 }
 
 async function UpcomingPanel() {
+  let items: SidebarListItem[];
   try {
     const list = await getUpcomingSeasons(1);
-    return (
-      <SidebarList title="Upcoming" items={list.slice(0, 6).map(toSidebarItem)} />
-    );
+    items = list.slice(0, 6).map(toSidebarItem);
   } catch {
     return null;
   }
+  return <SidebarList title="Upcoming" items={items} />;
 }
 
 async function JustFinishedPanel() {
+  let items: SidebarListItem[];
   try {
     const { data } = await getJustFinished(8);
-    return (
-      <SidebarList
-        title="Just Finished"
-        items={dedupe(data).slice(0, 5).map(toSidebarItem)}
-      />
-    );
+    items = dedupe(data).slice(0, 5).map(toSidebarItem);
   } catch {
     return null;
   }
+  return <SidebarList title="Just Finished" items={items} />;
 }
 
 async function TopMoviesPanel() {
+  let items: SidebarListItem[];
   try {
     const { data } = await getTopMovies(8);
-    return (
-      <SidebarList
-        title="Top Movies"
-        items={dedupe(data).slice(0, 5).map(toSidebarItem)}
-      />
-    );
+    items = dedupe(data).slice(0, 5).map(toSidebarItem);
   } catch {
     return null;
   }
+  return <SidebarList title="Top Movies" items={items} />;
 }
 
 const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
@@ -245,13 +244,14 @@ const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
 
 /** Yesterday / today / tomorrow (JST) with each day's releases, time-sorted. */
 async function SchedulePanel() {
+  let days: ScheduleDay[];
   try {
     // MAL primary, AniList fallback (JST slots derived from next airing eps).
     const all = await getSchedules(3).catch(() => getAnilistAiringSchedule());
     const todayName = todayInJst();
     const todayIdx = JST_DAYS.indexOf(todayName);
 
-    const days: ScheduleDay[] = [-1, 0, 1].map((offset) => {
+    days = [-1, 0, 1].map((offset) => {
       const dayName = JST_DAYS[(todayIdx + offset + 7) % 7]!;
       const date = new Date(nowInJst().getTime() + offset * 86_400_000);
       return {
@@ -271,20 +271,18 @@ async function SchedulePanel() {
           })),
       };
     });
-
-    return <MiniSchedule days={days} />;
   } catch {
     return null;
   }
+  return <MiniSchedule days={days} />;
 }
 
 export default function Home() {
   return (
     // No bg-background here: the fixed vortex backdrop sits at -z-10 and an
     // opaque page background would cover it. The hero paints its own.
-    <div className="relative flex min-h-screen flex-col">
-      <VortexBackdrop />
-      <SiteHeader />
+    // Nav and backdrop come from the (app) layout.
+    <div className="relative flex flex-1 flex-col">
       <Suspense fallback={<HeroFallback />}>
         <HeroSection />
       </Suspense>

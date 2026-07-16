@@ -1,9 +1,8 @@
 /**
- * The single source of truth for the anime side's authed navigation. Both navs
- * render this list — `AppNav` (the (app) group's drawer) and `SiteHeader` (the
- * older header on routes outside the group) — so a new route added here is
- * reachable from every page. Previously each nav kept its own copy and they
- * had to be edited in lockstep.
+ * The single source of truth for the anime side's authed navigation. Rendered by
+ * `AppNav`'s drawer and by `BottomTabBar` (mobile), both mounted once in the
+ * (app) layout — so a route added here is reachable from every authed page.
+ * (The manga side has its own list in `MangaNav`.)
  */
 export const NAV_ITEMS = [
   { label: "Library", href: "/library" },

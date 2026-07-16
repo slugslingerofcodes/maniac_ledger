@@ -11,11 +11,9 @@ import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { RewatchButton } from "@/components/anime/RewatchButton";
 import { WatchOrder } from "@/components/anime/WatchOrder";
-import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
 import { AddToListButton } from "@/components/lists/AddToListButton";
 import { PosterLightbox } from "@/components/PosterLightbox";
 import { ScoreRing } from "@/components/ScoreRing";
-import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -698,11 +696,10 @@ type ProgressRow = {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    // No opaque bg-background: the fixed GalaxyBackdrop sits at -z-10 and shows
-    // through the gaps between the hero gradient and the content cards.
-    <div className="relative flex min-h-screen flex-col">
-      <GalaxyBackdrop />
-      <SiteHeader />
+    // No opaque bg-background: the galaxy backdrop the (app) layout mounts for
+    // /anime/* sits at -z-10 and shows through the gaps between the hero
+    // gradient and the content cards. Nav comes from that layout too.
+    <div className="relative flex flex-1 flex-col">
       <main className="flex-1">{children}</main>
     </div>
   );

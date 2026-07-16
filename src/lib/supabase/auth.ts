@@ -20,8 +20,7 @@ export const getUser = cache(async (): Promise<User | null> => {
  * Server-side route guard for Server Components, Server Actions, and Route
  * Handlers. Returns the user when signed in, or redirects to /login otherwise.
  *
- * This is the secure complement to the optimistic redirect in src/proxy.ts and
- * the client-side useAuthGuard hook.
+ * This is the secure complement to the optimistic redirect in src/proxy.ts.
  */
 export async function requireUser(): Promise<User> {
   const user = await getUser();

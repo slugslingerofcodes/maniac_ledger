@@ -34,10 +34,16 @@ export function AppNav() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const reduce = useReducedMotion();
 
-  // Close the drawer whenever the route changes, and on Escape.
-  useEffect(() => {
+  // Close the drawer whenever the route changes — state adjusted during
+  // render (React's "derived state" pattern), not in an effect, so there's no
+  // extra committed frame with the drawer still open on the new page.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
     setDrawerOpen(false);
-  }, [pathname]);
+  }
+
+  // …and on Escape.
   useEffect(() => {
     if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {

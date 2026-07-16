@@ -437,109 +437,6 @@ html:not(.dark) .text-gradient {
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
 }
 
-/* --------------------------------------------------------------------------
-   "Great Sage" entity (RaphaelBackdrop): a breathing slime-blue core inside
-   tumbling golden rings. CSS 3D only — each ring is a tilted circle spun
-   around a world axis it isn't normal to, so it visibly tumbles in depth.
---------------------------------------------------------------------------- */
-.sage-scene {
-  perspective: 900px;
-  transform-style: preserve-3d;
-}
-.sage-core {
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle at 38% 32%,
-    oklch(0.97 0.03 220 / 95%),
-    oklch(0.78 0.12 230 / 80%) 30%,
-    oklch(0.6 0.16 250 / 45%) 60%,
-    transparent 74%
-  );
-  box-shadow:
-    0 0 60px 12px oklch(0.72 0.14 235 / 40%),
-    0 0 220px 70px oklch(0.6 0.17 255 / 22%);
-  animation: sage-breathe 7s ease-in-out infinite;
-}
-@keyframes sage-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.07);
-    opacity: 1;
-  }
-}
-.sage-ring {
-  border-radius: 9999px;
-  border: 1px solid oklch(0.86 0.1 92 / 50%);
-  box-shadow:
-    0 0 16px oklch(0.86 0.13 92 / 22%),
-    inset 0 0 16px oklch(0.86 0.13 92 / 18%);
-  will-change: transform;
-}
-.sage-ring-1 {
-  animation: sage-orbit-1 16s linear infinite;
-}
-.sage-ring-2 {
-  border-style: dashed;
-  border-color: oklch(0.8 0.11 95 / 40%);
-  animation: sage-orbit-2 26s linear infinite;
-}
-.sage-ring-3 {
-  border-color: oklch(0.75 0.1 250 / 45%);
-  box-shadow: 0 0 20px oklch(0.7 0.14 250 / 25%);
-  animation: sage-orbit-3 38s linear infinite;
-}
-@keyframes sage-orbit-1 {
-  from {
-    transform: rotateY(0deg) rotateX(66deg);
-  }
-  to {
-    transform: rotateY(360deg) rotateX(66deg);
-  }
-}
-@keyframes sage-orbit-2 {
-  from {
-    transform: rotateY(360deg) rotateX(74deg) rotateZ(-14deg);
-  }
-  to {
-    transform: rotateY(0deg) rotateX(74deg) rotateZ(-14deg);
-  }
-}
-@keyframes sage-orbit-3 {
-  from {
-    transform: rotateX(0deg) rotateY(62deg);
-  }
-  to {
-    transform: rotateX(360deg) rotateY(62deg);
-  }
-}
-.sage-mote {
-  background: oklch(0.9 0.06 230);
-  box-shadow: 0 0 10px 2px oklch(0.8 0.12 235 / 60%);
-  opacity: 0;
-  animation-name: sage-mote-drift;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-}
-@keyframes sage-mote-drift {
-  0%,
-  100% {
-    transform: translateY(14px);
-    opacity: 0;
-  }
-  20%,
-  70% {
-    opacity: 0.9;
-  }
-  50% {
-    transform: translateY(-18px);
-    opacity: 0.7;
-  }
-}
-
 /* Slow "ken burns" drift for full-bleed image backdrops. */
 @keyframes ken-burns {
   0% {
@@ -567,16 +464,6 @@ html:not(.dark) .text-gradient {
   .skeleton-shimmer {
     animation: none;
     background-image: none;
-  }
-  .sage-core,
-  .sage-ring-1,
-  .sage-ring-2,
-  .sage-ring-3 {
-    animation: none;
-  }
-  .sage-mote {
-    animation: none;
-    opacity: 0.4; /* keyframes start at 0 — keep motes faintly visible */
   }
   .marquee-track {
     animation: none;

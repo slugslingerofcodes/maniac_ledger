@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 
 import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
+import { SearchPosterWall } from "@/components/search/SearchPosterWall";
 import { VideoBackdrop } from "@/components/VideoBackdrop";
 import { VortexBackdrop } from "@/components/VortexBackdrop";
 import {
@@ -20,8 +21,8 @@ import {
  * The user's profile choice (see `useBackground`) wins: a motion video or
  * their own picture replaces everything, app-wide. On "default" the choice is
  * path-aware: /library supplies its own trending-poster backdrop (render
- * nothing), /anime/* gets the galaxy, and everywhere else — including /search —
- * the animated "Great Sage" vortex.
+ * nothing), /search gets the cinematic Netflix-style poster wall, /anime/* gets
+ * the galaxy, and everywhere else the animated "Great Sage" vortex.
  */
 export function AppBackdrop() {
   const pathname = usePathname();
@@ -36,6 +37,9 @@ export function AppBackdrop() {
 
   if (pathname === "/library" || pathname.startsWith("/library/")) {
     return null;
+  }
+  if (pathname === "/search" || pathname.startsWith("/search/")) {
+    return <SearchPosterWall />;
   }
   if (pathname.startsWith("/anime/")) {
     return <GalaxyBackdrop />;

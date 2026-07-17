@@ -6,7 +6,6 @@ import { Music2 } from "lucide-react";
 
 import { AnimeChat } from "@/components/anime/AnimeChat";
 import { EpisodeList } from "@/components/anime/EpisodeList";
-import { ParallaxY } from "@/components/ParallaxY";
 import { FranchiseCard } from "@/components/anime/FranchiseCard";
 import { NextEpisodeBadge } from "@/components/anime/NextEpisodeBadge";
 import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
@@ -365,7 +364,7 @@ export default async function AnimeDetailPage({
                 with the same name (see posterTransitionName) animates into it
                 on navigation — MorphLink drives the transition and polls for
                 this element by its data-vtn. */}
-            <ParallaxY className="w-40 shrink-0 sm:-mb-12 sm:w-52">
+            <div className="w-40 shrink-0 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
                 // Click-to-zoom: opens the full poster in a lightbox.
                 <PosterLightbox src={anime.poster_url} alt={anime.title}>
@@ -389,7 +388,7 @@ export default async function AnimeDetailPage({
                   No image
                 </div>
               )}
-            </ParallaxY>
+            </div>
 
             {/* Title / score / studio / season */}
             <div className="flex min-w-0 flex-col gap-3">

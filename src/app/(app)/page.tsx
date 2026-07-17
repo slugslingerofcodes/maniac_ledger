@@ -12,7 +12,7 @@ import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList
 import { LibraryGrid } from "@/components/library-grid";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
-import { getAnilistAiringSchedule } from "@/lib/anilist";
+import { getAnilistAiringSchedule, searchAnilist } from "@/lib/anilist";
 import {
   getJustFinished,
   getSchedules,
@@ -220,7 +220,14 @@ async function JustFinishedPanel() {
     const { data } = await getJustFinished(8);
     items = dedupe(data).slice(0, 5).map(toSidebarItem);
   } catch {
-    return null;
+    // MAL down → finished titles from AniList so the rail still fills instead
+    // of vanishing (same degradation the schedule rail beside it already does).
+    try {
+      const { data } = await searchAnilist({ status: "complete" }, 1);
+      items = dedupe(data).slice(0, 5).map(toSidebarItem);
+    } catch {
+      return null;
+    }
   }
   return <SidebarList title="Just Finished" items={items} />;
 }
@@ -231,7 +238,13 @@ async function TopMoviesPanel() {
     const { data } = await getTopMovies(8);
     items = dedupe(data).slice(0, 5).map(toSidebarItem);
   } catch {
-    return null;
+    // MAL down → top movies from AniList (by popularity) so the box stays.
+    try {
+      const { data } = await searchAnilist({ format: "movie" }, 1);
+      items = dedupe(data).slice(0, 5).map(toSidebarItem);
+    } catch {
+      return null;
+    }
   }
   return <SidebarList title="Top Movies" items={items} />;
 }

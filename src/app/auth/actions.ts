@@ -7,9 +7,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 // Absolute origin of the current request, used to build redirect URLs for
-// email links and OAuth callbacks.
+// email links and OAuth callbacks. Origin is present on browser POSTs; the
+// forwarded-host fallback covers clients that omit it, so redirectTo never
+// degrades to a relative (broken) URL.
 async function getOrigin() {
-  return (await headers()).get("origin") ?? "";
+  const h = await headers();
+  const origin = h.get("origin");
+  if (origin) return origin;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  return host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : "";
 }
 
 export async function login(formData: FormData) {

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PosterLightbox } from "@/components/PosterLightbox";
 import { createClient } from "@/lib/supabase/client";
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -72,10 +73,25 @@ export function AvatarUpload({
 
   return (
     <div className="flex items-center gap-4">
-      <Avatar className="size-16 ring-1 ring-foreground/10">
-        {url ? <AvatarImage src={url} alt="Your profile picture" /> : null}
-        <AvatarFallback className="text-lg">{fallbackInitial}</AvatarFallback>
-      </Avatar>
+      {/* Click-to-zoom: the picture opens as a circular holo card — the same
+          tilt-and-sheen treatment posters get, clipped to a circle. */}
+      {url ? (
+        <PosterLightbox
+          src={url}
+          alt="you"
+          round
+          triggerClassName="w-auto rounded-full transition hover:ring-2 hover:ring-primary/40"
+        >
+          <Avatar className="size-16 ring-1 ring-foreground/10">
+            <AvatarImage src={url} alt="Your profile picture" />
+            <AvatarFallback className="text-lg">{fallbackInitial}</AvatarFallback>
+          </Avatar>
+        </PosterLightbox>
+      ) : (
+        <Avatar className="size-16 ring-1 ring-foreground/10">
+          <AvatarFallback className="text-lg">{fallbackInitial}</AvatarFallback>
+        </Avatar>
+      )}
       <div className="flex flex-col gap-1.5">
         <Button
           type="button"

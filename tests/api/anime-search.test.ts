@@ -26,6 +26,7 @@ vi.mock("@/lib/catalog-fallback", () => ({ searchCatalog: vi.fn() }));
 const { searchAnime, JikanError } = await import("@/lib/jikan");
 const { searchAnilist, AnilistError } = await import("@/lib/anilist");
 const { searchCatalog } = await import("@/lib/catalog-fallback");
+const { resetRateLimit } = await import("@/lib/rate-limit");
 const { GET } = await import("@/app/api/anime/search/route");
 
 const searchAnimeMock = vi.mocked(searchAnime);
@@ -60,6 +61,9 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   // Default: no catalog extras, so tests opt into the merge explicitly.
   searchCatalogMock.mockResolvedValue([]);
+  // The limiter's window map is module state (like jikan's cache) and every
+  // request here shares one client key — clear it so no test inherits counts.
+  resetRateLimit();
 });
 
 describe("happy path (MAL primary)", () => {
@@ -372,5 +376,49 @@ describe("query validation", () => {
     await get("q=test&tags=Isekai,NotARealTag");
 
     expect(searchAnilistMock.mock.calls[0][0].tags).toEqual(["Isekai"]);
+  });
+});
+
+describe("per-IP rate limiting", () => {
+  /** Same route entry point, but with a spoofable-but-good-enough client IP. */
+  function getAs(ip: string, query = "q=naruto") {
+    return GET(
+      new NextRequest(`https://app.test/api/anime/search?${query}`, {
+        headers: { "x-forwarded-for": ip },
+      }),
+    );
+  }
+
+  it("429s the 61st request in a window, with Retry-After", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+
+    for (let i = 0; i < 60; i++) {
+      expect((await getAs("203.0.113.9")).status).toBe(200);
+    }
+    const limited = await getAs("203.0.113.9");
+
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("Retry-After"))).toBeGreaterThan(0);
+    // A limited response must never be cached at the edge.
+    expect(limited.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("limits per client — one abuser does not lock out another IP", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+
+    for (let i = 0; i < 61; i++) await getAs("203.0.113.9");
+
+    expect((await getAs("198.51.100.7")).status).toBe(200);
+  });
+
+  it("rejects before touching upstream engines", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+
+    for (let i = 0; i < 61; i++) await getAs("203.0.113.9");
+    searchAnimeMock.mockClear();
+
+    await getAs("203.0.113.9");
+
+    expect(searchAnimeMock).not.toHaveBeenCalled();
   });
 });

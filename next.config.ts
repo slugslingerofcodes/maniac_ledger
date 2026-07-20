@@ -1,6 +1,28 @@
 import type { NextConfig } from "next";
 
+/**
+ * Baseline hardening for every response. Deliberately conservative: only
+ * directives that cannot break existing behavior. A full script/style CSP
+ * needs nonce plumbing through Next's inline hydration scripts — do that as
+ * its own change, not as a rider here. (frame-ancestors governs who may embed
+ * THIS app; the YouTube trailers we embed are unaffected.)
+ */
+const SECURITY_HEADERS = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  },
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
+  },
   experimental: {
     // Shared-element morphs (library poster → detail hero) via React's
     // <ViewTransition>. Degrades to an instant swap where unsupported.

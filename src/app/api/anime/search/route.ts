@@ -13,6 +13,7 @@ import {
   type JikanAnime,
   type JikanSearchOptions,
 } from "@/lib/jikan";
+import { checkRateLimit } from "@/lib/rate-limit";
 import {
   COUNTRY_OPTIONS,
   FORMAT_OPTIONS,
@@ -159,7 +160,34 @@ const CACHE_HEADERS = {
   "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
 };
 
+/**
+ * Per-IP ceiling. This route is public (no auth) and fronts a rate-limited
+ * upstream quota, so a scraper could starve real users. 60/min is far above
+ * any human's debounced search-as-you-type but stops sustained harvesting;
+ * edge-cached hits never reach this function, so repeats are free anyway.
+ */
+const RATE_LIMIT = 60;
+const RATE_WINDOW_MS = 60_000;
+
 export async function GET(request: NextRequest) {
+  // First proxy hop's client IP; "unknown" lumps direct hits together, which
+  // only over-limits, never under-limits.
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const verdict = checkRateLimit(`anime-search:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      { error: "Too many searches. Please slow down and try again shortly." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(verdict.retryAfterSeconds),
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
   const { searchParams } = request.nextUrl;
 
   const parsed = QuerySchema.safeParse({

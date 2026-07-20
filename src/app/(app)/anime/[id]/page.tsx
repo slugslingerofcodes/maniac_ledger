@@ -12,8 +12,10 @@ import { RealtimeProgress } from "@/components/anime/RealtimeProgress";
 import { RewatchButton } from "@/components/anime/RewatchButton";
 import { WatchOrder } from "@/components/anime/WatchOrder";
 import { AddToListButton } from "@/components/lists/AddToListButton";
-import { PosterLightbox } from "@/components/PosterLightbox";
+import { HeroPoster } from "@/components/anime/HeroPoster";
 import { ScoreRing } from "@/components/ScoreRing";
+import { ScrollReveal } from "@/components/ScrollReveal";
+import { Tilt3D } from "@/components/Tilt3D";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -366,23 +368,12 @@ export default async function AnimeDetailPage({
                 this element by its data-vtn. */}
             <div className="w-40 shrink-0 sm:-mb-12 sm:w-52">
               {anime.poster_url ? (
-                // Click-to-zoom: opens the full poster in a lightbox.
-                <PosterLightbox src={anime.poster_url} alt={anime.title}>
-                  <div
-                    data-vtn={posterTransitionName(anime.mal_id, anime.id)}
-                    style={{ viewTransitionName: posterTransitionName(anime.mal_id, anime.id) }}
-                    className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10"
-                  >
-                    <Image
-                      src={anime.poster_url}
-                      alt={anime.title}
-                      fill
-                      priority
-                      sizes="(max-width: 640px) 160px, 208px"
-                      className="object-cover"
-                    />
-                  </div>
-                </PosterLightbox>
+                // Click-to-zoom lightbox + 3D float/tilt; still the morph target.
+                <HeroPoster
+                  src={anime.poster_url}
+                  title={anime.title}
+                  transitionName={posterTransitionName(anime.mal_id, anime.id)}
+                />
               ) : (
                 <div className="relative flex aspect-[2/3] w-full items-center justify-center rounded-xl bg-muted text-sm text-muted-foreground shadow-xl ring-1 ring-foreground/10">
                   No image
@@ -460,23 +451,28 @@ export default async function AnimeDetailPage({
 
       {/* Information grid — format, dates, author, day of airing, country, … */}
       <div className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6">
-        <AnimeInfoGrid info={animeInfo} />
+        <ScrollReveal>
+          <AnimeInfoGrid info={animeInfo} />
+        </ScrollReveal>
       </div>
 
       {/* Below the hero: synopsis (left) + tracking sidebar (right) */}
       <div className="mx-auto w-full max-w-6xl px-4 pt-8 pb-8 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-          {/* Synopsis */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Synopsis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                {anime.synopsis?.trim() || "No synopsis available."}
-              </p>
-            </CardContent>
-          </Card>
+          {/* Synopsis. The sticky sidebar next to it stays unwrapped — a
+              transformed ancestor would break position: sticky. */}
+          <ScrollReveal direction="left">
+            <Card>
+              <CardHeader>
+                <CardTitle>Synopsis</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+                  {anime.synopsis?.trim() || "No synopsis available."}
+                </p>
+              </CardContent>
+            </Card>
+          </ScrollReveal>
 
           {/* Sidebar: my status, rating, episode count, progress bar */}
           <aside className="lg:sticky lg:top-20 lg:self-start">
@@ -514,6 +510,7 @@ export default async function AnimeDetailPage({
 
         {/* Trailer — embedded YouTube player, hidden when Jikan has none. */}
         {trailerEmbedUrl ? (
+          <ScrollReveal>
           <section className="mt-8">
             <h2 className="mb-3 text-base font-semibold">Trailer</h2>
             <div className="aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
@@ -527,10 +524,12 @@ export default async function AnimeDetailPage({
               />
             </div>
           </section>
+          </ScrollReveal>
         ) : null}
 
         {/* Theme songs — OP/ED credits from MAL; "Listen" opens the player. */}
         {openings.length > 0 || endings.length > 0 ? (
+          <ScrollReveal direction="right">
           <section className="mt-8">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold">Theme songs</h2>
@@ -578,10 +577,12 @@ export default async function AnimeDetailPage({
               )}
             </div>
           </section>
+          </ScrollReveal>
         ) : null}
 
         {/* Season list — prequels/sequels/side stories from MAL relations. */}
         {related.length > 0 ? (
+          <ScrollReveal direction="left">
           <section className="mt-8">
             <h2 className="mb-3 text-base font-semibold">Seasons &amp; related</h2>
             <div className="flex flex-col gap-2">
@@ -601,6 +602,7 @@ export default async function AnimeDetailPage({
               ))}
             </div>
           </section>
+          </ScrollReveal>
         ) : null}
 
         {/* Personalized picks — shown for EVERY anime, whether or not it's in
@@ -608,6 +610,7 @@ export default async function AnimeDetailPage({
             is "Because you watched X"; otherwise "If you like X". Sourced from
             MAL community recommendations. */}
         {similar.length > 0 ? (
+          <ScrollReveal amount={0.1}>
           <section className="mt-8">
             <h2 className="mb-3 text-base font-semibold">
               {progress?.status === "completed" || progress?.status === "watching"
@@ -621,21 +624,23 @@ export default async function AnimeDetailPage({
                   href={`/anime/mal/${s.malId}`}
                   className="group flex flex-col gap-2"
                 >
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
-                    {s.posterUrl ? (
-                      <Image
-                        src={s.posterUrl}
-                        alt={s.title}
-                        fill
-                        sizes="(max-width: 640px) 33vw, 200px"
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                        No image
-                      </div>
-                    )}
-                  </div>
+                  <Tilt3D maxTilt={8} className="w-full" glareClassName="rounded-lg">
+                    <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
+                      {s.posterUrl ? (
+                        <Image
+                          src={s.posterUrl}
+                          alt={s.title}
+                          fill
+                          sizes="(max-width: 640px) 33vw, 200px"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                          No image
+                        </div>
+                      )}
+                    </div>
+                  </Tilt3D>
                   <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
                     {s.title}
                   </p>
@@ -643,10 +648,12 @@ export default async function AnimeDetailPage({
               ))}
             </div>
           </section>
+          </ScrollReveal>
         ) : null}
 
         {/* Franchise watch order — release-ordered, with your progress. */}
         {anime.franchise_id ? (
+          <ScrollReveal direction="right">
           <section className="mt-8">
             <h2 className="mb-3 text-base font-semibold">
               Franchise watch order
@@ -662,11 +669,15 @@ export default async function AnimeDetailPage({
               />
             </Suspense>
           </section>
+          </ScrollReveal>
         ) : null}
 
         <Separator className="my-8" />
 
-        {/* Full-width episode list */}
+        {/* Full-width episode list. Tiny `amount`: the list can be thousands
+            of pixels tall, so a larger visible-fraction threshold would never
+            be reached and the section would stay hidden. */}
+        <ScrollReveal amount={0.05}>
         <section>
           <h2 className="mb-3 text-base font-semibold">
             Episodes{" "}
@@ -688,14 +699,17 @@ export default async function AnimeDetailPage({
             </p>
           )}
         </section>
+        </ScrollReveal>
 
         <Separator className="my-8" />
 
         {/* Per-anime chat room — live via Realtime (migration 0013). */}
+        <ScrollReveal amount={0.1}>
         <section>
           <h2 className="mb-3 text-base font-semibold">Discussion</h2>
           <AnimeChat animeId={anime.id} />
         </section>
+        </ScrollReveal>
       </div>
     </Shell>
   );

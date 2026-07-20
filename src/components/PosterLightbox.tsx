@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
+import { Tilt3D } from "@/components/Tilt3D";
+
 /**
  * Click-to-zoom for detail-page posters: wraps the poster as a button; opening
  * shows the full image in a fixed overlay (click anywhere or Esc to close).
@@ -57,13 +59,17 @@ export function PosterLightbox({
           >
             <X className="size-5" aria-hidden />
           </button>
-          <Image
-            src={src}
-            alt={alt}
-            width={720}
-            height={1080}
-            className="h-auto max-h-[92vh] w-auto max-w-[94vw] rounded-xl shadow-2xl ring-1 ring-white/15"
-          />
+          {/* 3D inspect: the full-size poster tilts under the pointer, like
+              turning the card in your hands. Clicks still bubble up to close. */}
+          <Tilt3D maxTilt={7} scale={1} shadow className="rounded-xl">
+            <Image
+              src={src}
+              alt={alt}
+              width={720}
+              height={1080}
+              className="h-auto max-h-[92vh] w-auto max-w-[94vw] rounded-xl shadow-2xl ring-1 ring-white/15"
+            />
+          </Tilt3D>
         </div>
       ) : null}
     </>

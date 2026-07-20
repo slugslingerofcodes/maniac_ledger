@@ -12,8 +12,13 @@ import {
 
 /** One panel sweep. Kept short — this sits in front of every navigation. */
 const DOOR_MS = 280;
+/** Poster doors part slower — the reveal of the world is the moment. */
+const WORLD_OPEN_MS = 480;
 /** If a push never commits (slow RSC, aborted nav), part the doors anyway. */
 const STUCK_MS = 6000;
+
+/** Detail routes whose doors carry the clicked poster — "entering the world". */
+const WORLD_PATHS = ["/anime/", "/manga/"];
 
 type Phase = "idle" | "closing" | "opening";
 
@@ -36,6 +41,10 @@ export function ShojiDoors() {
   const pathname = usePathname();
   const reduce = useReducedMotion();
   const [phase, setPhase] = useState<Phase>("idle");
+  // When the click came from a poster card heading into a detail page, the
+  // doorway is painted with that poster instead of the sumi-e motif — the
+  // doors shut on the card's art and part to reveal the world inside it.
+  const [posterSrc, setPosterSrc] = useState<string | null>(null);
   const pendingHref = useRef<string | null>(null);
   // The scene painted across the doors, keyed to wherever we're heading — set
   // on click so the close and the open show the same picture.
@@ -89,6 +98,12 @@ export function ShojiDoors() {
       event.preventDefault();
       pendingHref.current = url.pathname + url.search;
       setMotif(motifForPath(url.pathname));
+      // "Enter the world": a card with a poster <img> bound for a detail page
+      // paints the doorway with that poster. currentSrc is what actually
+      // loaded; fall back to src for cards that haven't finished decoding.
+      const img = anchor.querySelector("img");
+      const toWorld = WORLD_PATHS.some((p) => url.pathname.startsWith(p));
+      setPosterSrc(toWorld && img ? img.currentSrc || img.src : null);
       setPhase("closing");
     }
 
@@ -120,9 +135,15 @@ export function ShojiDoors() {
   // Doors have finished parting → unmount the overlay.
   useEffect(() => {
     if (phase !== "opening") return;
-    const timer = setTimeout(() => setPhase("idle"), DOOR_MS);
+    const timer = setTimeout(
+      () => {
+        setPhase("idle");
+        setPosterSrc(null);
+      },
+      posterSrc ? WORLD_OPEN_MS : DOOR_MS,
+    );
     return () => clearTimeout(timer);
-  }, [phase]);
+  }, [phase, posterSrc]);
 
   // Safety net: never leave the viewport sealed if a push never lands.
   useEffect(() => {
@@ -134,7 +155,11 @@ export function ShojiDoors() {
   if (reduce || phase === "idle") return null;
 
   const shut = phase === "closing";
-  const transition = { duration: DOOR_MS / 1000, ease: "easeInOut" as const };
+  // The close always snaps to the click; only the poster reveal lingers.
+  const transition = {
+    duration: (shut || !posterSrc ? DOOR_MS : WORLD_OPEN_MS) / 1000,
+    ease: "easeInOut" as const,
+  };
 
   return (
     <div
@@ -147,7 +172,11 @@ export function ShojiDoors() {
         transition={transition}
         className="shoji-panel relative h-full w-1/2 overflow-hidden border-r-2 border-[oklch(0.32_0.03_60)]"
       >
-        <ShojiArt motif={motif} side="left" />
+        {posterSrc ? (
+          <WorldArt src={posterSrc} side="left" />
+        ) : (
+          <ShojiArt motif={motif} side="left" />
+        )}
       </motion.div>
       <motion.div
         initial={{ x: shut ? "101%" : "0%" }}
@@ -155,8 +184,55 @@ export function ShojiDoors() {
         transition={transition}
         className="shoji-panel relative h-full w-1/2 overflow-hidden border-l-2 border-[oklch(0.32_0.03_60)]"
       >
-        <ShojiArt motif={motif} side="right" />
+        {posterSrc ? (
+          <WorldArt src={posterSrc} side="right" />
+        ) : (
+          <ShojiArt motif={motif} side="right" />
+        )}
       </motion.div>
+      {/* Light spills out of the parting doors of a poster world. */}
+      {posterSrc && !shut ? (
+        <motion.div
+          initial={{ opacity: 0.85 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: WORLD_OPEN_MS / 1000, ease: "easeOut" }}
+          className="absolute inset-y-0 left-1/2 w-48 -translate-x-1/2"
+          style={{
+            background:
+              "radial-gradient(60% 50% at 50% 50%, rgb(255 255 255 / 0.55), transparent 70%)",
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The clicked poster painted across the full doorway: each panel is half the
+ * viewport, so an inner layer twice the panel's width carries the whole image
+ * and the two halves join at the seam — the same trick the sumi-e motifs use.
+ * A faint kumiko lattice and edge vignette keep it reading as a shōji door
+ * rather than a bare image.
+ */
+function WorldArt({ src, side }: { src: string; side: "left" | "right" }) {
+  return (
+    <div aria-hidden className="absolute inset-0">
+      <div
+        style={{ backgroundImage: `url(${src})` }}
+        className={
+          "absolute inset-y-0 w-[200%] bg-cover bg-center " +
+          (side === "left" ? "left-0" : "right-0")
+        }
+      />
+      <div className="shoji-lattice absolute inset-0 opacity-35" />
+      <div
+        className={
+          "absolute inset-y-0 w-28 " +
+          (side === "left"
+            ? "left-0 bg-gradient-to-r from-black/45 to-transparent"
+            : "right-0 bg-gradient-to-l from-black/45 to-transparent")
+        }
+      />
     </div>
   );
 }

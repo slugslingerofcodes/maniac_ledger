@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { MorphLink } from "@/components/MorphLink";
 import { ScoreRing } from "@/components/ScoreRing";
+import { Tilt3D } from "@/components/Tilt3D";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
         <Image src={item.posterUrl} alt="" fill sizes="200px" className="object-cover" />
       </div>
     ) : null}
+    <Tilt3D>
     <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
       <div data-morph className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
@@ -81,6 +83,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
         </p>
       </CardContent>
     </Card>
+    </Tilt3D>
     </MorphLink>
   );
 }

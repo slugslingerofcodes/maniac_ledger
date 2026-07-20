@@ -315,6 +315,23 @@ html:not(.dark) .text-gradient {
     0 0 30px oklch(0 0 0 / 0.35);
 }
 
+/* Bare kumiko lattice (no washi fill) — overlaid on poster-world doors so the
+   clicked artwork still reads as a shōji door. Line spacing matches
+   .shoji-panel's lattice. */
+.shoji-lattice {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      oklch(0.2 0.02 55 / 0.85) 0 2px,
+      transparent 2px 25%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      oklch(0.2 0.02 55 / 0.85) 0 2px,
+      transparent 2px 20%
+    );
+}
+
 /* Temporal rune vortex backdrop: a golden mandala of concentric rotating
    rune rings around a pulsing core, with radiating light spokes. Pure CSS
    (conic gradients + radial masks), no assets. */
@@ -490,6 +507,24 @@ html:not(.dark) .text-gradient {
   }
 }
 
+/* Detail-hero poster idle float: a slow bob with a hair of rotation, so the
+   card reads as held in the air even before the pointer reaches it. Lives on
+   an ancestor of the view-transition-named element, so poster morphs are
+   unaffected. Tilt3D adds the pointer-tracked 3D tilt on top. */
+@keyframes hero-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -7px, 0) rotate(0.8deg);
+  }
+}
+.hero-float {
+  animation: hero-float 7s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Slow "ken burns" drift for full-bleed image backdrops. */
 @keyframes ken-burns {
   0% {
@@ -511,7 +546,8 @@ html:not(.dark) .text-gradient {
   .aurora-blob-1,
   .aurora-blob-2,
   .aurora-blob-3,
-  .ken-burns {
+  .ken-burns,
+  .hero-float {
     animation: none;
   }
   .skeleton-shimmer {

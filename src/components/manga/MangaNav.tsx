@@ -51,7 +51,7 @@ export function MangaNav() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200 motion-safe:hover:scale-110",
                   active
                     ? "bg-primary/15 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",

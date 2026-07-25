@@ -159,7 +159,7 @@ export function MangaBrowse({
                 setPage(1);
               }}
               className={cn(
-                "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                "rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 motion-safe:hover:scale-110",
                 tabKey === tab.key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground",

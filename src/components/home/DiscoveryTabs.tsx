@@ -53,7 +53,7 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
             onClick={() => setTab(key)}
             aria-pressed={tab === key}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-all duration-200 motion-safe:hover:scale-110",
               tab === key
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:text-foreground",

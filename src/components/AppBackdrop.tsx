@@ -38,6 +38,11 @@ export function AppBackdrop() {
   if (pathname === "/library" || pathname.startsWith("/library/")) {
     return null;
   }
+  // /cosmos paints its own deep-space wash under a WebGL scene — a second
+  // animated layer behind it would only burn frames nobody sees.
+  if (pathname === "/cosmos") {
+    return null;
+  }
   if (pathname === "/search" || pathname.startsWith("/search/")) {
     return <SearchPosterWall />;
   }

@@ -25,8 +25,11 @@ export default function ChoosePage() {
       </div>
 
       <div className="grid w-full max-w-3xl gap-6 sm:grid-cols-2">
+        {/* Lands on the cosmos, not the home feed: arriving inside your own
+            collection is the first impression worth making. Home is a nav tab
+            from there. */}
         <Link
-          href="/"
+          href="/cosmos"
           className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-10 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
         >
           <span className="grid size-16 place-items-center rounded-full bg-primary/15 text-primary transition-transform duration-300 group-hover:scale-110">

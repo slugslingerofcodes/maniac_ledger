@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { Bookmark, Calendar, Newspaper, Search, User } from "lucide-react";
+import { Bookmark, House, Search, Sparkles, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+// Five is the ceiling for a thumb-reachable bar; Upcoming and News stay one
+// tap away in the nav drawer.
 const TABS = [
+  { label: "Home", href: "/", Icon: House },
+  { label: "Cosmos", href: "/cosmos", Icon: Sparkles },
   { label: "Library", href: "/library", Icon: Bookmark },
   { label: "Search", href: "/search", Icon: Search },
-  { label: "Upcoming", href: "/upcoming", Icon: Calendar },
-  { label: "News", href: "/news", Icon: Newspaper },
   { label: "Profile", href: "/profile", Icon: User },
 ] as const;
 

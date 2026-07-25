@@ -5,7 +5,11 @@
  * (The manga side has its own list in `MangaNav`.)
  */
 export const NAV_ITEMS = [
+  // "/" never matches the `href + "/"` active-state prefix test, so Home
+  // highlights on the home page alone rather than on every route.
+  { label: "Home", href: "/" },
   { label: "Library", href: "/library" },
+  { label: "Cosmos ✦", href: "/cosmos" },
   { label: "My Progress", href: "/progress" },
   { label: "Search", href: "/search" },
   { label: "Miscellaneous", href: "/miscellaneous" },

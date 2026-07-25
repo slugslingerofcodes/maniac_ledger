@@ -9,13 +9,21 @@ import {
   motifForPath,
   type ShojiMotif,
 } from "@/components/shoji-motifs";
+import { supportsWebGL } from "@/lib/webgl";
 
 /** One panel sweep. Kept short — this sits in front of every navigation. */
 const DOOR_MS = 280;
 /** Poster doors part slower — the reveal of the world is the moment. */
 const WORLD_OPEN_MS = 480;
+/** The WebGL shatter needs longer than a slide to land its acceleration. */
+const SHATTER_MS = 850;
 /** If a push never commits (slow RSC, aborted nav), part the doors anyway. */
 const STUCK_MS = 6000;
+
+type ShatterComponent = React.ComponentType<{
+  src: string;
+  durationMs: number;
+}>;
 
 /** Detail routes whose doors carry the clicked poster — "entering the world". */
 const WORLD_PATHS = ["/anime/", "/manga/"];
@@ -45,6 +53,10 @@ export function ShojiDoors() {
   // doorway is painted with that poster instead of the sumi-e motif — the
   // doors shut on the card's art and part to reveal the world inside it.
   const [posterSrc, setPosterSrc] = useState<string | null>(null);
+  // three.js for the shatter, fetched on demand and kept once loaded. Held in
+  // state (not a ref) so its arrival re-renders the doors that are waiting.
+  const [Shatter, setShatter] = useState<ShatterComponent | null>(null);
+  const shatterRequested = useRef(false);
   const pendingHref = useRef<string | null>(null);
   // The scene painted across the doors, keyed to wherever we're heading — set
   // on click so the close and the open show the same picture.
@@ -67,6 +79,32 @@ export function ShojiDoors() {
   // Shut the doors before an internal navigation, then push once they meet.
   useEffect(() => {
     if (reduce) return;
+
+    /**
+     * Pull in the shatter chunk. Deliberately NOT loaded up front: it carries
+     * three.js, and most navigations here are plain links that never use it.
+     * Whoever asks first pays; everyone after gets it from the module cache.
+     */
+    function loadShatter() {
+      if (shatterRequested.current || !supportsWebGL()) return;
+      shatterRequested.current = true;
+      import("@/components/doors/PosterShatter")
+        .then((m) => setShatter(() => m.PosterShatter))
+        .catch(() => {
+          /* offline or chunk 404 — the sliding doors still play */
+        });
+    }
+
+    // Hovering a poster link starts the download, so the very first click
+    // already has it. Touch has no hover and simply gets it one nav later.
+    function onPointerOver(event: PointerEvent) {
+      if (shatterRequested.current) return;
+      const anchor = (event.target as HTMLElement | null)?.closest?.("a");
+      if (!anchor?.getAttribute("href") || !anchor.querySelector("img")) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (WORLD_PATHS.some((p) => url.pathname.startsWith(p))) loadShatter();
+    }
 
     function onClick(event: MouseEvent) {
       // Let modified clicks (new tab/window/download) behave natively, and
@@ -103,7 +141,11 @@ export function ShojiDoors() {
       // loaded; fall back to src for cards that haven't finished decoding.
       const img = anchor.querySelector("img");
       const toWorld = WORLD_PATHS.some((p) => url.pathname.startsWith(p));
-      setPosterSrc(toWorld && img ? img.currentSrc || img.src : null);
+      const poster = toWorld && img ? img.currentSrc || img.src : null;
+      setPosterSrc(poster);
+      // Last chance to fetch it — if it lands before the doors finish closing
+      // this navigation shatters, otherwise it slides and the next one does.
+      if (poster) loadShatter();
       setPhase("closing");
     }
 
@@ -111,7 +153,11 @@ export function ShojiDoors() {
     // in the bubble phase, so a bubble listener here would fire *after* Link
     // had already navigated, and the doors would never play.
     document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    document.addEventListener("pointerover", onPointerOver, true);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("pointerover", onPointerOver, true);
+    };
   }, [reduce]);
 
   // Doors are shutting → push once they've met.
@@ -132,7 +178,13 @@ export function ShojiDoors() {
     return () => clearTimeout(timer);
   }, [phase, router]);
 
-  // Doors have finished parting → unmount the overlay.
+  // A poster reveal upgrades to the WebGL shatter whenever the chunk happens
+  // to be loaded; otherwise the panels just slide apart as before.
+  const shattering = phase === "opening" && posterSrc !== null && Shatter !== null;
+
+  // Doors have finished parting → unmount the overlay. This timer, not the
+  // animation, is what clears the screen: a stalled shatter can never leave
+  // the viewport covered.
   useEffect(() => {
     if (phase !== "opening") return;
     const timer = setTimeout(
@@ -140,10 +192,10 @@ export function ShojiDoors() {
         setPhase("idle");
         setPosterSrc(null);
       },
-      posterSrc ? WORLD_OPEN_MS : DOOR_MS,
+      shattering ? SHATTER_MS : posterSrc ? WORLD_OPEN_MS : DOOR_MS,
     );
     return () => clearTimeout(timer);
-  }, [phase, posterSrc]);
+  }, [phase, posterSrc, shattering]);
 
   // Safety net: never leave the viewport sealed if a push never lands.
   useEffect(() => {
@@ -153,6 +205,12 @@ export function ShojiDoors() {
   }, [phase]);
 
   if (reduce || phase === "idle") return null;
+
+  // The shards start assembled, filling the viewport exactly where the closed
+  // doors left the poster — so the panels hand straight over with no seam.
+  if (shattering) {
+    return <Shatter src={posterSrc!} durationMs={SHATTER_MS} />;
+  }
 
   const shut = phase === "closing";
   // The close always snaps to the click; only the poster reveal lingers.

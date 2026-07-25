@@ -89,3 +89,41 @@ describe("ShojiDoors — poster world doors", () => {
     expect(posterPanel()).toBeNull();
   });
 });
+
+/**
+ * The doors sit in front of EVERY navigation, so the WebGL upgrade must stay
+ * strictly decorative: the shatter chunk is fetched lazily and may never
+ * arrive (offline, no GPU, slow network). If navigation ever waited on it, a
+ * failed chunk fetch would turn every poster link in the app into a dead one.
+ */
+describe("ShojiDoors — navigation never waits on WebGL", () => {
+  it("pushes on its own timer even when the shatter never loads", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ShojiDoors />);
+      const a = addAnchor({ href: "/anime/abc-123", withImg: true });
+
+      fireEvent.click(a);
+      expect(push).not.toHaveBeenCalled(); // doors are still closing
+
+      // No shatter module is ever resolved in this environment (jsdom has no
+      // WebGL, so the import is never even requested).
+      vi.advanceTimersByTime(300);
+
+      expect(push).toHaveBeenCalledWith("/anime/abc-123");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the sliding panels when the shatter is unavailable", () => {
+    render(<ShojiDoors />);
+    const a = addAnchor({ href: "/anime/abc-123", withImg: true });
+
+    fireEvent.click(a);
+
+    // Panels present and painted with the poster — the pre-WebGL behaviour.
+    expect(document.querySelectorAll(".shoji-panel").length).toBe(2);
+    expect(posterPanel()).not.toBeNull();
+  });
+});

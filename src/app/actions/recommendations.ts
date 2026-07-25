@@ -120,10 +120,13 @@ export async function generateRecommendations(): Promise<GenerateRecommendations
     return { ok: false, error: "You must be signed in to get recommendations." };
   }
 
-  // 1. Favorites: completed with the user's score >= 7 (RLS scopes to them).
+  // 1. Favorites: completed with the user's score >= 7. The user_id filter is
+  // required — migration 0015 made public profiles' progress readable, so
+  // without it the prompt is built from strangers' taste, not theirs.
   const { data: favorites, error: favErr } = await supabase
     .from("user_progress")
     .select("score, anime:anime_id (title)")
+    .eq("user_id", user.id)
     .eq("status", "completed")
     .gte("score", 7)
     .order("score", { ascending: false })

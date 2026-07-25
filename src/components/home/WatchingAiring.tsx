@@ -35,6 +35,8 @@ export async function WatchingAiring() {
     .select(
       "episodes_watched, anime:anime_id (id, mal_id, title, title_english, poster_url, status)",
     )
+    // Required: public profiles' progress is readable too (migration 0015).
+    .eq("user_id", user.id)
     .eq("status", "watching");
   if (!data || data.length === 0) return null;
 

@@ -7,6 +7,7 @@ import { getAnilistAnimeByMalId } from "@/lib/anilist";
 import { resolveAndAssignFranchise } from "@/lib/franchise";
 import { getAnimeById, type JikanAnime } from "@/lib/jikan";
 import { addToLibrary } from "@/lib/library";
+import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AnimeType, WatchStatus } from "@/types/anime";
 
@@ -32,16 +33,24 @@ export type LibraryEntryItem = {
  * Returns the signed-in user's full library (all statuses), newest first, with
  * per-anime watched counts merged in. Used as the TanStack Query `queryFn` on
  * /library so the result can be cached + persisted to IndexedDB for offline.
- * RLS scopes the rows to the current user.
+ *
+ * The `user_id` filter is required, not redundant: migration 0015 added an
+ * *additive* RLS policy making any public profile's progress readable, and
+ * Postgres ORs permissive policies together. Without it this returns strangers'
+ * rows alongside your own — which is exactly how the same anime showed up twice
+ * in the grid (duplicate React keys) with someone else's watch status.
  */
 export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
   const supabase = await createClient();
+  const user = await getUser();
+  if (!user) return [];
 
   let { data, error } = await supabase
     .from("user_progress")
     .select(
       "episodes_watched, status, score, anime:anime_id (id, mal_id, title, title_english, poster_url, type, total_episodes, genres)",
     )
+    .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
 
   // Migration 0014 not applied yet → retry without genres so the library
@@ -53,6 +62,7 @@ export async function getUserLibrary(): Promise<LibraryEntryItem[]> {
       .select(
         "episodes_watched, status, score, anime:anime_id (id, mal_id, title, title_english, poster_url, type, total_episodes)",
       )
+      .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
     data = retry.data as unknown as typeof data;
     error = retry.error;

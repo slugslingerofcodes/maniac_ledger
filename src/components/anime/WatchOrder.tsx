@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import { cn } from "@/lib/utils";
@@ -47,14 +48,20 @@ export async function WatchOrder({
     return ta - tb;
   });
 
-  // The viewer's progress across the franchise (RLS scopes to them).
-  const { data: progressRows } = await supabase
-    .from("user_progress")
-    .select("anime_id, status, episodes_watched")
-    .in(
-      "anime_id",
-      ordered.map((a) => a.id),
-    );
+  // The viewer's progress across the franchise. Scoped explicitly: public
+  // profiles' progress is readable since migration 0015, so an unscoped read
+  // would stamp strangers' statuses onto this viewer's watch order.
+  const viewer = await getUser();
+  const { data: progressRows } = viewer
+    ? await supabase
+        .from("user_progress")
+        .select("anime_id, status, episodes_watched")
+        .eq("user_id", viewer.id)
+        .in(
+          "anime_id",
+          ordered.map((a) => a.id),
+        )
+    : { data: null };
   const progress = new Map(
     (progressRows ?? []).map((p) => [
       p.anime_id,

@@ -27,13 +27,17 @@ async function getStats(): Promise<{
   activity: string[];
 }> {
   const supabase = await createClient();
+  const user = await requireUser();
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - HEATMAP_DAYS);
 
   const [progressRes, activityRes] = await Promise.all([
     supabase
       .from("user_progress")
-      .select("episodes_watched, status, score, anime:anime_id (genres)"),
+      .select("episodes_watched, status, score, anime:anime_id (genres)")
+      // Required: public profiles' progress is readable too (migration 0015),
+      // so unscoped stats would count strangers' libraries as your own.
+      .eq("user_id", user.id),
     supabase
       .from("episode_progress")
       .select("watched_at")

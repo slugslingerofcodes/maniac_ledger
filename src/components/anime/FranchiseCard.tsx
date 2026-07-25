@@ -9,6 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
+import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AnimeType } from "@/types/anime";
 
@@ -73,12 +74,18 @@ export async function FranchiseCard({
   variant?: Variant;
 }) {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const viewer = await getUser();
+  let query = supabase
     .from("anime")
     .select(
       "id, title, poster_url, type, total_episodes, airing_start, user_progress(episodes_watched)",
     )
-    .eq("franchise_id", franchiseId)
+    .eq("franchise_id", franchiseId);
+  // Constrain the embedded rows to this viewer. Since migration 0015 the embed
+  // also returns public profiles' progress, and `user_progress[0]` would then
+  // be whichever row came first — often a stranger's episode count.
+  if (viewer) query = query.eq("user_progress.user_id", viewer.id);
+  const { data, error } = await query
     // NB: column is `airing_start` (there's no `aired_from`); nulls sort last.
     .order("airing_start", { ascending: true, nullsFirst: false });
 

@@ -20,6 +20,9 @@ export async function ContinueWatching() {
     .select(
       "episodes_watched, last_watched_at, anime:anime_id (id, title, poster_url, total_episodes)",
     )
+    // Required: a public profile's progress is readable too (migration 0015),
+    // so without this the rail mixes in strangers' rows.
+    .eq("user_id", user.id)
     .eq("status", "watching")
     .order("last_watched_at", { ascending: false, nullsFirst: false })
     .limit(8);

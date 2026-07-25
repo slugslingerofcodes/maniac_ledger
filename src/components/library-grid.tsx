@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AnimeCard } from "@/components/anime-card";
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { buttonVariants } from "@/components/ui/button";
+import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
@@ -21,11 +22,17 @@ const PREVIEW_LIMIT = 10;
  */
 export async function LibraryGrid() {
   const supabase = await createClient();
+  const user = await getUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from("user_progress")
     .select(
       "episodes_watched, status, score, anime:anime_id (id, mal_id, title, poster_url, type, total_episodes)",
     )
+    // Required: public profiles' progress is readable too (migration 0015),
+    // so an unscoped read shows strangers' entries as your own.
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(PREVIEW_LIMIT + 1);
 

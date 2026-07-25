@@ -119,10 +119,14 @@ async function bulkImport(entries: ImportEntry[]): Promise<ImportResult> {
     }
   }
 
-  // 3. Skip anything already in the library (imports never overwrite).
+  // 3. Skip anything already in the library (imports never overwrite). Scoped
+  // to this user: public profiles' progress is readable (migration 0015), and
+  // an unscoped read would treat other people's entries as already-tracked and
+  // silently drop them from the import.
   const { data: existing, error: existingErr } = await supabase
     .from("user_progress")
-    .select("anime_id");
+    .select("anime_id")
+    .eq("user_id", user.id);
   if (existingErr) return { ok: false, error: existingErr.message };
   const tracked = new Set((existing ?? []).map((r) => r.anime_id));
 

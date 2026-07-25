@@ -186,6 +186,10 @@ export default async function AnimeDetailPage({
       ? supabase
           .from("user_progress")
           .select("episodes_watched, status, score")
+          // Without the user filter this can match several rows (public
+          // profiles' progress is readable since 0015) and maybeSingle then
+          // errors outright — the tracker would silently show nothing.
+          .eq("user_id", user.id)
           .eq("anime_id", id)
           .maybeSingle()
       : Promise.resolve({ data: null as ProgressRow }),

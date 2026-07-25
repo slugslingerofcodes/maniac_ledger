@@ -154,9 +154,17 @@ export async function getRewatchCount(
   animeId: string,
 ): Promise<number | null> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from("user_progress")
     .select("rewatch_count")
+    // Public profiles' progress is readable (migration 0015), so an unscoped
+    // maybeSingle() can match several rows and error instead of answering.
+    .eq("user_id", user.id)
     .eq("anime_id", animeId)
     .maybeSingle();
   if (error || !data) return null;
@@ -176,6 +184,7 @@ export async function incrementRewatch(
   const { data: current, error: readErr } = await supabase
     .from("user_progress")
     .select("rewatch_count")
+    .eq("user_id", user.id)
     .eq("anime_id", animeId)
     .maybeSingle();
   if (readErr || !current) {
@@ -188,6 +197,7 @@ export async function incrementRewatch(
       rewatch_count: (current.rewatch_count ?? 0) + 1,
       status: "completed",
     })
+    .eq("user_id", user.id)
     .eq("anime_id", animeId);
   if (error) return { ok: false, error: error.message };
 
@@ -279,11 +289,14 @@ export async function bulkUpdateStatus(
     return { ok: false, error: "You must be signed in to edit your library." };
   }
 
-  // UPDATE (not upsert): only rows already in the library change; RLS scopes
-  // the write to the current user's rows.
+  // UPDATE (not upsert): only rows already in the library change. The
+  // user_id filter states the intent the RLS UPDATE policy also enforces —
+  // worth being explicit now that SELECT on this table is no longer
+  // owner-only (migration 0015).
   const { error } = await supabase
     .from("user_progress")
     .update({ status: parsed.data.status })
+    .eq("user_id", user.id)
     .in("anime_id", parsed.data.animeIds);
   if (error) return { ok: false, error: error.message };
 

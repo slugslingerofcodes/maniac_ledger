@@ -5,7 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 /**
  * GET /api/export — downloads the signed-in user's full tracking data as JSON
  * (library entries + per-episode watch log). Auth-gated by the middleware;
- * re-checked here. RLS scopes every query to the current user.
+ * re-checked here.
+ *
+ * The library query filters on `user_id` explicitly: migration 0015 made any
+ * public profile's progress readable to any signed-in user, so relying on RLS
+ * alone would export strangers' rows inside "your" data file.
  */
 export async function GET() {
   const supabase = await createClient();
@@ -23,6 +27,7 @@ export async function GET() {
         .select(
           "status, score, episodes_watched, notes, started_at, completed_at, last_watched_at, updated_at, anime:anime_id (mal_id, title, title_english, type, total_episodes)",
         )
+        .eq("user_id", user.id)
         .order("updated_at", { ascending: false }),
       supabase
         .from("episode_progress")

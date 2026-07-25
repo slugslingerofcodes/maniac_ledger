@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { WatchStatus } from "@/types/anime";
 
@@ -138,12 +139,16 @@ async function fetchRows(): Promise<{
   episodes: EpisodeRow[];
 }> {
   const supabase = await createClient();
+  const user = await requireUser();
 
   const { data: progressData, error } = await supabase
     .from("user_progress")
     .select(
       "status, score, episodes_watched, completed_at, anime:anime_id (id, title, title_english, type, genres)",
-    );
+    )
+    // Required: migration 0015 made public profiles' progress readable to any
+    // signed-in user, so an unscoped read inflates every stat on this page.
+    .eq("user_id", user.id);
   if (error) throw new Error(error.message);
 
   // Every watched-episode event with its anime, for hours/streaks/years.

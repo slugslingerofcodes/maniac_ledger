@@ -85,12 +85,15 @@ export default async function LibraryPage({
  */
 async function ContinueWatching() {
   const supabase = await createClient();
+  const user = await requireUser();
 
   const { data } = await supabase
     .from("user_progress")
     .select(
       "episodes_watched, status, score, last_watched_at, anime:anime_id (id, title, poster_url, type, total_episodes)",
     )
+    // Required: public profiles' progress is readable too (migration 0015).
+    .eq("user_id", user.id)
     .not("last_watched_at", "is", null)
     .order("last_watched_at", { ascending: false })
     .limit(10);

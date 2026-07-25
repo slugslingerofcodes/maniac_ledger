@@ -31,6 +31,12 @@ const JIKAN_BASE_URL = "https://api.jikan.moe/v4";
 
 /** ~3 req/sec → space requests ~350ms apart. */
 const MIN_REQUEST_INTERVAL_MS = 350;
+/**
+ * Hard deadline for a single upstream call. Generous enough for a healthy but
+ * slow Jikan, short enough that a stalled connection can't dominate a page
+ * render — the fallback chain is far cheaper than waiting.
+ */
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -180,25 +186,30 @@ export class JikanError extends Error {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-let lastRequestAt = 0;
-// Serial chain that gates every request so they never fire closer together
-// than MIN_REQUEST_INTERVAL_MS, regardless of how many callers race.
-let chain: Promise<unknown> = Promise.resolve();
+/**
+ * Earliest instant the next request may *start*. Reserved synchronously, so N
+ * racing callers immediately claim distinct slots (t, t+350, t+700, …).
+ */
+let nextSlotAt = 0;
 
+/**
+ * Spaces request *starts* at least MIN_REQUEST_INTERVAL_MS apart.
+ *
+ * It deliberately does not wait for the previous request to finish. The old
+ * implementation chained on completion, which capped throughput at
+ * 1/(interval + latency) instead of 1/interval — on a page needing ~15 calls
+ * with ~500ms upstream latency that is ~12s of serialised waiting rather than
+ * the ~5s the rate limit actually requires. Slot reservation keeps the request
+ * rate identical (Jikan still sees at most one start per interval) while
+ * letting in-flight requests overlap, and a slow or hung call no longer blocks
+ * every request queued behind it.
+ */
 function rateLimited<T>(task: () => Promise<T>): Promise<T> {
-  const run = chain.then(async () => {
-    const wait = MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt);
-    if (wait > 0) await sleep(wait);
-    lastRequestAt = Date.now();
-    return task();
-  });
-  // Keep the chain alive even if this task rejects, so one failure doesn't
-  // wedge every subsequent request.
-  chain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+  const now = Date.now();
+  const startAt = Math.max(now, nextSlotAt);
+  nextSlotAt = startAt + MIN_REQUEST_INTERVAL_MS;
+  const delay = startAt - now;
+  return delay > 0 ? sleep(delay).then(task) : task();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -234,6 +245,10 @@ async function jikanFetchLive<T>(
     try {
       const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
         headers: { Accept: "application/json" },
+        // Without a deadline a hung upstream holds the render until the
+        // platform kills the function. MAL outages show up as exactly this,
+        // and failing fast lets the AniList/catalog fallbacks actually run.
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         ...(revalidate != null ? { next: { revalidate } } : {}),
       });
 

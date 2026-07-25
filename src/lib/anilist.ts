@@ -1,4 +1,5 @@
 import { GENRE_OPTIONS } from "@/lib/genres";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/http-cache";
 import { JST_DAYS, JST_OFFSET_MS } from "@/lib/jst";
 import type {
   JikanAnime,
@@ -37,6 +38,8 @@ const ANILIST_URL = "https://graphql.anilist.co";
 
 /** 30 req/min budget → space requests ~2.1s apart. */
 const MIN_REQUEST_INTERVAL_MS = 2_100;
+/** Hard deadline for a single AniList call (see the Jikan client's twin). */
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 const ONE_HOUR_SECONDS = 3_600;
 const ONE_DAY_SECONDS = 86_400;
@@ -61,28 +64,151 @@ export class AnilistError extends Error {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-let lastRequestAt = 0;
-let chain: Promise<unknown> = Promise.resolve();
+/**
+ * Earliest instant the next request may *start*, reserved synchronously.
+ *
+ * As in the Jikan client, this spaces request starts without making each one
+ * wait for the previous to finish. At a 2.1s budget, chaining on completion
+ * meant N × (2100ms + latency) — during a MAL outage, when every fallback
+ * lands here, that alone put tens of seconds on the home page.
+ */
+let nextSlotAt = 0;
 
 function rateLimited<T>(task: () => Promise<T>): Promise<T> {
-  const run = chain.then(async () => {
-    const wait = MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt);
-    if (wait > 0) await sleep(wait);
-    lastRequestAt = Date.now();
-    return task();
-  });
-  chain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+  const now = Date.now();
+  const startAt = Math.max(now, nextSlotAt);
+  nextSlotAt = startAt + MIN_REQUEST_INTERVAL_MS;
+  const delay = startAt - now;
+  return delay > 0 ? sleep(delay).then(task) : task();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Response cache                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * AniList had no cache of its own: it leaned on `next: { revalidate }`, which
+ * is inert in this app (every page reads cookies first, so the fetch cache is
+ * bypassed — see the note atop `jikan.ts`). Every call was therefore live,
+ * against a 2.1s budget. This mirrors Jikan's tiers: a process-local TTL cache
+ * with in-flight de-duplication, then the shared `http_cache` table, and only
+ * then the network.
+ */
+type CacheEntry = { value: unknown; expiresAt: number };
+
+const MAX_CACHE_ENTRIES = 200;
+const responseCache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+function cacheGet(key: string): CacheEntry | undefined {
+  const hit = responseCache.get(key);
+  if (!hit) return undefined;
+  if (hit.expiresAt <= Date.now()) {
+    responseCache.delete(key);
+    return undefined;
+  }
+  // Refresh LRU position.
+  responseCache.delete(key);
+  responseCache.set(key, hit);
+  return hit;
+}
+
+function cacheSet(key: string, entry: CacheEntry): void {
+  responseCache.delete(key);
+  responseCache.set(key, entry);
+  if (responseCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = responseCache.keys().next().value;
+    if (oldest != null) responseCache.delete(oldest);
+  }
+}
+
+/** Test hook: this module holds cache state across imports, like jikan's. */
+export function __resetAnilistCache(): void {
+  responseCache.clear();
+  inFlight.clear();
+  nextSlotAt = 0;
 }
 
 /* -------------------------------------------------------------------------- */
 /* GraphQL plumbing                                                           */
 /* -------------------------------------------------------------------------- */
 
+/** FNV-1a, for a short stable fingerprint of the whole query text. */
+function fingerprint(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * Stable cache key for a query + its variables.
+ *
+ * It must fingerprint the *whole* query: several distinct queries here open
+ * with byte-identical text and take the same variables — upcoming, schedule
+ * and random all begin `query ($page: Int, $perPage: Int) { Page(…` — so a
+ * prefix-based key would hand one section's results to another. Length and the
+ * variables are folded in alongside the hash so a collision would need all
+ * three to match.
+ */
+const cacheKeyFor = (query: string, variables: Record<string, unknown>) =>
+  `anilist:${fingerprint(query)}:${query.length}:${JSON.stringify(variables)}`;
+
+/**
+ * Cached entry point. Without a `revalidate` the call is always live (callers
+ * that must not be cached simply omit it).
+ */
 async function anilistFetch<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  opts?: { revalidate?: number },
+): Promise<T> {
+  const ttl = opts?.revalidate;
+  if (ttl == null) return anilistFetchLive<T>(query, variables, opts);
+
+  const key = cacheKeyFor(query, variables);
+  const hit = cacheGet(key);
+  if (hit) return hit.value as T;
+
+  // Collapse concurrent callers for the same query onto one request — during a
+  // MAL outage the same fallback fires from several sections at once.
+  const pending = inFlight.get(key);
+  if (pending) return pending as Promise<T>;
+
+  const request = (async () => {
+    // A cache lookup must never be why a page fails.
+    const shared = await sharedCacheGet<T>(key).catch(() => undefined);
+    if (shared) {
+      cacheSet(key, {
+        value: shared.value,
+        expiresAt: Math.min(Date.now() + ttl * 1000, shared.expiresAt),
+      });
+      return shared.value;
+    }
+
+    const value = await anilistFetchLive<T>(query, variables, opts);
+    cacheSet(key, { value, expiresAt: Date.now() + ttl * 1000 });
+    // Nobody should wait on a cache write.
+    void sharedCacheSet(key, value, ttl);
+    return value;
+  })().finally(() => {
+    inFlight.delete(key);
+  });
+
+  inFlight.set(key, request);
+  return request;
+}
+
+/**
+ * Test seam. The cache-key hazard this guards (queries sharing a prefix *and*
+ * variables) is only reachable through this private function, and shipping the
+ * wrong key would swap one section's data for another's — silently.
+ */
+export const __anilistFetchForTests = anilistFetch;
+
+async function anilistFetchLive<T>(
   query: string,
   variables: Record<string, unknown>,
   opts?: { revalidate?: number },
@@ -95,8 +221,11 @@ async function anilistFetch<T>(
         Accept: "application/json",
       },
       body: JSON.stringify({ query, variables }),
-      // Next's Data Cache caches POSTs too (keyed on body), so repeat
-      // filter combinations are served without touching the rate budget.
+      // A hung upstream must not hold a render open; the caller's own
+      // fallback (catalog, or an empty rail) is far cheaper than waiting.
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      // Kept for the rare non-cookie render; the tiers above are what actually
+      // spare the rate budget in this app.
       ...(opts?.revalidate != null
         ? { next: { revalidate: opts.revalidate } }
         : { cache: "no-store" as const }),

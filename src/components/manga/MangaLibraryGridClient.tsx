@@ -167,6 +167,8 @@ function MangaCard({ item }: { item: MangaEntryItem }) {
               src={item.coverUrl}
               alt={item.title}
               fill
+              // MangaDex covers need a bare request — see MangaPosterCard.
+              referrerPolicy="no-referrer"
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
               className="object-cover transition-transform duration-300 group-hover:scale-105"
             />

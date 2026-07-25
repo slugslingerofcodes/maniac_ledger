@@ -125,6 +125,7 @@ export default async function MangaDexDetailPage(props: {
                   alt={title}
                   fill
                   priority
+                  referrerPolicy="no-referrer"
                   sizes="220px"
                   className="object-cover"
                 />

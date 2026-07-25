@@ -45,6 +45,9 @@ export function MangaPosterCard({
             src={cover}
             alt={title}
             fill
+            // MangaDex's CDN serves a "read this at MangaDex" placeholder to
+            // hotlinks that carry a foreign Referer — omit it.
+            referrerPolicy="no-referrer"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />

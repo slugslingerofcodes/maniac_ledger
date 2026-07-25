@@ -176,6 +176,7 @@ function FanArtSection() {
                       src={art.url}
                       alt="Anime fan art"
                       fill
+                      referrerPolicy="no-referrer"
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                       className="object-cover transition-transform duration-300 group-hover:scale-105"
                     />
@@ -294,6 +295,7 @@ function RandomSection() {
                       src={art.url}
                       alt={art.artistName ?? "Anime art"}
                       fill
+                      referrerPolicy="no-referrer"
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                       className="object-cover transition-transform duration-300 group-hover:scale-105"
                     />

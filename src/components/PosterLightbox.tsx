@@ -81,6 +81,9 @@ export function PosterLightbox({
               alt={alt}
               width={720}
               height={round ? 720 : 1080}
+              // MangaDex covers 403 into a placeholder behind a foreign
+              // Referer; harmless for every other poster host.
+              referrerPolicy="no-referrer"
               className={cn(
                 "shadow-2xl ring-1 ring-white/15",
                 shape,

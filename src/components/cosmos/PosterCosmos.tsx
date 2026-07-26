@@ -11,56 +11,47 @@ export type CosmosItem = {
   score: number | null;
 };
 
-/** Poster plane size in world units (2:3, same aspect as every poster grid). */
-const CARD_W = 1;
-const CARD_H = 1.5;
-/** Radius of the shell the posters sit on. */
-const RADIUS = 7;
-/** Camera dolly limits — near enough to read a card, far enough to see the orb. */
-const MIN_Z = 9;
-const MAX_Z = 22;
-/** How long the click-to-enter flight lasts before the route changes. */
-const FLIGHT_MS = 620;
+/** Posters are 2:3, and cover-cropping every cell keys off that. */
+const POSTER_ASPECT = 2 / 3;
+/** Resting cell width in CSS pixels — sets how dense the mosaic reads. */
+const CELL_PX_DESKTOP = 84;
+const CELL_PX_MOBILE = 64;
+/** Hard ceiling on tiles: each one is a draw call. */
+const MAX_TILES_DESKTOP = 340;
+const MAX_TILES_MOBILE = 150;
+/** Hairline between cells, in pixels. */
+const GAP = 1.5;
+/** Lens strength at rest and while a cell is being opened. */
+const FOCUS_STRENGTH = 3.6;
+const SELECT_STRENGTH = 26;
+/** How long the zoom-into-a-cell runs before the route changes. */
+const SELECT_MS = 420;
 
 /**
- * Evenly distributes `n` points on a sphere (golden-angle spiral). Even beats
- * random here: random clumps, and clumped posters overlap into visual mush.
+ * Graphical fisheye (Sarkar–Brown): redistributes a normalised boundary `b`
+ * around focus `f`, leaving 0 and 1 pinned. Applied separably to the column and
+ * row boundaries, so cells stay a gap-free grid — the cell under the cursor
+ * grows and its neighbours compress to make room, rather than overlapping.
  */
-function spherePoint(i: number, n: number, radius: number): THREE.Vector3 {
-  const y = n === 1 ? 0 : 1 - (i / (n - 1)) * 2;
-  const r = Math.sqrt(Math.max(0, 1 - y * y));
-  const theta = i * Math.PI * (3 - Math.sqrt(5));
-  return new THREE.Vector3(
-    Math.cos(theta) * r,
-    y,
-    Math.sin(theta) * r,
-  ).multiplyScalar(radius);
-}
-
-/** Soft radial sprite, drawn once and shared by the core glow and the stars. */
-function radialSprite(inner: string, outer: string): THREE.Texture {
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, inner);
-  g.addColorStop(1, outer);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+function fisheye(b: number, f: number, distortion: number): number {
+  if (b === f) return f;
+  const ahead = b > f;
+  const dmax = ahead ? 1 - f : f;
+  if (dmax <= 0) return b;
+  const d = Math.abs(b - f) / dmax;
+  const warped = ((distortion + 1) * d) / (distortion * d + 1);
+  return f + (ahead ? 1 : -1) * warped * dmax;
 }
 
 /**
- * The library as a slowly turning orb of posters you can spin, zoom, and fly
- * into. WebGL via three.js, mounted only by `CosmosStage` (dynamic, ssr:false)
- * so three never reaches the server bundle or any other route's JS.
+ * The library as a dense poster mosaic you push a lens across — the cell under
+ * the pointer swells while the surrounding cells squash, then clicking one
+ * zooms into it and opens the title.
  *
- * Everything allocated here is disposed on unmount — a leaked WebGL context
- * survives client navigation and browsers cap them at ~16, after which every
- * later canvas silently fails to render.
+ * WebGL via three.js, mounted only by `CosmosStage` (dynamic, ssr:false) so
+ * three never reaches the server bundle or any other route's JS. Everything
+ * allocated here is disposed on unmount: a leaked context survives client
+ * navigation and browsers cap them at ~16.
  */
 export function PosterCosmos({
   items,
@@ -72,8 +63,7 @@ export function PosterCosmos({
   const mountRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [hovered, setHovered] = useState<CosmosItem | null>(null);
-  // Mirrored into a ref so the animation loop can read the current preference
-  // without the scene effect re-running (which would rebuild every card).
+  // Read inside the loop without re-running the effect (which rebuilds tiles).
   const reduceRef = useRef(reduceMotion);
   useEffect(() => {
     reduceRef.current = reduceMotion;
@@ -84,335 +74,310 @@ export function PosterCosmos({
     if (!mount || items.length === 0) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-    camera.position.set(0, 0, 15);
+    // Screen-space orthographic in CSS pixels, kept y-UP (top = height).
+    // Flipping the frustum instead (top=0, bottom=height) to get layout-style
+    // y-down coordinates puts a negative scale in the projection, which both
+    // mirrors every texture vertically and reverses triangle winding — posters
+    // render upside down, and only survive back-face culling at all if you
+    // force DoubleSide. Grid maths still runs top-down; positions are flipped
+    // once, at the end.
+    const camera = new THREE.OrthographicCamera(0, 1, 1, 0, -10, 10);
+    camera.position.z = 1;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: "high-performance",
-    });
-    // Cap DPR: a 3x phone screen renders 9x the pixels for no visible gain.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.display = "block";
     renderer.domElement.style.touchAction = "none";
-    renderer.domElement.style.cursor = "grab";
 
-    // The orb spins as one group; the camera only ever dollies.
-    const orb = new THREE.Group();
-    scene.add(orb);
-
-    /* ---- Posters ---------------------------------------------------- */
-    // One geometry shared by every card — 150 identical plane buffers would be
-    // 150 pointless uploads.
-    const cardGeometry = new THREE.PlaneGeometry(CARD_W, CARD_H);
+    const geometry = new THREE.PlaneGeometry(1, 1);
     const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin("anonymous"); // WebGL refuses non-CORS textures
-    const textures: THREE.Texture[] = [];
-    const materials: THREE.MeshBasicMaterial[] = [];
-    const cards: THREE.Mesh[] = [];
+    loader.setCrossOrigin("anonymous");
+
+    /** One decoded texture per distinct poster, shared by every tile using it. */
+    const textures = new Map<string, THREE.Texture>();
+    type Tile = {
+      mesh: THREE.Mesh;
+      material: THREE.MeshBasicMaterial;
+      /** Per-tile clone so cover-cropping one cell can't crop the others. */
+      texture: THREE.Texture | null;
+      item: CosmosItem;
+    };
+    let tiles: Tile[] = [];
+    let cols = 0;
+    let rows = 0;
     let disposed = false;
 
-    items.forEach((item, i) => {
-      const material = new THREE.MeshBasicMaterial({
-        // Dim placeholder until the poster decodes, so the orb has shape from
-        // the first frame instead of popping in card by card.
-        color: new THREE.Color(0x2a2340),
-        transparent: true,
-        side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(cardGeometry, material);
-      mesh.position.copy(spherePoint(i, items.length, RADIUS));
-      // Face away from the centre so the shell reads as a solid orb of art.
-      mesh.lookAt(mesh.position.clone().multiplyScalar(2));
-      mesh.userData.index = i;
-      orb.add(mesh);
-      cards.push(mesh);
-      materials.push(material);
+    /* ---- Grid construction ------------------------------------------- */
+    function buildGrid(width: number, height: number) {
+      for (const tile of tiles) {
+        scene.remove(tile.mesh);
+        tile.material.dispose();
+        tile.texture?.dispose();
+      }
+      tiles = [];
 
-      loader.load(
-        item.posterUrl,
-        (texture) => {
-          // The scene may have unmounted while this was in flight.
-          if (disposed) {
-            texture.dispose();
-            return;
+      const coarse = window.matchMedia("(pointer: coarse)").matches;
+      const cell = coarse ? CELL_PX_MOBILE : CELL_PX_DESKTOP;
+      const maxTiles = coarse ? MAX_TILES_MOBILE : MAX_TILES_DESKTOP;
+
+      cols = Math.max(3, Math.round(width / cell));
+      rows = Math.max(3, Math.round(height / (cell / POSTER_ASPECT)));
+      // Thin the grid rather than blow the draw-call budget on a big screen.
+      while (cols * rows > maxTiles && cols > 3 && rows > 3) {
+        cols -= 1;
+        rows -= 1;
+      }
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          // Libraries are usually smaller than the grid, so posters repeat —
+          // offset per row so the repeat doesn't line up into stripes.
+          const item = items[(row * cols + col + row * 3) % items.length]!;
+          const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0x1b1b22),
+            transparent: true,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.userData.col = col;
+          mesh.userData.row = row;
+          scene.add(mesh);
+          const tile: Tile = { mesh, material, texture: null, item };
+          tiles.push(tile);
+
+          const cached = textures.get(item.posterUrl);
+          if (cached) {
+            applyTexture(tile, cached);
+          } else {
+            loader.load(
+              item.posterUrl,
+              (tex) => {
+                if (disposed) {
+                  tex.dispose();
+                  return;
+                }
+                tex.colorSpace = THREE.SRGBColorSpace;
+                textures.set(item.posterUrl, tex);
+                // Every tile waiting on this poster, not just the one that
+                // happened to request it.
+                for (const t of tiles) {
+                  if (t.item.posterUrl === item.posterUrl && !t.texture) {
+                    applyTexture(t, tex);
+                  }
+                }
+              },
+              undefined,
+              () => {
+                /* dead poster URL — the cell stays a dim block */
+              },
+            );
           }
-          texture.colorSpace = THREE.SRGBColorSpace;
-          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-          material.map = texture;
-          material.color.set(0xffffff);
-          material.needsUpdate = true;
-          textures.push(texture);
-        },
-        undefined,
-        () => {
-          /* a dead poster URL just stays a dim card */
-        },
-      );
-    });
-
-    /* ---- Starfield + core glow --------------------------------------- */
-    const starSprite = radialSprite(
-      "rgba(255,255,255,0.9)",
-      "rgba(255,255,255,0)",
-    );
-    const starCount = 1200;
-    const starPositions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount; i++) {
-      // Shell well outside the orb so stars never intersect the cards.
-      const p = spherePoint(i, starCount, 26 + Math.random() * 12);
-      starPositions.set([p.x, p.y, p.z], i * 3);
+        }
+      }
     }
-    const starGeometry = new THREE.BufferGeometry();
-    starGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(starPositions, 3),
-    );
-    const starMaterial = new THREE.PointsMaterial({
-      size: 0.5,
-      map: starSprite,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      color: 0xb9a8ff,
-    });
-    const stars = new THREE.Points(starGeometry, starMaterial);
-    scene.add(stars);
 
-    const glowSprite = radialSprite(
-      "rgba(167,139,250,0.55)",
-      "rgba(167,139,250,0)",
-    );
-    const glowMaterial = new THREE.SpriteMaterial({
-      map: glowSprite,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const glow = new THREE.Sprite(glowMaterial);
-    glow.scale.set(14, 14, 1);
-    scene.add(glow);
+    function applyTexture(tile: Tile, source: THREE.Texture) {
+      // Clone so each cell can carry its own cover-crop; clones share the GPU
+      // image via `source`, so this costs no extra VRAM.
+      const tex = source.clone();
+      tex.needsUpdate = true;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tile.texture = tex;
+      tile.material.map = tex;
+      tile.material.color.set(0xffffff);
+      tile.material.needsUpdate = true;
+    }
 
-    /* ---- Input ------------------------------------------------------- */
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
+    /* ---- Input --------------------------------------------------------- */
+    // Focus in normalised [0,1] screen coords; starts centred.
+    let focusX = 0.5;
+    let focusY = 0.5;
+    let targetX = 0.5;
+    let targetY = 0.5;
     let pointerInside = false;
-    let dragging = false;
-    let moved = false;
-    let lastX = 0;
-    let lastY = 0;
-    // Angular velocity, in radians per frame, decayed each frame.
-    let velX = 0;
-    let velY = 0;
-    let targetZ = camera.position.z;
+    let strength = FOCUS_STRENGTH;
+    let selecting: { at: number; item: CosmosItem } | null = null;
     let hoverIndex = -1;
-    let flight: { from: THREE.Vector3; to: THREE.Vector3; start: number; id: string } | null =
-      null;
 
     const el = renderer.domElement;
+    el.style.cursor = "crosshair";
 
-    function updatePointer(e: PointerEvent) {
+    function setTargetFromEvent(e: PointerEvent) {
       const rect = el.getBoundingClientRect();
-      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      targetX = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      targetY = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
       pointerInside = true;
     }
 
-    /** The card under this event's position right now, or -1. */
-    function cardIndexAt(e: PointerEvent): number {
-      updatePointer(e);
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(cards, false)[0];
-      return hit ? ((hit.object.userData.index as number) ?? -1) : -1;
-    }
-
-    function onPointerDown(e: PointerEvent) {
-      updatePointer(e);
-      dragging = true;
-      moved = false;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      el.setPointerCapture(e.pointerId);
-      el.style.cursor = "grabbing";
-    }
-
     function onPointerMove(e: PointerEvent) {
-      updatePointer(e);
-      if (!dragging) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      velY = dx * 0.005;
-      velX = dy * 0.005;
-      orb.rotation.y += velY;
-      orb.rotation.x = THREE.MathUtils.clamp(
-        orb.rotation.x + velX,
-        -Math.PI / 2.2,
-        Math.PI / 2.2,
-      );
-    }
-
-    function onPointerUp(e: PointerEvent) {
-      if (dragging) el.releasePointerCapture(e.pointerId);
-      dragging = false;
-      el.style.cursor = "grab";
-      if (moved || flight) return;
-
-      // Raycast fresh at the release point rather than reusing the loop's
-      // hover index: a tap fires down→up with no pointermove in between, so on
-      // touch the cached index is always -1 and nothing would ever open.
-      const index = cardIndexAt(e);
-      if (index < 0) return;
-
-      // A click (not a drag) on a card flies the camera in, then navigates.
-      const world = cards[index]!.getWorldPosition(new THREE.Vector3());
-      flight = {
-        from: camera.position.clone(),
-        // Stop just short of the card so it fills the frame at arrival.
-        to: world.clone().multiplyScalar(1.18),
-        start: performance.now(),
-        id: items[index]!.id,
-      };
-
-      // Touch has no hover, so clear the title overlay it can't dismiss.
-      if (e.pointerType === "touch") {
-        pointerInside = false;
-        hoverIndex = -1;
-        setHovered(null);
-      }
+      setTargetFromEvent(e);
     }
 
     function onPointerLeave() {
       pointerInside = false;
-      dragging = false;
-      el.style.cursor = "grab";
+      targetX = 0.5;
+      targetY = 0.5;
     }
 
-    function onWheel(e: WheelEvent) {
-      e.preventDefault();
-      targetZ = THREE.MathUtils.clamp(targetZ + e.deltaY * 0.01, MIN_Z, MAX_Z);
+    function onPointerDown(e: PointerEvent) {
+      // Touch has no hover, so a tap must place the lens before selecting.
+      setTargetFromEvent(e);
+      if (reduceRef.current) {
+        const tile = tileAtFocus(targetX, targetY);
+        if (tile) router.push(`/anime/${tile.item.id}`);
+        return;
+      }
+      const tile = tileAtFocus(targetX, targetY);
+      if (tile && !selecting) {
+        selecting = { at: performance.now(), item: tile.item };
+      }
     }
 
-    el.addEventListener("pointerdown", onPointerDown);
+    /** The focus maps to itself under the fisheye, so plain grid maths finds it. */
+    function tileAtFocus(fx: number, fy: number): Tile | null {
+      const col = Math.min(cols - 1, Math.floor(fx * cols));
+      const row = Math.min(rows - 1, Math.floor(fy * rows));
+      return tiles[row * cols + col] ?? null;
+    }
+
     el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerup", onPointerUp);
     el.addEventListener("pointerleave", onPointerLeave);
-    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("pointerdown", onPointerDown);
 
-    /* ---- Resize ------------------------------------------------------ */
+    /* ---- Resize -------------------------------------------------------- */
+    let width = 0;
+    let height = 0;
+
     function resize() {
-      const { clientWidth: w, clientHeight: h } = mount!;
+      const w = mount!.clientWidth;
+      const h = mount!.clientHeight;
       if (w === 0 || h === 0) return;
+      const changed = w !== width || h !== height;
+      width = w;
+      height = h;
       renderer.setSize(w, h, false);
-      camera.aspect = w / h;
+      camera.left = 0;
+      camera.right = w;
+      camera.top = h;
+      camera.bottom = 0;
       camera.updateProjectionMatrix();
+      if (changed) buildGrid(w, h);
     }
     resize();
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(mount);
 
-    /* ---- Loop -------------------------------------------------------- */
+    /* ---- Loop ---------------------------------------------------------- */
     let frame = 0;
-    const clock = new THREE.Clock();
 
     function tick() {
       frame = requestAnimationFrame(tick);
-      const dt = clock.getDelta();
+      if (width === 0 || height === 0 || tiles.length === 0) return;
 
-      if (flight) {
-        // Ease-in-out over the flight, then hand off to the router.
-        const t = Math.min(1, (performance.now() - flight.start) / FLIGHT_MS);
-        const eased = t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2;
-        camera.position.lerpVectors(flight.from, flight.to, eased);
-        camera.lookAt(0, 0, 0);
+      if (selecting) {
+        // Drive the lens hard into the chosen cell, then hand off to the router.
+        const t = Math.min(1, (performance.now() - selecting.at) / SELECT_MS);
+        const eased = t * t;
+        strength = FOCUS_STRENGTH + (SELECT_STRENGTH - FOCUS_STRENGTH) * eased;
         if (t >= 1) {
-          const id = flight.id;
-          flight = null;
+          const id = selecting.item.id;
+          selecting = null;
           router.push(`/anime/${id}`);
         }
+      } else if (reduceRef.current) {
+        // No lens at all: an even grid the pointer doesn't distort.
+        strength = 0;
+        focusX = 0.5;
+        focusY = 0.5;
       } else {
-        // Idle drift, plus inertia from the last drag. Both off under reduced
-        // motion: the orb then only moves while actively dragged.
-        if (!reduceRef.current) {
-          if (!dragging) {
-            velY *= 0.94;
-            velX *= 0.94;
-            orb.rotation.y += velY + dt * 0.045;
-            orb.rotation.x = THREE.MathUtils.clamp(
-              orb.rotation.x + velX,
-              -Math.PI / 2.2,
-              Math.PI / 2.2,
-            );
-          }
-          stars.rotation.y -= dt * 0.01;
-        }
-        camera.position.z += (targetZ - camera.position.z) * 0.08;
-        camera.lookAt(0, 0, 0);
-
-        // Hover: raycast only when the pointer is over the canvas and still.
-        let nextHover = -1;
-        if (pointerInside && !dragging) {
-          raycaster.setFromCamera(pointer, camera);
-          const hit = raycaster.intersectObjects(cards, false)[0];
-          if (hit) nextHover = (hit.object.userData.index as number) ?? -1;
-        }
-        if (nextHover !== hoverIndex) {
-          hoverIndex = nextHover;
-          el.style.cursor = hoverIndex >= 0 ? "pointer" : "grab";
-          setHovered(hoverIndex >= 0 ? items[hoverIndex]! : null);
-        }
-        // Lift the hovered card out of the shell and settle the rest back.
-        cards.forEach((card, i) => {
-          const target = i === hoverIndex ? 1.34 : 1;
-          card.scale.lerp(new THREE.Vector3(target, target, 1), 0.18);
-        });
+        strength += (FOCUS_STRENGTH - strength) * 0.12;
+        focusX += (targetX - focusX) * 0.16;
+        focusY += (targetY - focusY) * 0.16;
       }
 
-      glow.material.opacity = 0.75 + Math.sin(performance.now() / 1400) * 0.2;
+      // Column and row boundaries, warped independently around the focus.
+      const xs: number[] = [];
+      for (let i = 0; i <= cols; i++) {
+        xs.push(fisheye(i / cols, focusX, strength) * width);
+      }
+      const ys: number[] = [];
+      for (let j = 0; j <= rows; j++) {
+        ys.push(fisheye(j / rows, focusY, strength) * height);
+      }
+
+      const focusTile = pointerInside || selecting ? tileAtFocus(focusX, focusY) : null;
+
+      for (const tile of tiles) {
+        const col = tile.mesh.userData.col as number;
+        const row = tile.mesh.userData.row as number;
+        const x0 = xs[col]!;
+        const x1 = xs[col + 1]!;
+        const y0 = ys[row]!;
+        const y1 = ys[row + 1]!;
+        const w = Math.max(0.001, x1 - x0 - GAP);
+        const h = Math.max(0.001, y1 - y0 - GAP);
+        tile.mesh.scale.set(w, h, 1);
+        // ys[] is measured downward from the top; the world is y-up.
+        tile.mesh.position.set((x0 + x1) / 2, height - (y0 + y1) / 2, 0);
+
+        // Cover-crop this cell: cells are never the poster's aspect once the
+        // lens has stretched them, and letting the art stretch looks cheap.
+        const tex = tile.texture;
+        if (tex) {
+          const cellAspect = w / h;
+          if (cellAspect > POSTER_ASPECT) {
+            tex.repeat.set(1, POSTER_ASPECT / cellAspect);
+            tex.offset.set(0, (1 - tex.repeat.y) / 2);
+          } else {
+            tex.repeat.set(cellAspect / POSTER_ASPECT, 1);
+            tex.offset.set((1 - tex.repeat.x) / 2, 0);
+          }
+        }
+
+        // Lift the focused cell out of the field; everything else sits back.
+        const isFocus = tile === focusTile;
+        const target = isFocus ? 1 : 0.62;
+        const c = tile.material.color;
+        const to = tile.texture ? target : target * 0.18;
+        c.setScalar(c.r + (to - c.r) * 0.15);
+      }
+
+      const nextHover = focusTile ? tiles.indexOf(focusTile) : -1;
+      if (nextHover !== hoverIndex) {
+        hoverIndex = nextHover;
+        setHovered(focusTile ? focusTile.item : null);
+      }
+
       renderer.render(scene, camera);
     }
 
-    // A hidden tab still fires rAF in some browsers and never in others; pause
-    // explicitly so a backgrounded cosmos costs nothing either way.
+    // A hidden tab either throttles rAF to nothing or never fires it; pause
+    // explicitly so a backgrounded mosaic costs the same either way.
     function onVisibility() {
-      if (document.hidden) {
-        cancelAnimationFrame(frame);
-      } else {
-        clock.getDelta(); // drop the elapsed gap so nothing jumps
-        frame = requestAnimationFrame(tick);
-      }
+      if (document.hidden) cancelAnimationFrame(frame);
+      else frame = requestAnimationFrame(tick);
     }
     document.addEventListener("visibilitychange", onVisibility);
     frame = requestAnimationFrame(tick);
 
-    /* ---- Teardown ---------------------------------------------------- */
+    /* ---- Teardown ------------------------------------------------------ */
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", onVisibility);
       resizeObserver.disconnect();
-      el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerup", onPointerUp);
       el.removeEventListener("pointerleave", onPointerLeave);
-      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onPointerDown);
 
-      cardGeometry.dispose();
-      materials.forEach((m) => m.dispose());
-      textures.forEach((t) => t.dispose());
-      starGeometry.dispose();
-      starMaterial.dispose();
-      starSprite.dispose();
-      glowMaterial.dispose();
-      glowSprite.dispose();
+      for (const tile of tiles) {
+        tile.material.dispose();
+        tile.texture?.dispose();
+      }
+      for (const tex of textures.values()) tex.dispose();
+      geometry.dispose();
       renderer.dispose();
-      // Without this the GPU context lingers past unmount and counts against
-      // the browser's per-page WebGL context cap.
       renderer.forceContextLoss();
       el.remove();
     };
@@ -422,18 +387,18 @@ export function PosterCosmos({
     <>
       <div ref={mountRef} className="absolute inset-0" aria-hidden />
 
-      {/* Hovered title — DOM, so it stays crisp and selectable text. */}
+      {/* Hovered title — DOM, so it stays crisp text. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-6">
         <div
-          className={`glass max-w-[min(90vw,32rem)] rounded-full px-5 py-2.5 text-center transition-all duration-200 ${
+          className={`max-w-[min(90vw,32rem)] rounded-full bg-black/70 px-5 py-2.5 text-center backdrop-blur transition-all duration-200 ${
             hovered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
           }`}
         >
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate text-sm font-medium text-white">
             {hovered?.title ?? ""}
           </p>
           {hovered?.score != null ? (
-            <p className="text-xs text-muted-foreground">★ {hovered.score}</p>
+            <p className="text-xs text-white/60">★ {hovered.score}</p>
           ) : null}
         </div>
       </div>

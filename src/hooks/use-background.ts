@@ -14,7 +14,12 @@ import { useCallback, useSyncExternalStore } from "react";
  * Supabase storage would need a bucket + policies for a purely cosmetic file.
  */
 
-export type BackgroundChoice = "default" | "gears" | "clockwork" | "custom";
+export type BackgroundChoice =
+  | "default"
+  | "gears"
+  | "clockwork"
+  | "eyeclock"
+  | "custom";
 
 const STORAGE_KEY = "app-background";
 /** Data-URL of the user's own image, when `choice === "custom"`. */
@@ -33,6 +38,11 @@ export const BACKGROUND_OPTIONS: {
   },
   { value: "gears", label: "Gears", description: "Turning brass clockwork." },
   { value: "clockwork", label: "Clockwork", description: "The full movement." },
+  {
+    value: "eyeclock",
+    label: "Eye Clock",
+    description: "A glowing iris telling the time.",
+  },
   { value: "custom", label: "Custom", description: "Your own picture." },
 ];
 
@@ -47,6 +57,7 @@ function isChoice(value: string | null): value is BackgroundChoice {
     value === "default" ||
     value === "gears" ||
     value === "clockwork" ||
+    value === "eyeclock" ||
     value === "custom"
   );
 }

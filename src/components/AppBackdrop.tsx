@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 
+import { EyeClockBackdrop } from "@/components/EyeClockBackdrop";
 import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
 import { SearchPosterWall } from "@/components/search/SearchPosterWall";
 import { VideoBackdrop } from "@/components/VideoBackdrop";
@@ -31,6 +32,7 @@ export function AppBackdrop() {
 
   const video = BACKGROUND_VIDEO[choice];
   if (video) return <VideoBackdrop src={video} />;
+  if (choice === "eyeclock") return <EyeClockBackdrop />;
   if (choice === "custom" && customImage) {
     return <CustomImageBackdrop src={customImage} />;
   }

@@ -109,6 +109,15 @@ export function BackgroundCard() {
                       <ImagePlus className="size-6" aria-hidden />
                     </span>
                   )
+                ) : option.value === "eyeclock" ? (
+                  // The real poster, cropped toward the eye the clock sits in.
+                  <div
+                    className="size-full bg-cover"
+                    style={{
+                      backgroundImage: "url(/backgrounds/eye-clock.jpg)",
+                      backgroundPosition: "39.9% 70.5%",
+                    }}
+                  />
                 ) : (
                   // Default: a static swatch of the vortex's night-void palette.
                   <div className="size-full bg-[radial-gradient(circle_at_50%_40%,oklch(0.35_0.09_290/60%),oklch(0.15_0.02_280)_70%)]" />

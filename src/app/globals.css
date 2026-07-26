@@ -436,6 +436,53 @@ html:not(.dark) .text-gradient {
   will-change: transform;
 }
 
+/* Eye Clock backdrop: hands on exact periods, phase-locked by a negative
+   animation-delay set in JS.
+
+   The origin must be `0 0`, not `50% 50%`. With `transform-box: view-box`
+   Chromium resolves the origin as a point in the *user* coordinate system, not
+   as an offset from the viewBox's corner — and this viewBox is `-50 -50 100
+   100`, so user-space (0,0) already IS the dial centre, exactly where the hands
+   are drawn. Measured: `0 0` pivots a hand on the centre; `50% 50%` resolves to
+   user (50,50) and flings it a full dial-width away. */
+@keyframes eye-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.eye-hand,
+.eye-ring,
+.eye-ring-rev {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+.eye-sec {
+  animation: eye-spin 60s linear infinite;
+}
+.eye-min {
+  animation: eye-spin 3600s linear infinite;
+}
+.eye-hour {
+  animation: eye-spin 43200s linear infinite;
+}
+.eye-ring {
+  animation: eye-spin 120s linear infinite;
+}
+.eye-ring-rev {
+  animation: eye-spin 90s linear infinite reverse;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The ambient rings stop entirely; the hands keep time but tick in whole
+     seconds rather than sweeping. */
+  .eye-ring,
+  .eye-ring-rev {
+    animation: none;
+  }
+  .eye-sec {
+    animation: eye-spin 60s steps(60) infinite;
+  }
+}
+
 /* Loading placeholders: gradient sweep over the accent base (ui/skeleton). */
 @keyframes skeleton-shimmer {
   from {

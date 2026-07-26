@@ -2,6 +2,38 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
+ * Paths reachable without a session: the auth pages, the /auth/* email and
+ * OAuth callback routes, the public anime search API (it only proxies
+ * third-party MyAnimeList data), and the PWA assets — which must be fetchable
+ * signed-out or install/offline breaks.
+ */
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/reset-password",
+  "/auth",
+  "/api/anime/search",
+  "/admin/login",
+  "/manifest.webmanifest",
+  "/sw.js",
+];
+
+/**
+ * Exact match, or a match on a path-segment boundary.
+ *
+ * A bare `startsWith` would make anything merely *beginning* with a public
+ * path public too — `/authors`, `/logins`, `/signup-admin`, or any file in
+ * public/ named `auth*`. Nothing exploits that today, which is exactly why it
+ * was worth closing: the day someone adds a route whose name happens to start
+ * with one of these, it ships unauthenticated and nothing says so.
+ */
+export function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
+/**
  * Refreshes the Supabase auth session on every matched request and keeps the
  * auth cookies in sync between the request and the response. Called from the
  * Next.js 16 proxy (src/proxy.ts).
@@ -36,24 +68,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Auth gate: redirect unauthenticated users to /login. Public paths (the
-  // auth pages, the /auth/* email/OAuth callback routes, and the public anime
-  // search API, which only proxies third-party MyAnimeList data) are allowed.
-  const publicPaths = [
-    "/login",
-    "/signup",
-    "/reset-password",
-    "/auth",
-    "/api/anime/search",
-    "/admin/login",
-    // PWA assets — must be fetchable without a session or install/offline breaks.
-    "/manifest.webmanifest",
-    "/sw.js",
-  ];
   const { pathname } = request.nextUrl;
-  const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
-  if (!user && !isPublicPath) {
+  if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     // Unauthenticated admin routes go to the admin sign-in, not the user one.
     url.pathname = pathname.startsWith("/admin") ? "/admin/login" : "/login";

@@ -22,6 +22,7 @@ import {
   type ThemeTrack,
 } from "@/lib/animethemes";
 import { MusicVisualizer } from "@/components/songs/MusicVisualizer";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   displayTitle,
@@ -381,34 +382,40 @@ export function SongsClient() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => step(-1)}
-                aria-label="Previous track"
-                className="grid size-9 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
-              >
-                <SkipBack className="size-4" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={togglePlay}
-                aria-label={playing ? "Pause" : "Play"}
-                className="grid size-10 place-items-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90"
-              >
-                {playing ? (
-                  <Pause className="size-4 fill-current" aria-hidden />
-                ) : (
-                  <Play className="size-4 translate-x-px fill-current" aria-hidden />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => step(1)}
-                aria-label="Next track"
-                className="grid size-9 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
-              >
-                <SkipForward className="size-4" aria-hidden />
-              </button>
+              <Tooltip label="Previous track">
+                <button
+                  type="button"
+                  onClick={() => step(-1)}
+                  aria-label="Previous track"
+                  className="grid size-9 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
+                >
+                  <SkipBack className="size-4" aria-hidden />
+                </button>
+              </Tooltip>
+              <Tooltip label={playing ? "Pause" : "Play"}>
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  aria-label={playing ? "Pause" : "Play"}
+                  className="grid size-10 place-items-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90"
+                >
+                  {playing ? (
+                    <Pause className="size-4 fill-current" aria-hidden />
+                  ) : (
+                    <Play className="size-4 translate-x-px fill-current" aria-hidden />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip label="Next track">
+                <button
+                  type="button"
+                  onClick={() => step(1)}
+                  aria-label="Next track"
+                  className="grid size-9 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
+                >
+                  <SkipForward className="size-4" aria-hidden />
+                </button>
+              </Tooltip>
             </div>
             <div className="hidden items-center gap-1.5 md:flex">
               <Volume2 className="size-4 text-muted-foreground" aria-hidden />

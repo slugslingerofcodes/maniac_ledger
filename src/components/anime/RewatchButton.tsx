@@ -13,7 +13,7 @@ import { getRewatchCount, incrementRewatch } from "@/app/actions/progress";
  */
 export function RewatchButton({ animeId }: { animeId: string }) {
   const [count, setCount] = useState<number | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
@@ -37,18 +37,21 @@ export function RewatchButton({ animeId }: { animeId: string }) {
       </span>
       <button
         type="button"
-        disabled={pending}
-        onClick={() =>
+        onClick={() => {
+          // Bump the counter now; a failed increment rolls it back. The button
+          // stays enabled so logging two rewatches in a row doesn't mean
+          // waiting out a round trip between taps.
+          setCount((c) => (c ?? 0) + 1);
           startTransition(async () => {
             const res = await incrementRewatch(animeId);
             if (res.ok) {
-              setCount((c) => (c ?? 0) + 1);
               toast.success("Another rewatch logged. Enjoy!");
             } else {
+              setCount((c) => Math.max(0, (c ?? 1) - 1));
               toast.error(res.error);
             }
-          })
-        }
+          });
+        }}
         className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/25 disabled:opacity-50"
       >
         + Rewatch

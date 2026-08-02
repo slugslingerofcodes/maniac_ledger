@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tooltip } from "@/components/ui/tooltip";
 
 export type RecItem = {
   malId: number | null;
@@ -32,25 +33,32 @@ export type RecItem = {
 export function RecommendationCard({
   item,
   onDismiss,
+  onRestore,
 }: {
   item: RecItem;
   onDismiss: (malId: number) => void;
+  /** Puts the card back when an optimistic dismiss turns out to have failed. */
+  onRestore?: (item: RecItem) => void;
 }) {
   const [added, setAdded] = useState(false);
   const [pending, startTransition] = useTransition();
   const queryClient = useQueryClient();
   const canAct = item.malId != null;
 
+  // Both actions flip the UI first and undo it on failure: an add is a single
+  // upsert and a dismiss is a single update, so the success rate is high enough
+  // that waiting on the round trip costs far more than the rare rollback.
   function add() {
     if (item.malId == null) return;
     const malId = item.malId;
+    setAdded(true);
     startTransition(async () => {
       const res = await addToLibraryByMalId(malId);
       if (!res.ok) {
+        setAdded(false);
         toast.error(res.error);
         return;
       }
-      setAdded(true);
       // Refetch the library grid so the added title appears immediately.
       queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
       track("recommendation_clicked", { malId, title: item.title });
@@ -64,13 +72,15 @@ export function RecommendationCard({
   function dismiss() {
     if (item.malId == null) return;
     const malId = item.malId;
+    // Remove it now — the parent's framer-motion exit plays immediately, and a
+    // failed dismiss puts it back via the parent's restore path.
+    onDismiss(malId);
     startTransition(async () => {
       const res = await dismissRecommendation(malId);
       if (!res.ok) {
+        onRestore?.(item);
         toast.error(res.error);
-        return;
       }
-      onDismiss(malId); // parent removes it → framer-motion plays the exit
     });
   }
 
@@ -91,15 +101,17 @@ export function RecommendationCard({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={dismiss}
-          disabled={pending || !canAct}
-          aria-label={`Dismiss ${item.title}`}
-          className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition-colors hover:bg-black/80 disabled:opacity-50"
-        >
-          <XIcon className="size-3.5" />
-        </button>
+        <Tooltip label="Not interested">
+          <button
+            type="button"
+            onClick={dismiss}
+            disabled={pending || !canAct}
+            aria-label={`Dismiss ${item.title}`}
+            className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition-colors hover:bg-black/80 disabled:opacity-50"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        </Tooltip>
 
         {item.score != null ? (
           <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-xs font-medium text-amber-300 backdrop-blur">

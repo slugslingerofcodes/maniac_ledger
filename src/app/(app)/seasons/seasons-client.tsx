@@ -1,15 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { MorphLink } from "@/components/MorphLink";
 import { posterTransitionName } from "@/lib/view-transition";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { Pagination } from "@/components/anime/Pagination";
+import { ParallaxStagger } from "@/components/Parallax";
+import { PosterGridSkeleton } from "@/components/skeletons";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useAnimeFeed } from "@/hooks/use-anime-feed";
 import {
   SEASONS,
   SEASON_LABELS,
@@ -17,7 +20,6 @@ import {
   type Season,
 } from "@/lib/search-filters";
 import { cn } from "@/lib/utils";
-import type { JikanAnime } from "@/lib/jikan";
 
 /** The anime season a date falls in (winter = Jan–Mar, … fall = Oct–Dec). */
 function seasonOf(date: Date): Season {
@@ -48,12 +50,13 @@ export function SeasonsClient() {
   const [season, setSeason] = useState<Season>(() => seasonOf(now));
   const [year, setYear] = useState<number>(now.getFullYear());
   const [page, setPage] = useState(1);
-  const [results, setResults] = useState<JikanAnime[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [status, setStatus] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
-  const abortRef = useRef<AbortController | null>(null);
+
+  const { data, isError, showSkeleton, isRefreshing } = useAnimeFeed({
+    endpoint: "/api/anime/search",
+    params: { season, year, page },
+  });
+  const results = data?.results ?? [];
+  const totalPages = data?.totalPages ?? 1;
 
   function move(delta: 1 | -1) {
     const next = shiftSeason(season, year, delta);
@@ -63,65 +66,34 @@ export function SeasonsClient() {
     setPage(1);
   }
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus("loading");
-
-    const params = new URLSearchParams({
-      season,
-      year: String(year),
-      page: String(page),
-    });
-    fetch(`/api/anime/search?${params.toString()}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Season fetch failed");
-        const body = await res.json();
-        const seen = new Set<number>();
-        const unique = ((body.results ?? []) as JikanAnime[]).filter((a) => {
-          if (seen.has(a.mal_id)) return false;
-          seen.add(a.mal_id);
-          return true;
-        });
-        setResults(unique);
-        setTotalPages(body.totalPages ?? 1);
-        setStatus("success");
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setStatus("error");
-      });
-
-    return () => controller.abort();
-  }, [season, year, page]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   return (
     <>
       {/* Season navigator */}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => move(-1)}
-            aria-label="Previous season"
-            className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ChevronLeftIcon className="size-4" />
-          </button>
+          <Tooltip label="Previous season">
+            <button
+              type="button"
+              onClick={() => move(-1)}
+              aria-label="Previous season"
+              className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronLeftIcon className="size-4" />
+            </button>
+          </Tooltip>
           <span className="min-w-36 text-center text-lg font-semibold">
             {SEASON_LABELS[season]} {year}
           </span>
-          <button
-            type="button"
-            onClick={() => move(1)}
-            aria-label="Next season"
-            className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ChevronRightIcon className="size-4" />
-          </button>
+          <Tooltip label="Next season">
+            <button
+              type="button"
+              onClick={() => move(1)}
+              aria-label="Next season"
+              className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRightIcon className="size-4" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -164,29 +136,33 @@ export function SeasonsClient() {
         </div>
       </div>
 
-      {status === "loading" ? (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] w-full rounded-lg" />
-          ))}
-        </div>
-      ) : null}
+      {showSkeleton ? <PosterGridSkeleton className="mt-6" count={10} /> : null}
 
-      {status === "error" ? (
+      {isError && !data ? (
         <p className="mt-6 text-sm text-destructive">
           Couldn&apos;t load this season. Please try again later.
         </p>
       ) : null}
 
-      {status === "success" && results.length === 0 ? (
+      {!showSkeleton && results.length === 0 ? (
         <p className="mt-10 text-center text-sm text-muted-foreground">
           Nothing found for {SEASON_LABELS[season]} {year}.
         </p>
       ) : null}
 
-      {status === "success" && results.length > 0 ? (
+      {results.length > 0 ? (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {/* The previous season stays on screen while the next one loads
+              (keepPreviousData); dimming is the only cue that it's swapping. */}
+          <ParallaxStagger
+            // Keyed by the season being shown so each new season's posters
+            // stagger in rather than appearing all at once.
+            key={`${season}-${year}-${page}`}
+            className={cn(
+              "mt-6 grid grid-cols-2 gap-4 transition-opacity duration-200 sm:grid-cols-3 lg:grid-cols-5",
+              isRefreshing && "opacity-50",
+            )}
+          >
             {results.map((anime) => {
               const poster =
                 anime.images?.jpg?.large_image_url ??
@@ -230,7 +206,7 @@ export function SeasonsClient() {
                 </MorphLink>
               );
             })}
-          </div>
+          </ParallaxStagger>
           <Pagination page={page} totalPages={totalPages} onPage={setPage} />
         </>
       ) : null}

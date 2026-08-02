@@ -3,20 +3,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Pagination } from "@/components/anime/Pagination";
+import { PosterGridSkeleton } from "@/components/skeletons";
 import { SourceNotice } from "@/components/SourceNotice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { addToLibraryAction, getUserLibrary } from "@/app/actions/library";
 import { LIBRARY_QUERY_KEY } from "@/app/(app)/library/library-grid-client";
 import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { useAnimeFeed } from "@/hooks/use-anime-feed";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
@@ -25,7 +26,6 @@ import type { JikanAnime } from "@/lib/jikan";
 const AGE_GATE_KEY = "misc_age_ok_v1";
 
 type Mode = "both" | "ecchi" | "hentai";
-type Status = "idle" | "loading" | "success" | "error";
 
 const MODES: { value: Mode; label: string }[] = [
   { value: "both", label: "All" },
@@ -104,64 +104,23 @@ function MiscBrowser() {
   const [titleLang] = useTitleLanguage();
   const debouncedQuery = useDebounce(query, 400);
 
-  const [results, setResults] = useState<JikanAnime[]>([]);
-  const [status, setStatus] = useState<Status>("idle");
-  const [pageInfo, setPageInfo] = useState<{ totalPages: number } | null>(null);
-  // Which engine served the results ("mal" | "anilist" | "catalog") + whether
-  // we're on the local-catalog fallback.
-  const [source, setSource] = useState<string>("mal");
-  const [degraded, setDegraded] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const q = debouncedQuery.trim();
+  const { data, isError, showSkeleton, isRefreshing } = useAnimeFeed({
+    endpoint: "/api/anime/misc-search",
+    params: { mode, page, q: q.length >= 1 ? q : undefined },
+  });
+  const results = data?.results ?? [];
 
   // Highlight titles already in the library ("Added ✓").
   const { data: library } = useQuery({
     queryKey: LIBRARY_QUERY_KEY,
     queryFn: () => getUserLibrary(),
-    staleTime: 5 * 60_000,
   });
   const libraryMalIds = new Set(
     (library ?? [])
       .map((i) => i.malId)
       .filter((id): id is number => id != null),
   );
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus("loading");
-
-    const params = new URLSearchParams({ mode, page: String(page) });
-    const q = debouncedQuery.trim();
-    if (q.length >= 1) params.set("q", q);
-
-    fetch(`/api/anime/misc-search?${params.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Search request failed");
-        const body = await res.json();
-        const seen = new Set<number>();
-        const unique = ((body.results ?? []) as JikanAnime[]).filter((a) => {
-          if (seen.has(a.mal_id)) return false;
-          seen.add(a.mal_id);
-          return true;
-        });
-        setResults(unique);
-        setPageInfo({ totalPages: body.totalPages ?? 1 });
-        setSource(body.source ?? "mal");
-        setDegraded(Boolean(body.degraded));
-        setStatus("success");
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setStatus("error");
-      });
-
-    return () => controller.abort();
-  }, [debouncedQuery, mode, page]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   function goToPage(n: number) {
     setPage(n);
@@ -218,27 +177,30 @@ function MiscBrowser() {
         </div>
       </div>
 
-      {status === "loading" ? <SkeletonGrid /> : null}
+      {showSkeleton ? <PosterGridSkeleton count={10} withCaption={false} /> : null}
 
-      {status === "success" ? (
-        <SourceNotice source={source} degraded={degraded} />
-      ) : null}
+      {data ? <SourceNotice source={data.source} degraded={data.degraded} /> : null}
 
-      {status === "error" ? (
+      {isError && !data ? (
         <p className="py-24 text-center text-sm text-muted-foreground">
           Something went wrong. Please try again.
         </p>
       ) : null}
 
-      {status === "success" && results.length === 0 ? (
+      {!showSkeleton && !isError && results.length === 0 ? (
         <p className="py-24 text-center text-sm text-muted-foreground">
           No titles found.
         </p>
       ) : null}
 
-      {status === "success" && results.length > 0 ? (
+      {results.length > 0 ? (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div
+            className={cn(
+              "grid grid-cols-2 gap-4 transition-opacity duration-200 sm:grid-cols-3 lg:grid-cols-5",
+              isRefreshing && "opacity-50",
+            )}
+          >
             {results.map((anime) => (
               <PosterCard
                 key={anime.mal_id}
@@ -248,26 +210,14 @@ function MiscBrowser() {
               />
             ))}
           </div>
-          {pageInfo ? (
-            <Pagination
-              page={page}
-              totalPages={pageInfo.totalPages}
-              onPage={goToPage}
-            />
-          ) : null}
+          <Pagination
+            page={page}
+            totalPages={data?.totalPages ?? 1}
+            onPage={goToPage}
+          />
         </>
       ) : null}
     </main>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <Skeleton key={i} className="aspect-[2/3] w-full rounded-lg" />
-      ))}
-    </div>
   );
 }
 

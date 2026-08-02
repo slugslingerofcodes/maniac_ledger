@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
@@ -46,8 +46,27 @@ export function RecommendationsView({
     });
   }
 
+  // Dismissals are optimistic in the card, so the parent remembers where each
+  // one sat and can slot it back if the server write turns out to have failed.
+  const removedAt = useRef(new Map<number, number>());
+
   function handleDismiss(malId: number) {
-    setItems((prev) => prev.filter((i) => i.malId !== malId));
+    setItems((prev) => {
+      const index = prev.findIndex((i) => i.malId === malId);
+      if (index === -1) return prev;
+      removedAt.current.set(malId, index);
+      return prev.filter((i) => i.malId !== malId);
+    });
+  }
+
+  function handleRestore(item: RecItem) {
+    setItems((prev) => {
+      if (prev.some((i) => i.malId === item.malId)) return prev;
+      const index = item.malId != null ? removedAt.current.get(item.malId) : undefined;
+      const next = [...prev];
+      next.splice(index ?? next.length, 0, item);
+      return next;
+    });
   }
 
   // "Surprise me": one click rolls a completely random anime and shows it.
@@ -207,7 +226,11 @@ export function RecommendationsView({
                 exit={{ opacity: 0, x: -60, transition: { duration: 0.2 } }}
                 className="shrink-0"
               >
-                <RecommendationCard item={item} onDismiss={handleDismiss} />
+                <RecommendationCard
+                  item={item}
+                  onDismiss={handleDismiss}
+                  onRestore={handleRestore}
+                />
               </motion.div>
             ))}
           </AnimatePresence>

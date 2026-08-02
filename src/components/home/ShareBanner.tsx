@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 import { Link2, Share2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { Tooltip } from "@/components/ui/tooltip";
+
 const DISMISS_KEY = "share-banner-dismissed";
 const DISMISS_EVENT = "share-banner-dismiss";
 
@@ -77,30 +79,36 @@ export function ShareBanner() {
           Share it with your friends!
         </p>
       </div>
-      <button
-        type="button"
-        onClick={copy}
-        aria-label="Copy link"
-        className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground transition hover:text-foreground"
-      >
-        <Link2 className="size-4" aria-hidden />
-      </button>
-      <button
-        type="button"
-        onClick={share}
-        aria-label="Share"
-        className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground transition hover:text-foreground"
-      >
-        <Share2 className="size-4" aria-hidden />
-      </button>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="Dismiss"
-        className="grid size-8 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
-      >
-        <X className="size-4" aria-hidden />
-      </button>
+      <Tooltip label="Copy link">
+        <button
+          type="button"
+          onClick={copy}
+          aria-label="Copy link"
+          className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground transition hover:text-foreground"
+        >
+          <Link2 className="size-4" aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip label="Share">
+        <button
+          type="button"
+          onClick={share}
+          aria-label="Share"
+          className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground transition hover:text-foreground"
+        >
+          <Share2 className="size-4" aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip label="Dismiss">
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss"
+          className="grid size-8 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </Tooltip>
     </div>
   );
 }

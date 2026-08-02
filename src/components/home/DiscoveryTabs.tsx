@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { MorphLink } from "@/components/MorphLink";
+import { ParallaxStagger } from "@/components/Parallax";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
 import { posterTransitionName } from "@/lib/view-transition";
@@ -64,7 +65,12 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-6">
+      {/* Scroll-staggered entrance (GSAP). Keyed by tab so switching replays
+          the stagger for the new set instead of showing it flat. */}
+      <ParallaxStagger
+        key={tab}
+        className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-6"
+      >
         {items.map((item) => (
           <MorphLink
             key={item.malId}
@@ -105,7 +111,7 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
             </p>
           </MorphLink>
         ))}
-      </div>
+      </ParallaxStagger>
     </section>
   );
 }

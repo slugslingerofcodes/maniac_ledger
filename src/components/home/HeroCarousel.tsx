@@ -13,6 +13,8 @@ import {
   Star,
 } from "lucide-react";
 
+import { Parallax } from "@/components/Parallax";
+import { Tooltip } from "@/components/ui/tooltip";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { nextBroadcastMs } from "@/lib/jst";
 import { cn } from "@/lib/utils";
@@ -101,27 +103,32 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
     <section className="relative isolate overflow-hidden border-b border-white/10 bg-zinc-950 text-zinc-50">
       {/* Backdrop: the slide's key art, blurred + darkened, crossfading. */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={slide.malId}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduce ? 0 : 0.6 }}
-            className="absolute inset-0"
-          >
-            {slide.imageUrl ? (
-              <Image
-                src={slide.imageUrl}
-                alt=""
-                fill
-                priority={index === 0}
-                sizes="100vw"
-                className="scale-110 object-cover blur-md"
-              />
-            ) : null}
-          </motion.div>
-        </AnimatePresence>
+        {/* Two motion systems, cleanly split: GSAP scrubs the key art against
+            scroll for depth (transform), Framer Motion crossfades between
+            slides (opacity). Neither touches the other's property. */}
+        <Parallax className="absolute inset-0" distance={140} scale={1.2}>
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={slide.malId}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduce ? 0 : 0.6 }}
+              className="absolute inset-0"
+            >
+              {slide.imageUrl ? (
+                <Image
+                  src={slide.imageUrl}
+                  alt=""
+                  fill
+                  priority={index === 0}
+                  sizes="100vw"
+                  className="scale-110 object-cover blur-md"
+                />
+              ) : null}
+            </motion.div>
+          </AnimatePresence>
+        </Parallax>
         <div className="absolute inset-0 bg-black/50" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-black/25 to-black/40" />
       </div>
@@ -138,14 +145,16 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
             <span />
           )}
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={prev}
-              aria-label="Previous slide"
-              className="grid size-9 place-items-center rounded-lg bg-black/45 ring-1 ring-white/15 backdrop-blur transition hover:bg-black/70"
-            >
-              <ChevronLeft className="size-5" aria-hidden />
-            </button>
+            <Tooltip label="Previous slide">
+              <button
+                type="button"
+                onClick={prev}
+                aria-label="Previous slide"
+                className="grid size-9 place-items-center rounded-lg bg-black/45 ring-1 ring-white/15 backdrop-blur transition hover:bg-black/70"
+              >
+                <ChevronLeft className="size-5" aria-hidden />
+              </button>
+            </Tooltip>
             <span className="flex h-9 min-w-16 items-center justify-center rounded-lg bg-black/45 px-3 text-sm font-bold tabular-nums ring-1 ring-white/15 backdrop-blur">
               {index + 1}
               <span className="sr-only"> of {count}</span>
@@ -153,14 +162,16 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
                 / {count}
               </span>
             </span>
-            <button
-              type="button"
-              onClick={next}
-              aria-label="Next slide"
-              className="grid size-9 place-items-center rounded-lg bg-black/45 ring-1 ring-white/15 backdrop-blur transition hover:bg-black/70"
-            >
-              <ChevronRight className="size-5" aria-hidden />
-            </button>
+            <Tooltip label="Next slide">
+              <button
+                type="button"
+                onClick={next}
+                aria-label="Next slide"
+                className="grid size-9 place-items-center rounded-lg bg-black/45 ring-1 ring-white/15 backdrop-blur transition hover:bg-black/70"
+              >
+                <ChevronRight className="size-5" aria-hidden />
+              </button>
+            </Tooltip>
           </div>
         </div>
 

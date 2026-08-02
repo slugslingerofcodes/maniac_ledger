@@ -1,18 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { MorphLink } from "@/components/MorphLink";
 import { posterTransitionName } from "@/lib/view-transition";
 
 import { Pagination } from "@/components/anime/Pagination";
+import { PosterGridSkeleton } from "@/components/skeletons";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useAnimeFeed } from "@/hooks/use-anime-feed";
 import { genreChipStyle } from "@/lib/genre-color";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
-import type { JikanAnime } from "@/lib/jikan";
 
 /**
  * Filterable, paginated movie browser. Runs on the same /api/anime/search
@@ -22,12 +22,19 @@ import type { JikanAnime } from "@/lib/jikan";
 export function MoviesClient() {
   const [genreIds, setGenreIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
-  const [movies, setMovies] = useState<JikanAnime[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [status, setStatus] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
-  const abortRef = useRef<AbortController | null>(null);
+
+  const { data, isError, showSkeleton, isRefreshing } = useAnimeFeed({
+    endpoint: "/api/anime/search",
+    params: {
+      format: "movie",
+      page,
+      // Sorted so picking the same genres in a different order is one cache
+      // entry, not two.
+      genres: genreIds.length > 0 ? [...genreIds].sort((a, b) => a - b).join(",") : undefined,
+    },
+  });
+  const movies = data?.results ?? [];
+  const totalPages = data?.totalPages ?? 1;
 
   function toggleGenre(id: number) {
     setPage(1);
@@ -40,39 +47,6 @@ export function MoviesClient() {
     setPage(n);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus("loading");
-
-    const params = new URLSearchParams({ format: "movie", page: String(page) });
-    if (genreIds.length > 0) params.set("genres", genreIds.join(","));
-
-    fetch(`/api/anime/search?${params.toString()}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Movie fetch failed");
-        const body = await res.json();
-        const seen = new Set<number>();
-        const unique = ((body.results ?? []) as JikanAnime[]).filter((a) => {
-          if (seen.has(a.mal_id)) return false;
-          seen.add(a.mal_id);
-          return true;
-        });
-        setMovies(unique);
-        setTotalPages(body.totalPages ?? 1);
-        setStatus("success");
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setStatus("error");
-      });
-
-    return () => controller.abort();
-  }, [genreIds, page]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <>
@@ -112,29 +86,33 @@ export function MoviesClient() {
         ) : null}
       </div>
 
-      {status === "loading" ? (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] w-full rounded-lg" />
-          ))}
-        </div>
+      {showSkeleton ? (
+        <PosterGridSkeleton
+          className="mt-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+          count={12}
+        />
       ) : null}
 
-      {status === "error" ? (
+      {isError && !data ? (
         <p className="mt-6 text-sm text-destructive">
           Couldn&apos;t load movies right now. Please try again later.
         </p>
       ) : null}
 
-      {status === "success" && movies.length === 0 ? (
+      {!showSkeleton && movies.length === 0 ? (
         <p className="mt-10 text-center text-sm text-muted-foreground">
           No movies match those genres.
         </p>
       ) : null}
 
-      {status === "success" && movies.length > 0 ? (
+      {movies.length > 0 ? (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          <div
+            className={cn(
+              "mt-6 grid grid-cols-2 gap-4 transition-opacity duration-200 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6",
+              isRefreshing && "opacity-50",
+            )}
+          >
             {movies.map((movie) => {
               const poster =
                 movie.images?.jpg?.large_image_url ??

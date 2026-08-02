@@ -23,7 +23,19 @@ const { searchCatalog, searchAdultCatalog, randomCatalogAnime } = await import(
 
 const createClientMock = vi.mocked(createClient);
 
-function animeRow(overrides: Partial<Tables<"anime">> = {}): Tables<"anime"> {
+/**
+ * A catalog row for the mapper tests.
+ *
+ * `overrides` is deliberately looser than `Partial<Tables<"anime">>` on the
+ * value side: a few tests feed values the schema itself forbids (`genres` is
+ * `text[] not null default '{}'`, yet one case passes `null`) precisely to
+ * cover the mapper's defensive `?? []` branches — which exist because a row can
+ * still arrive misshapen from a partial select or a types file that has drifted
+ * from the SQL. Keys stay checked, so a typo'd column name is still an error.
+ */
+function animeRow(
+  overrides: Partial<Record<keyof Tables<"anime">, unknown>> = {},
+): Tables<"anime"> {
   return {
     id: "uuid-1",
     mal_id: 52991,

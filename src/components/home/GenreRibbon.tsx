@@ -4,6 +4,7 @@ import { useRef } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import { GENRE_OPTIONS } from "@/lib/genres";
 
 /**
@@ -18,14 +19,16 @@ export function GenreRibbon() {
 
   return (
     <div className="pattern-seigaiha relative border-b border-border/60 py-3">
-      <button
-        type="button"
-        onClick={() => scrollByChunk(-1)}
-        aria-label="Scroll genres left"
-        className="absolute left-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-card text-muted-foreground ring-1 ring-border transition hover:text-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden />
-      </button>
+      <Tooltip label="Scroll genres left">
+        <button
+          type="button"
+          onClick={() => scrollByChunk(-1)}
+          aria-label="Scroll genres left"
+          className="absolute left-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-card text-muted-foreground ring-1 ring-border transition hover:text-foreground"
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+        </button>
+      </Tooltip>
 
       <div
         ref={trackRef}
@@ -42,14 +45,16 @@ export function GenreRibbon() {
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => scrollByChunk(1)}
-        aria-label="Scroll genres right"
-        className="absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-card text-muted-foreground ring-1 ring-border transition hover:text-foreground"
-      >
-        <ChevronRight className="size-4" aria-hidden />
-      </button>
+      <Tooltip label="Scroll genres right">
+        <button
+          type="button"
+          onClick={() => scrollByChunk(1)}
+          aria-label="Scroll genres right"
+          className="absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-card text-muted-foreground ring-1 ring-border transition hover:text-foreground"
+        >
+          <ChevronRight className="size-4" aria-hidden />
+        </button>
+      </Tooltip>
     </div>
   );
 }

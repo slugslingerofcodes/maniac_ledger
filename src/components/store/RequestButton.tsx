@@ -23,7 +23,7 @@ export function RequestButton({
   initialRequested: boolean;
 }) {
   const [requested, setRequested] = useState(initialRequested);
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const router = useRouter();
 
   if (!available) {
@@ -35,15 +35,21 @@ export function RequestButton({
   }
 
   function toggle() {
+    // Flip first: a single insert/delete against one row, so the click reads as
+    // instant and only the rare failure snaps back.
+    const wasRequested = requested;
+    setRequested(!wasRequested);
     startTransition(async () => {
-      const res = requested
+      const res = wasRequested
         ? await cancelMyRequest(productId)
         : await requestProduct(productId);
       if (res.ok) {
-        setRequested(!requested);
-        toast.success(requested ? "Request cancelled." : "Request sent to the store.");
+        toast.success(
+          wasRequested ? "Request cancelled." : "Request sent to the store.",
+        );
         router.refresh();
       } else {
+        setRequested(wasRequested);
         toast.error(res.error);
       }
     });
@@ -55,7 +61,6 @@ export function RequestButton({
       size="sm"
       variant={requested ? "secondary" : "default"}
       className="w-full"
-      disabled={pending}
       onClick={toggle}
     >
       {requested ? (

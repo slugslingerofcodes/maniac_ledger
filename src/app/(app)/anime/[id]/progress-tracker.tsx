@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip } from "@/components/ui/tooltip";
 import { track } from "@/lib/analytics";
 import { celebrateCompletion } from "@/lib/celebrate";
 import { cn } from "@/lib/utils";
@@ -109,16 +110,18 @@ export function ProgressTracker({
       <div className="flex flex-col gap-2">
         <Label htmlFor="episodes-watched">Episodes watched</Label>
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Decrease episodes watched"
-            disabled={pending || episodes <= 0}
-            onClick={() => changeEpisodes(episodes - 1)}
-          >
-            −
-          </Button>
+          <Tooltip label="One episode back">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Decrease episodes watched"
+              disabled={pending || episodes <= 0}
+              onClick={() => changeEpisodes(episodes - 1)}
+            >
+              −
+            </Button>
+          </Tooltip>
           <Input
             id="episodes-watched"
             type="number"
@@ -130,18 +133,20 @@ export function ProgressTracker({
             className="h-8 w-20 text-center"
             disabled={pending}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Increase episodes watched"
-            disabled={
-              pending || (totalEpisodes != null && episodes >= totalEpisodes)
-            }
-            onClick={() => changeEpisodes(episodes + 1)}
-          >
-            +
-          </Button>
+          <Tooltip label="One episode forward">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Increase episodes watched"
+              disabled={
+                pending || (totalEpisodes != null && episodes >= totalEpisodes)
+              }
+              onClick={() => changeEpisodes(episodes + 1)}
+            >
+              +
+            </Button>
+          </Tooltip>
           <span className="text-sm text-muted-foreground">
             {hasTotal ? `of ${totalEpisodes}` : "episodes"}
           </span>

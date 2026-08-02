@@ -7,6 +7,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { del, get, set } from "idb-keyval";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const FIVE_MIN_MS = 5 * 60 * 1000;
 
 /**
  * App-wide TanStack Query provider with the query cache persisted to IndexedDB.
@@ -24,8 +25,15 @@ export function Providers({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             gcTime: ONE_DAY_MS,
+            // Without a default staleTime every query refetches the instant a
+            // component remounts, so leaving a page and coming back showed a
+            // skeleton for data we already had. Five minutes makes a revisit
+            // paint from cache; anything that must be fresh after a write
+            // still invalidates its key explicitly.
+            staleTime: FIVE_MIN_MS,
             retry: false,
             refetchOnWindowFocus: false,
+            refetchOnReconnect: true,
           },
         },
       }),

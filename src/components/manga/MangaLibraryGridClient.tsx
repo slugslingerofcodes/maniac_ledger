@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { READING_STATUS_META, type ReadingStatus } from "@/types/manga";
 
@@ -129,15 +130,16 @@ export function MangaLibraryGridClient({
       {items.map((item) => (
         <div key={item.id} className="group/lib relative">
           <MangaCard item={item} />
-          <button
-            type="button"
-            onClick={() => removeItem(item.id, item.title)}
-            aria-label={`Remove ${item.title} from library`}
-            title="Remove from library"
-            className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
-          >
-            <Trash2 className="size-4" aria-hidden />
-          </button>
+          <Tooltip label="Remove from library">
+            <button
+              type="button"
+              onClick={() => removeItem(item.id, item.title)}
+              aria-label={`Remove ${item.title} from library`}
+              className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </button>
+          </Tooltip>
         </div>
       ))}
     </div>

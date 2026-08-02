@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { XIcon } from "lucide-react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 
 type Announcement = { id: string; title: string; body: string };
@@ -61,14 +62,16 @@ export function AnnouncementBanner() {
         >
           View all
         </Link>
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Dismiss announcement"
-          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <XIcon className="size-4" />
-        </button>
+        <Tooltip label="Dismiss announcement">
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Dismiss announcement"
+            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <XIcon className="size-4" />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

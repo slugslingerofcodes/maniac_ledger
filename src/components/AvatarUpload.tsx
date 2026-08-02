@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { PosterLightbox } from "@/components/PosterLightbox";
+import { prepareAvatar } from "@/lib/avatar-image";
 import { createClient } from "@/lib/supabase/client";
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -43,12 +44,16 @@ export function AvatarUpload({
 
     startTransition(async () => {
       const supabase = createClient();
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      // Downscale before upload: the stored file is served as-is on every page
+      // (the nav avatar is this URL), so a full-resolution phone photo became
+      // the single heaviest request on the site. Falls back to the original
+      // file if the browser can't decode or re-encode it.
+      const { blob, contentType, ext } = await prepareAvatar(file);
       const path = `${userId}/avatar.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, blob, { upsert: true, contentType });
       if (uploadError) {
         toast.error(uploadError.message);
         return;
@@ -68,6 +73,15 @@ export function AvatarUpload({
 
       setUrl(publicUrl);
       toast.success("Profile picture updated.");
+
+      // The stored extension now depends on how the picture was encoded, so a
+      // previous `avatar.png` is no longer the path `upsert` overwrites — it
+      // would linger in the bucket forever. Best-effort sweep of the siblings;
+      // a failure here is invisible and costs only storage.
+      const stale = ["png", "jpg", "jpeg", "webp", "gif", "avif"]
+        .filter((e) => e !== ext)
+        .map((e) => `${userId}/avatar.${e}`);
+      void supabase.storage.from("avatars").remove(stale);
     });
   }
 

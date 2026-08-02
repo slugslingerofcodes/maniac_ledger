@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useUser } from "@/hooks/use-user";
 import { createClient } from "@/lib/supabase/client";
 import { getDisplayName } from "@/lib/user";
@@ -182,14 +183,16 @@ export function AnimeChat({ animeId }: { animeId: string }) {
                   </span>
                   <span>{TIME_FMT.format(new Date(m.created_at))}</span>
                   {mine ? (
-                    <button
-                      type="button"
-                      onClick={() => remove(m.id)}
-                      aria-label="Delete message"
-                      className="opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      <XIcon className="size-3" />
-                    </button>
+                    <Tooltip label="Delete message">
+                      <button
+                        type="button"
+                        onClick={() => remove(m.id)}
+                        aria-label="Delete message"
+                        className="opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </Tooltip>
                   ) : null}
                 </div>
                 <p

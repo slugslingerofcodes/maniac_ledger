@@ -36,14 +36,30 @@ export function AddToListButton({ animeId }: { animeId: string }) {
     });
   }
 
+  /**
+   * Flip the checkbox and the count immediately, then write. Re-fetching after
+   * a successful write would only replace the row with the same values, so the
+   * optimistic state is simply kept; a failure restores the previous list.
+   */
   function toggle(list: MyListSummary) {
+    const previous = lists;
+    setLists((current) =>
+      (current ?? []).map((l) =>
+        l.id === list.id
+          ? {
+              ...l,
+              hasAnime: !l.hasAnime,
+              itemCount: l.itemCount + (l.hasAnime ? -1 : 1),
+            }
+          : l,
+      ),
+    );
     startTransition(async () => {
       const res = list.hasAnime
         ? await removeFromList(list.id, animeId)
         : await addToList(list.id, animeId);
-      if (res.ok) {
-        setLists(await getMyLists(animeId));
-      } else {
+      if (!res.ok) {
+        setLists(previous);
         toast.error(res.error);
       }
     });
@@ -51,10 +67,25 @@ export function AddToListButton({ animeId }: { animeId: string }) {
 
   function createAndAdd() {
     const name = window.prompt("New list name:");
-    if (!name?.trim()) return;
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    // Show the new list, already ticked, while the two writes go out. The real
+    // row (with its server id) replaces this one when they land.
+    const previous = lists;
+    setLists((current) => [
+      ...(current ?? []),
+      {
+        id: `pending:${trimmed}`,
+        name: trimmed,
+        hasAnime: true,
+        itemCount: 1,
+        isPublic: false,
+      },
+    ]);
     startTransition(async () => {
-      const res = await createList(name.trim());
+      const res = await createList(trimmed);
       if (!res.ok || !res.listId) {
+        setLists(previous);
         toast.error(res.ok ? "Couldn't create the list." : res.error);
         return;
       }

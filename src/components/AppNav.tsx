@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useUser } from "@/hooks/use-user";
 import { NAV_ITEMS } from "@/lib/nav-items";
 import { createClient } from "@/lib/supabase/client";
@@ -74,16 +75,18 @@ export function AppNav() {
     <header className="glass sticky top-0 z-40 w-full border-b border-border">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
         {/* Options button — reveals the nav drawer (hidden by default). */}
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open navigation"
-          aria-expanded={drawerOpen}
-          className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Menu className="size-5" aria-hidden />
-          <span className="hidden sm:inline">Menu</span>
-        </button>
+        <Tooltip label="Browse every section">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Open navigation"
+            aria-expanded={drawerOpen}
+            className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Menu className="size-5" aria-hidden />
+            <span className="hidden sm:inline">Menu</span>
+          </button>
+        </Tooltip>
 
         {/* Logo / brand banner */}
         <Link
@@ -168,14 +171,16 @@ export function AppNav() {
                 <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Browse
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  aria-label="Close navigation"
-                  className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <X className="size-5" aria-hidden />
-                </button>
+                <Tooltip label="Close">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(false)}
+                    aria-label="Close navigation"
+                    className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="size-5" aria-hidden />
+                  </button>
+                </Tooltip>
               </div>
 
               <nav className="flex flex-col gap-1">

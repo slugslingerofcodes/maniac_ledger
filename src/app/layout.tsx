@@ -7,6 +7,7 @@ import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ShojiDoors } from "@/components/ShojiDoors";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Providers } from "./providers";
 
 // Body + UI face: Plus Jakarta Sans — warm, rounded, modern, crisp at small
@@ -57,12 +58,16 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <Providers>
-          {children}
-          {/* Route-change shōji doors — root level so they outlive navigation
-              and can close *and* reopen across every route (anime + manga). */}
-          <ShojiDoors />
-          <Toaster />
-          <ServiceWorkerRegister />
+          {/* Shared tooltip delay: once one icon's tooltip is open, hovering
+              the next one in a toolbar shows instantly. */}
+          <TooltipProvider>
+            {children}
+            {/* Route-change shōji doors — root level so they outlive navigation
+                and can close *and* reopen across every route (anime + manga). */}
+            <ShojiDoors />
+            <Toaster />
+            <ServiceWorkerRegister />
+          </TooltipProvider>
         </Providers>
         <Analytics />
         <SpeedInsights />

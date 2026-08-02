@@ -14,6 +14,7 @@ import { WatchOrder } from "@/components/anime/WatchOrder";
 import { AddToListButton } from "@/components/lists/AddToListButton";
 import { HeroPoster } from "@/components/anime/HeroPoster";
 import { ScoreRing } from "@/components/ScoreRing";
+import { Parallax } from "@/components/Parallax";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { Tilt3D } from "@/components/Tilt3D";
 import { Badge } from "@/components/ui/badge";
@@ -343,16 +344,22 @@ export default async function AnimeDetailPage({
     <Shell>
       {/* Hero — full-width backdrop (blurred poster) + dark gradient overlay */}
       <section className="relative isolate overflow-hidden">
+        {/* The blurred backdrop drifts against the scroll (GSAP ScrollTrigger,
+            scrubbed) so the hero gains depth as you read past it. Parallax
+            transforms the wrapper; `ken-burns` transforms the image inside it,
+            so the two compose instead of fighting. */}
         {anime.poster_url ? (
-          <Image
-            src={anime.poster_url}
-            alt=""
-            aria-hidden
-            fill
-            priority
-            sizes="100vw"
-            className="ken-burns scale-110 object-cover opacity-30 blur-2xl"
-          />
+          <Parallax className="absolute inset-0 -z-10" distance={120} scale={1.15}>
+            <Image
+              src={anime.poster_url}
+              alt=""
+              aria-hidden
+              fill
+              priority
+              sizes="100vw"
+              className="ken-burns scale-110 object-cover opacity-30 blur-2xl"
+            />
+          </Parallax>
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/40" />
 

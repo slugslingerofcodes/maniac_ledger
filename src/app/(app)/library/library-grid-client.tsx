@@ -23,6 +23,7 @@ import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
 import type { WatchStatus } from "@/types/anime";
@@ -333,15 +334,16 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                         </span>
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item)}
-                        aria-label={`Remove ${item.title} from library`}
-                        title="Remove from library"
-                        className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
-                      >
-                        <Trash2 className="size-4" aria-hidden />
-                      </button>
+                      <Tooltip label="Remove from library">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item)}
+                          aria-label={`Remove ${item.title} from library`}
+                          className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </motion.div>

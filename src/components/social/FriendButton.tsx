@@ -33,15 +33,28 @@ export function FriendButton({
   initial: FriendState;
 }) {
   const [state, setState] = useState<FriendState>(initial);
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const router = useRouter();
 
-  // After any mutation, re-fetch the authoritative state (so we always hold the
-  // real friendship id, never a guessed/empty one) and refresh the server view.
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  /**
+   * Run a friendship mutation, showing its result immediately.
+   *
+   * `optimistic` is the state the button jumps to on click. It's deliberately
+   * approximate — an outgoing request has no friendship id until the server
+   * assigns one — so once the write lands we still re-fetch the authoritative
+   * state and replace it, which is what gives later actions a real id to work
+   * with. A failure snaps back to where we started.
+   */
+  function run(
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    optimistic: FriendState,
+  ) {
+    const previous = state;
+    setState(optimistic);
     startTransition(async () => {
       const res = await fn();
       if (!res.ok) {
+        setState(previous);
         toast.error(res.error ?? "Something went wrong.");
         return;
       }
@@ -58,8 +71,9 @@ export function FriendButton({
         type="button"
         size="sm"
         variant="outline"
-        disabled={pending}
-        onClick={() => run(() => removeFriendship(state.friendshipId))}
+        onClick={() =>
+          run(() => removeFriendship(state.friendshipId), { state: "none" })
+        }
       >
         <UserCheckIcon className="mr-1.5 size-3.5" /> Friends
       </Button>
@@ -72,8 +86,12 @@ export function FriendButton({
         type="button"
         size="sm"
         variant="outline"
-        disabled={pending}
-        onClick={() => run(() => removeFriendship(state.friendshipId))}
+        // An optimistic "Requested" carries no real id yet; cancelling is only
+        // possible once the authoritative state arrives a moment later.
+        disabled={state.friendshipId === ""}
+        onClick={() =>
+          run(() => removeFriendship(state.friendshipId), { state: "none" })
+        }
       >
         <ClockIcon className="mr-1.5 size-3.5" /> Requested
       </Button>
@@ -86,8 +104,12 @@ export function FriendButton({
         <Button
           type="button"
           size="sm"
-          disabled={pending}
-          onClick={() => run(() => acceptFriendRequest(state.friendshipId))}
+          onClick={() =>
+            run(() => acceptFriendRequest(state.friendshipId), {
+              state: "friends",
+              friendshipId: state.friendshipId,
+            })
+          }
         >
           <CheckIcon className="mr-1.5 size-3.5" /> Accept
         </Button>
@@ -95,8 +117,9 @@ export function FriendButton({
           type="button"
           size="sm"
           variant="outline"
-          disabled={pending}
-          onClick={() => run(() => removeFriendship(state.friendshipId))}
+          onClick={() =>
+            run(() => removeFriendship(state.friendshipId), { state: "none" })
+          }
         >
           <UserXIcon className="mr-1.5 size-3.5" /> Decline
         </Button>
@@ -104,13 +127,19 @@ export function FriendButton({
     );
   }
 
-  // none
+  // none — the placeholder id is never used: the button it renders ("Requested")
+  // is replaced by the authoritative state before anyone can click it, and a
+  // failed send reverts to "none" instead.
   return (
     <Button
       type="button"
       size="sm"
-      disabled={pending}
-      onClick={() => run(() => sendFriendRequest(targetUserId))}
+      onClick={() =>
+        run(() => sendFriendRequest(targetUserId), {
+          state: "outgoing",
+          friendshipId: "",
+        })
+      }
     >
       <UserPlusIcon className="mr-1.5 size-3.5" /> Add friend
     </Button>

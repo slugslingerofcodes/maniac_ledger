@@ -27,6 +27,16 @@ const nextConfig: NextConfig = {
     // Shared-element morphs (library poster → detail hero) via React's
     // <ViewTransition>. Degrades to an instant swap where unsupported.
     viewTransition: true,
+    // Client router cache. Every page here reads `cookies()` (auth), so every
+    // route is "dynamic" — and since Next 15 the dynamic TTL defaults to 0,
+    // meaning navigating back to a page you just left refetched it from the
+    // server and re-ran the whole Jikan/Supabase chain. These TTLs let an
+    // already-rendered segment be reused, so back/forward and tab-hopping
+    // repaint from memory instead of showing the skeleton again.
+    staleTimes: {
+      dynamic: 180,
+      static: 300,
+    },
   },
   images: {
     // Serve posters straight from their source CDN (MAL/AniList/Supabase)

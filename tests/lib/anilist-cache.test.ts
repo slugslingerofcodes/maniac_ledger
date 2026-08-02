@@ -59,8 +59,9 @@ async function load() {
 describe("AniList cache key", () => {
   it("does not share an entry between different queries with the same prefix and variables", async () => {
     const mod = await load();
-    // @ts-expect-error — exercising the module's internal fetch directly.
-    const call = mod.__anilistFetchForTests as (
+    // Exercising the module's internal fetch directly, via the test-only
+    // export in anilist.ts.
+    const call = mod.__anilistFetchForTests as unknown as (
       q: string,
       v: Record<string, unknown>,
       o: { revalidate: number },
@@ -76,8 +77,9 @@ describe("AniList cache key", () => {
 
   it("serves a repeat of the same query from cache without touching the network", async () => {
     const mod = await load();
-    // @ts-expect-error — exercising the module's internal fetch directly.
-    const call = mod.__anilistFetchForTests as (
+    // Exercising the module's internal fetch directly, via the test-only
+    // export in anilist.ts.
+    const call = mod.__anilistFetchForTests as unknown as (
       q: string,
       v: Record<string, unknown>,
       o: { revalidate: number },
@@ -92,8 +94,9 @@ describe("AniList cache key", () => {
 
   it("keys on variables, so a different page is a different entry", async () => {
     const mod = await load();
-    // @ts-expect-error — exercising the module's internal fetch directly.
-    const call = mod.__anilistFetchForTests as (
+    // Exercising the module's internal fetch directly, via the test-only
+    // export in anilist.ts.
+    const call = mod.__anilistFetchForTests as unknown as (
       q: string,
       v: Record<string, unknown>,
       o: { revalidate: number },

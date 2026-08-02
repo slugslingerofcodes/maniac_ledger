@@ -10,6 +10,7 @@ import {
   upsertMangaProgress,
 } from "@/app/actions/manga";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { READING_STATUS_META, READING_STATUSES, type ReadingStatus } from "@/types/manga";
 
@@ -169,26 +170,30 @@ function Counter({
     <div className="mb-4 flex items-center justify-between">
       <span className="text-sm text-muted-foreground">{label}</span>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label={`Decrease ${label}`}
-          onClick={() => onChange(value - 1)}
-          className="grid size-8 place-items-center rounded-md border border-input text-foreground transition hover:bg-muted"
-        >
-          <Minus className="size-4" aria-hidden />
-        </button>
+        <Tooltip label={`Decrease ${label}`}>
+          <button
+            type="button"
+            aria-label={`Decrease ${label}`}
+            onClick={() => onChange(value - 1)}
+            className="grid size-8 place-items-center rounded-md border border-input text-foreground transition hover:bg-muted"
+          >
+            <Minus className="size-4" aria-hidden />
+          </button>
+        </Tooltip>
         <span className="min-w-16 text-center text-sm tabular-nums">
           {value}
           {total != null ? ` / ${total}` : ""}
         </span>
-        <button
-          type="button"
-          aria-label={`Increase ${label}`}
-          onClick={() => onChange(value + 1)}
-          className="grid size-8 place-items-center rounded-md border border-input text-foreground transition hover:bg-muted"
-        >
-          <Plus className="size-4" aria-hidden />
-        </button>
+        <Tooltip label={`Increase ${label}`}>
+          <button
+            type="button"
+            aria-label={`Increase ${label}`}
+            onClick={() => onChange(value + 1)}
+            className="grid size-8 place-items-center rounded-md border border-input text-foreground transition hover:bg-muted"
+          >
+            <Plus className="size-4" aria-hidden />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

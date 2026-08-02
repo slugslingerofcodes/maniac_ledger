@@ -74,17 +74,20 @@ export function FriendRow({
   const router = useRouter();
   const [gone, setGone] = useState(false);
 
+  // Every action here (accept, decline, unfriend) removes the row, so drop it
+  // on click and put it back only if the write fails.
   function act(
     fn: () => Promise<{ ok: boolean; error?: string }>,
     successMsg: string,
   ) {
+    setGone(true);
     startTransition(async () => {
       const res = await fn();
       if (res.ok) {
-        setGone(true);
         toast.success(successMsg);
         router.refresh();
       } else {
+        setGone(false);
         toast.error(res.error ?? "Something went wrong.");
       }
     });

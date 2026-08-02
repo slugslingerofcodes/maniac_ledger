@@ -1,12 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GlobeIcon, LinkIcon, LockIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteList, removeFromList, setListPublic } from "@/app/actions/lists";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /** Owner toolbar on a list detail page: visibility, share link, delete. */
 export function ListOwnerBar({
@@ -17,6 +18,14 @@ export function ListOwnerBar({
   isPublic: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  // Local mirror of the server prop so the label flips on click. Re-synced
+  // whenever the server sends a new value (React's derived-state pattern).
+  const [publicNow, setPublicNow] = useState(isPublic);
+  const [prevProp, setPrevProp] = useState(isPublic);
+  if (prevProp !== isPublic) {
+    setPrevProp(isPublic);
+    setPublicNow(isPublic);
+  }
   const router = useRouter();
 
   return (
@@ -25,16 +34,21 @@ export function ListOwnerBar({
         type="button"
         size="sm"
         variant="outline"
-        disabled={pending}
-        onClick={() =>
+        onClick={() => {
+          const next = !publicNow;
+          setPublicNow(next);
           startTransition(async () => {
-            const res = await setListPublic(listId, !isPublic);
-            if (res.ok) router.refresh();
-            else toast.error(res.error);
-          })
-        }
+            const res = await setListPublic(listId, next);
+            if (res.ok) {
+              router.refresh();
+            } else {
+              setPublicNow(!next);
+              toast.error(res.error);
+            }
+          });
+        }}
       >
-        {isPublic ? (
+        {publicNow ? (
           <>
             <GlobeIcon className="mr-1.5 size-3.5" /> Public
           </>
@@ -44,7 +58,7 @@ export function ListOwnerBar({
           </>
         )}
       </Button>
-      {isPublic ? (
+      {publicNow ? (
         <Button
           type="button"
           size="sm"
@@ -84,7 +98,11 @@ export function ListOwnerBar({
   );
 }
 
-/** Small ✕ on each card (owner only) that removes the anime from the list. */
+/**
+ * Small ✕ on each card (owner only) that removes the anime from the list.
+ * The card collapses out immediately; `router.refresh()` then reconciles the
+ * server-rendered grid behind it, and a failure restores the card.
+ */
 export function RemoveFromListButton({
   listId,
   animeId,
@@ -92,25 +110,41 @@ export function RemoveFromListButton({
   listId: string;
   animeId: string;
 }) {
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+  const [removed, setRemoved] = useState(false);
   const router = useRouter();
 
   return (
-    <button
-      type="button"
-      aria-label="Remove from list"
-      disabled={pending}
-      onClick={(e) => {
-        e.preventDefault();
-        startTransition(async () => {
-          const res = await removeFromList(listId, animeId);
-          if (res.ok) router.refresh();
-          else toast.error(res.error);
-        });
-      }}
-      className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-background/80 text-muted-foreground opacity-0 backdrop-blur transition group-hover:opacity-100 hover:text-destructive"
-    >
-      <XIcon className="size-4" />
-    </button>
+    <>
+      {removed ? (
+        <span
+          aria-hidden
+          className="absolute inset-0 z-20 rounded-lg bg-background/70 backdrop-blur-sm"
+        />
+      ) : null}
+      <Tooltip label="Remove from list">
+      <button
+        type="button"
+        aria-label="Remove from list"
+        disabled={removed}
+        onClick={(e) => {
+          e.preventDefault();
+          setRemoved(true);
+          startTransition(async () => {
+            const res = await removeFromList(listId, animeId);
+            if (res.ok) {
+              router.refresh();
+            } else {
+              setRemoved(false);
+              toast.error(res.error);
+            }
+          });
+        }}
+        className="absolute right-2 top-2 z-30 grid size-7 place-items-center rounded-full bg-background/80 text-muted-foreground opacity-0 backdrop-blur transition group-hover:opacity-100 hover:text-destructive"
+      >
+        <XIcon className="size-4" />
+      </button>
+      </Tooltip>
+    </>
   );
 }

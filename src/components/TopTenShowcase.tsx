@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 export type TopTenItem = {
   malId: number;
@@ -101,7 +102,7 @@ export function TopTenShowcase({
                 <div className="relative aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md bg-muted">
                   {item.posterUrl ? (
                     <Image
-                      src={item.posterUrl}
+                      src={posterUrl(item.posterUrl, "card")!}
                       alt={item.title}
                       fill
                       sizes="40px"

@@ -15,6 +15,7 @@ import {
 
 import { Parallax } from "@/components/Parallax";
 import { Tooltip } from "@/components/ui/tooltip";
+import { posterUrl } from "@/lib/poster";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { nextBroadcastMs } from "@/lib/jst";
 import { cn } from "@/lib/utils";
@@ -118,7 +119,12 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
             >
               {slide.imageUrl ? (
                 <Image
-                  src={slide.imageUrl}
+                  // Lighthouse named this element the home page's LCP — a
+                  // decorative backdrop that is then blurred into abstraction.
+                  // It was fetching the 460px poster (103 KB) to display it
+                  // unrecognisably; the 100px rendition (8.6 KB) blurs to the
+                  // same image and takes the LCP off the critical byte budget.
+                  src={posterUrl(slide.imageUrl, "blur")!}
                   alt=""
                   fill
                   priority={index === 0}

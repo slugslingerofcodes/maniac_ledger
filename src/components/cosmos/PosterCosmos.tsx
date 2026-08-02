@@ -4,8 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 
+import { fisheye, smoothing } from "@/lib/cosmos-math";
+import { posterUrl } from "@/lib/poster";
+
 export type CosmosItem = {
-  id: string;
+  /** React key — unique per entry in the pool. */
+  key: string;
+  /** Where clicking this tile navigates. */
+  href: string;
   title: string;
   posterUrl: string;
   score: number | null;
@@ -28,20 +34,24 @@ const SELECT_STRENGTH = 26;
 const SELECT_MS = 420;
 
 /**
- * Graphical fisheye (Sarkar–Brown): redistributes a normalised boundary `b`
- * around focus `f`, leaving 0 and 1 pinned. Applied separably to the column and
- * row boundaries, so cells stay a gap-free grid — the cell under the cursor
- * grows and its neighbours compress to make room, rather than overlapping.
+ * Motion tuning, expressed as *time constants* rather than per-frame factors.
+ *
+ * The lens used to ease with fixed per-frame lerps (`focus += (target - focus)
+ * * 0.16`), which silently ties the animation's speed to the refresh rate: the
+ * same gesture settles in half the time on a 120 Hz laptop as on a 60 Hz one,
+ * and stutters into treacle whenever a frame runs long. These are the seconds
+ * each quantity takes to cover ~63% of its remaining distance, converted to a
+ * per-frame factor from the real elapsed time — so the feel is identical at 60,
+ * 120 or 144 Hz, and a dropped frame catches up instead of falling behind.
  */
-function fisheye(b: number, f: number, distortion: number): number {
-  if (b === f) return f;
-  const ahead = b > f;
-  const dmax = ahead ? 1 - f : f;
-  if (dmax <= 0) return b;
-  const d = Math.abs(b - f) / dmax;
-  const warped = ((distortion + 1) * d) / (distortion * d + 1);
-  return f + (ahead ? 1 : -1) * warped * dmax;
-}
+const FOLLOW_TAU = 0.085;
+const STRENGTH_TAU = 0.12;
+const BRIGHTNESS_TAU = 0.1;
+/** Ceiling on a single step's dt: a backgrounded tab must not teleport the lens. */
+const MAX_FRAME_S = 1 / 20;
+/** Idle drift — a slow breath so the wall isn't dead when untouched. */
+const DRIFT_AMPLITUDE = 0.06;
+const DRIFT_PERIOD_S = 14;
 
 /**
  * The library as a dense poster mosaic you push a lens across — the cell under
@@ -84,16 +94,28 @@ export function PosterCosmos({
     const camera = new THREE.OrthographicCamera(0, 1, 1, 0, -10, 10);
     camera.position.z = 1;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      // The mosaic is opaque art on a black field and never reads back its own
+      // buffer; letting the driver discard it after compositing is free.
+      preserveDrawingBuffer: false,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.display = "block";
+    // `none` stops a drag over the canvas from scrolling or back-swiping the
+    // page — the lens should follow the finger, not pan the document.
     renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.overscrollBehavior = "none";
 
     const geometry = new THREE.PlaneGeometry(1, 1);
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin("anonymous");
+    /** Sharpest sampling the GPU will give us for minified, angled posters. */
+    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
     /** One decoded texture per distinct poster, shared by every tile using it. */
     const textures = new Map<string, THREE.Texture>();
@@ -146,23 +168,32 @@ export function PosterCosmos({
           const tile: Tile = { mesh, material, texture: null, item };
           tiles.push(tile);
 
-          const cached = textures.get(item.posterUrl);
+          const src = posterUrl(item.posterUrl, "card")!;
+          const cached = textures.get(src);
           if (cached) {
             applyTexture(tile, cached);
           } else {
             loader.load(
-              item.posterUrl,
+              src,
               (tex) => {
                 if (disposed) {
                   tex.dispose();
                   return;
                 }
                 tex.colorSpace = THREE.SRGBColorSpace;
-                textures.set(item.posterUrl, tex);
+                // Posters arrive far larger than a ~84px cell. Without mipmaps
+                // the GPU point-samples that reduction and the art crawls with
+                // aliasing as the lens resizes it; anisotropy keeps it sharp
+                // once a cell is stretched away from square.
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.anisotropy = maxAnisotropy;
+                textures.set(src, tex);
                 // Every tile waiting on this poster, not just the one that
                 // happened to request it.
                 for (const t of tiles) {
-                  if (t.item.posterUrl === item.posterUrl && !t.texture) {
+                  if (posterUrl(t.item.posterUrl, "card") === src && !t.texture) {
                     applyTexture(t, tex);
                   }
                 }
@@ -183,6 +214,10 @@ export function PosterCosmos({
       const tex = source.clone();
       tex.needsUpdate = true;
       tex.colorSpace = THREE.SRGBColorSpace;
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.anisotropy = maxAnisotropy;
       tile.texture = tex;
       tile.material.map = tex;
       tile.material.color.set(0xffffff);
@@ -225,7 +260,7 @@ export function PosterCosmos({
       setTargetFromEvent(e);
       if (reduceRef.current) {
         const tile = tileAtFocus(targetX, targetY);
-        if (tile) router.push(`/anime/${tile.item.id}`);
+        if (tile) router.push(tile.item.href);
         return;
       }
       const tile = tileAtFocus(targetX, targetY);
@@ -256,7 +291,14 @@ export function PosterCosmos({
       const changed = w !== width || h !== height;
       width = w;
       height = h;
-      renderer.setSize(w, h, false);
+      // `updateStyle` must stay true. Passing false sets the drawing buffer to
+      // `w * devicePixelRatio` but leaves the element's CSS size unset — and a
+      // canvas with no CSS size lays out at its *attribute* size in CSS pixels.
+      // On any 2x display that made the canvas twice the width of its
+      // container: the page scrolled sideways, the mosaic was cropped, and the
+      // lens sat at half the pointer's actual offset (the grid maths reads
+      // clientWidth, not the inflated canvas).
+      renderer.setSize(w, h);
       camera.left = 0;
       camera.right = w;
       camera.top = h;
@@ -270,20 +312,34 @@ export function PosterCosmos({
 
     /* ---- Loop ---------------------------------------------------------- */
     let frame = 0;
+    let lastFrameAt = performance.now();
+    const startedAt = lastFrameAt;
 
     function tick() {
       frame = requestAnimationFrame(tick);
+
+      // Real elapsed time, clamped. Every easing below is expressed as a time
+      // constant and converted here, so the motion is identical at any refresh
+      // rate; the clamp stops a long stall (tab restore, GC pause) from
+      // snapping the lens across the screen in one frame.
+      const now = performance.now();
+      const dt = Math.min((now - lastFrameAt) / 1000, MAX_FRAME_S);
+      lastFrameAt = now;
+
       if (width === 0 || height === 0 || tiles.length === 0) return;
 
       if (selecting) {
         // Drive the lens hard into the chosen cell, then hand off to the router.
-        const t = Math.min(1, (performance.now() - selecting.at) / SELECT_MS);
-        const eased = t * t;
+        const t = Math.min(1, (now - selecting.at) / SELECT_MS);
+        // Cubic ease-in: the zoom starts gently and accelerates into the cut,
+        // so the hand-off to the router lands at peak speed instead of easing
+        // out into a pause.
+        const eased = t * t * t;
         strength = FOCUS_STRENGTH + (SELECT_STRENGTH - FOCUS_STRENGTH) * eased;
         if (t >= 1) {
-          const id = selecting.item.id;
+          const href = selecting.item.href;
           selecting = null;
-          router.push(`/anime/${id}`);
+          router.push(href);
         }
       } else if (reduceRef.current) {
         // No lens at all: an even grid the pointer doesn't distort.
@@ -291,9 +347,22 @@ export function PosterCosmos({
         focusX = 0.5;
         focusY = 0.5;
       } else {
-        strength += (FOCUS_STRENGTH - strength) * 0.12;
-        focusX += (targetX - focusX) * 0.16;
-        focusY += (targetY - focusY) * 0.16;
+        strength += (FOCUS_STRENGTH - strength) * smoothing(STRENGTH_TAU, dt);
+
+        // Untouched, the lens breathes along a slow Lissajous path rather than
+        // parking dead centre — the wall keeps moving, which is the whole
+        // appeal, and it hints that the lens is draggable before you touch it.
+        let aimX = targetX;
+        let aimY = targetY;
+        if (!pointerInside) {
+          const phase = ((now - startedAt) / 1000 / DRIFT_PERIOD_S) * Math.PI * 2;
+          aimX = 0.5 + Math.cos(phase) * DRIFT_AMPLITUDE;
+          aimY = 0.5 + Math.sin(phase * 0.7) * DRIFT_AMPLITUDE;
+        }
+
+        const follow = smoothing(FOLLOW_TAU, dt);
+        focusX += (aimX - focusX) * follow;
+        focusY += (aimY - focusY) * follow;
       }
 
       // Column and row boundaries, warped independently around the focus.
@@ -306,7 +375,11 @@ export function PosterCosmos({
         ys.push(fisheye(j / rows, focusY, strength) * height);
       }
 
-      const focusTile = pointerInside || selecting ? tileAtFocus(focusX, focusY) : null;
+      // The drift moves the lens but must not claim a "hovered" tile — the
+      // title chip appearing on its own would read as a phantom cursor.
+      const focusTile =
+        pointerInside || selecting ? tileAtFocus(focusX, focusY) : null;
+      const brightness = smoothing(BRIGHTNESS_TAU, dt);
 
       for (const tile of tiles) {
         const col = tile.mesh.userData.col as number;
@@ -340,7 +413,7 @@ export function PosterCosmos({
         const target = isFocus ? 1 : 0.62;
         const c = tile.material.color;
         const to = tile.texture ? target : target * 0.18;
-        c.setScalar(c.r + (to - c.r) * 0.15);
+        c.setScalar(c.r + (to - c.r) * brightness);
       }
 
       const nextHover = focusTile ? tiles.indexOf(focusTile) : -1;
@@ -355,8 +428,14 @@ export function PosterCosmos({
     // A hidden tab either throttles rAF to nothing or never fires it; pause
     // explicitly so a backgrounded mosaic costs the same either way.
     function onVisibility() {
-      if (document.hidden) cancelAnimationFrame(frame);
-      else frame = requestAnimationFrame(tick);
+      if (document.hidden) {
+        cancelAnimationFrame(frame);
+      } else {
+        // Restart the clock too: without this the first frame back carries the
+        // whole hidden duration as its dt.
+        lastFrameAt = performance.now();
+        frame = requestAnimationFrame(tick);
+      }
     }
     document.addEventListener("visibilitychange", onVisibility);
     frame = requestAnimationFrame(tick);
@@ -407,8 +486,8 @@ export function PosterCosmos({
           links: keyboard and screen-reader users get the same destinations. */}
       <ul className="sr-only">
         {items.map((item) => (
-          <li key={item.id}>
-            <a href={`/anime/${item.id}`}>{item.title}</a>
+          <li key={item.key}>
+            <a href={item.href}>{item.title}</a>
           </li>
         ))}
       </ul>

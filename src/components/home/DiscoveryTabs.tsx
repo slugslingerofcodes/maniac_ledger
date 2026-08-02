@@ -8,6 +8,7 @@ import { ParallaxStagger } from "@/components/Parallax";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import { cn } from "@/lib/utils";
 import { posterTransitionName } from "@/lib/view-transition";
+import { posterUrl } from "@/lib/poster";
 
 /** Serializable card payload for the discovery grid. */
 export type DiscoveryItem = {
@@ -81,7 +82,7 @@ export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
             <div data-morph className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
               {item.posterUrl ? (
                 <Image
-                  src={item.posterUrl}
+                  src={posterUrl(item.posterUrl, "card")!}
                   alt=""
                   fill
                   sizes="(max-width: 640px) 33vw, 16vw"

@@ -20,6 +20,7 @@ import {
   type Season,
 } from "@/lib/search-filters";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 /** The anime season a date falls in (winter = Jan–Mar, … fall = Oct–Dec). */
 function seasonOf(date: Date): Season {
@@ -178,7 +179,7 @@ export function SeasonsClient() {
                   <div data-morph className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                     {poster ? (
                       <Image
-                        src={poster}
+                        src={posterUrl(poster, "card")!}
                         alt={anime.title}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

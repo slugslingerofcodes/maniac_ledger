@@ -8,6 +8,7 @@ import { toggleNotify } from "@/app/actions/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 export type UpcomingItem = {
   malId: number;
@@ -58,7 +59,7 @@ export function UpcomingCard({
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
-            src={item.posterUrl}
+            src={posterUrl(item.posterUrl, "card")!}
             alt={item.title}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"

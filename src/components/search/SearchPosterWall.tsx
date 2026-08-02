@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 import type { JikanAnime } from "@/lib/jikan";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * Netflix-style search backdrop: a wall of anime posters filling the viewport,
@@ -112,7 +113,7 @@ function PosterRow({
           {/* Plain <img>: many decorative posters straight from the CDN. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={src}
+            src={posterUrl(src, "blur")!}
             alt=""
             loading="lazy"
             className="h-full w-full object-cover"

@@ -18,6 +18,7 @@ import {
   type JstDay,
 } from "@/lib/jst";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 export type ScheduleItem = {
   malId: number;
@@ -178,7 +179,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
             >
               {item.posterUrl ? (
                 <Image
-                  src={item.posterUrl}
+                  src={posterUrl(item.posterUrl, "card")!}
                   alt=""
                   fill
                   sizes="360px"
@@ -198,7 +199,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
               {item.posterUrl ? (
                 <div className="relative aspect-[2/3] w-12 shrink-0 overflow-hidden rounded-md ring-1 ring-white/10">
                   <Image
-                    src={item.posterUrl}
+                    src={posterUrl(item.posterUrl, "card")!}
                     alt={item.title}
                     fill
                     sizes="48px"
@@ -316,7 +317,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
                     >
                       {item.posterUrl ? (
                         <Image
-                          src={item.posterUrl}
+                          src={posterUrl(item.posterUrl, "card")!}
                           alt=""
                           fill
                           sizes="480px"
@@ -327,7 +328,7 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
                       <div className="relative aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-white/10">
                         {item.posterUrl ? (
                           <Image
-                            src={item.posterUrl}
+                            src={posterUrl(item.posterUrl, "card")!}
                             alt={item.title}
                             fill
                             sizes="44px"

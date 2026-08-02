@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { READING_STATUS_META, type ReadingStatus } from "@/types/manga";
+import { posterUrl } from "@/lib/poster";
 
 export const MANGA_LIBRARY_QUERY_KEY = ["user-manga-library"] as const;
 
@@ -166,7 +167,7 @@ function MangaCard({ item }: { item: MangaEntryItem }) {
         <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
           {item.coverUrl ? (
             <Image
-              src={item.coverUrl}
+              src={posterUrl(item.coverUrl, "card")!}
               alt={item.title}
               fill
               // MangaDex covers need a bare request — see MangaPosterCard.

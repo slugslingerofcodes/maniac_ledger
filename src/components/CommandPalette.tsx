@@ -9,6 +9,7 @@ import { NAV_ITEMS } from "@/lib/nav-items";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import type { JikanAnime } from "@/lib/jikan";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * Ctrl/⌘+K command palette: jump to any page or straight to an anime, from
@@ -210,7 +211,7 @@ export function CommandPalette() {
                     <>
                       <span className="relative aspect-[2/3] w-6 shrink-0 overflow-hidden rounded bg-muted">
                         {r.posterUrl ? (
-                          <Image src={r.posterUrl} alt="" fill sizes="24px" className="object-cover" />
+                          <Image src={posterUrl(r.posterUrl, "card")!} alt="" fill sizes="24px" className="object-cover" />
                         ) : null}
                       </span>
                       <span className="line-clamp-1 flex-1">{r.title}</span>

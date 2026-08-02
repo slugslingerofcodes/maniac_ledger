@@ -22,6 +22,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
 import type { JikanAnime } from "@/lib/jikan";
+import { posterUrl } from "@/lib/poster";
 
 const AGE_GATE_KEY = "misc_age_ok_v1";
 
@@ -242,7 +243,7 @@ function PosterCard({
       >
         {poster ? (
           <Image
-            src={poster}
+            src={posterUrl(poster, "card")!}
             alt={title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

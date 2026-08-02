@@ -55,6 +55,7 @@ import {
   type TitleLanguage,
 } from "@/hooks/use-title-language";
 import type { JikanAnime } from "@/lib/jikan";
+import { posterUrl } from "@/lib/poster";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -366,7 +367,7 @@ function PosterCard({
           aria-hidden
           className="absolute inset-x-3 top-3 -z-10 aspect-[2/3] scale-105 opacity-40 blur-2xl transition-opacity duration-300 group-hover:opacity-70"
         >
-          <Image src={poster} alt="" fill sizes="200px" className="object-cover" />
+          <Image src={posterUrl(poster, "blur")!} alt="" fill sizes="200px" className="object-cover" />
         </div>
       ) : null}
       <MorphLink
@@ -390,7 +391,7 @@ function PosterCard({
               />
             ) : null}
             <Image
-              src={poster}
+              src={posterUrl(poster, "card")!}
               alt={title}
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

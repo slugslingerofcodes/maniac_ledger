@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { RemoveFromListButton } from "@/components/lists/ListControls";
 import { Input } from "@/components/ui/input";
+import { posterUrl } from "@/lib/poster";
 
 export type ListItemCard = {
   animeId: string; // list_items.anime_id (catalog uuid)
@@ -67,7 +68,7 @@ export function ListItemsGrid({
                 <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
                   {item.posterUrl ? (
                     <Image
-                      src={item.posterUrl}
+                      src={posterUrl(item.posterUrl, "card")!}
                       alt={item.title}
                       fill
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

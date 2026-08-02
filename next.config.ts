@@ -18,10 +18,36 @@ const SECURITY_HEADERS = [
   },
 ];
 
+/**
+ * Static art in `public/` ships with Vercel's default
+ * `Cache-Control: max-age=0, must-revalidate`, because those files aren't
+ * content-hashed the way `/_next/static` assets are. That costs a revalidation
+ * round trip per asset per navigation — measured on the deployed site.
+ *
+ * A week of `max-age` with a month of `stale-while-revalidate` is the trade:
+ * repeat visits use the cached copy with no request at all, and a replaced file
+ * still reaches everyone within a week (immediately for anyone past the
+ * `stale-while-revalidate` window, who gets the cached copy *and* a background
+ * refresh). Deliberately not `immutable` — these filenames are stable, so an
+ * edited asset under `immutable` could be pinned in caches for a year.
+ */
+const STATIC_ASSET_CACHE = [
+  {
+    key: "Cache-Control",
+    value: "public, max-age=604800, stale-while-revalidate=2592000",
+  },
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/(.*)", headers: SECURITY_HEADERS },
+      {
+        source: "/:file(.+\\.(?:png|jpg|jpeg|webp|avif|gif|svg|ico|woff2|mp4|webm))",
+        headers: STATIC_ASSET_CACHE,
+      },
+    ];
   },
   experimental: {
     // Shared-element morphs (library poster → detail hero) via React's

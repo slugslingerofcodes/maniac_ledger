@@ -11,6 +11,7 @@ import { MANGA_LIBRARY_QUERY_KEY } from "@/components/manga/MangaLibraryGridClie
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { JikanManga } from "@/lib/jikan";
+import { posterUrl } from "@/lib/poster";
 
 function coverOf(m: JikanManga): string | null {
   return m.images?.jpg?.large_image_url ?? m.images?.jpg?.image_url ?? null;
@@ -42,7 +43,7 @@ export function MangaPosterCard({
       >
         {cover ? (
           <Image
-            src={cover}
+            src={posterUrl(cover, "card")!}
             alt={title}
             fill
             // MangaDex's CDN serves a "read this at MangaDex" placeholder to

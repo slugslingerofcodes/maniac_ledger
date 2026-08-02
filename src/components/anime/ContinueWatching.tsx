@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * "Watch History" row for the home page: the user's in-progress anime as large
@@ -58,7 +59,7 @@ export async function ContinueWatching() {
               <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
                 {anime.poster_url ? (
                   <Image
-                    src={anime.poster_url}
+                    src={posterUrl(anime.poster_url, "card")!}
                     alt={anime.title}
                     fill
                     sizes="320px"

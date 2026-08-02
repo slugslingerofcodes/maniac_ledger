@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { WatchStatus } from "@/types/anime";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * Public profile: /users/[username]. Private profiles show only the handle
@@ -184,7 +185,7 @@ export default async function PublicProfilePage({
                   <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
                     {r.anime.poster_url ? (
                       <Image
-                        src={r.anime.poster_url}
+                        src={posterUrl(r.anime.poster_url, "card")!}
                         alt={r.anime.title}
                         fill
                         sizes="(max-width: 640px) 33vw, 160px"

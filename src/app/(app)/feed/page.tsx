@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { WatchStatus } from "@/types/anime";
+import { posterUrl } from "@/lib/poster";
 
 export const metadata: Metadata = {
   title: "Feed · anime_maniacs",
@@ -126,7 +127,7 @@ export default async function FeedPage() {
                 <div className="relative aspect-[2/3] w-10 shrink-0 overflow-hidden rounded bg-muted">
                   {row.anime!.poster_url ? (
                     <Image
-                      src={row.anime!.poster_url}
+                      src={posterUrl(row.anime!.poster_url, "card")!}
                       alt=""
                       fill
                       sizes="40px"

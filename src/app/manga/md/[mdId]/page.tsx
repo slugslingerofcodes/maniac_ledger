@@ -15,6 +15,7 @@ import { getMangaDexMangaDetail } from "@/lib/mangadex";
 import { upsertCatalogManga } from "@/lib/manga";
 import { createClient } from "@/lib/supabase/server";
 import type { ReadingStatus } from "@/types/manga";
+import { posterUrl } from "@/lib/poster";
 
 export const dynamic = "force-dynamic";
 
@@ -118,10 +119,10 @@ export default async function MangaDexDetailPage(props: {
       <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
           {cover ? (
-            <PosterLightbox src={cover} alt={title}>
+            <PosterLightbox src={posterUrl(cover, "full")!} alt={title}>
               <div className="relative mx-auto aspect-[2/3] w-48 overflow-hidden rounded-xl bg-muted ring-1 ring-border md:w-full">
                 <Image
-                  src={cover}
+                  src={posterUrl(cover, "full")!}
                   alt={title}
                   fill
                   priority

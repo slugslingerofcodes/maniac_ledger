@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { AnimeType } from "@/types/anime";
+import { posterUrl } from "@/lib/poster";
 
 type Variant = "grid" | "list";
 
@@ -109,7 +110,7 @@ export async function FranchiseCard({
   const poster = (sizes: string) =>
     cover.poster_url ? (
       <Image
-        src={cover.poster_url}
+        src={posterUrl(cover.poster_url, "card")!}
         alt={title}
         fill
         sizes={sizes}

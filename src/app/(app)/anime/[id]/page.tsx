@@ -45,6 +45,7 @@ import type {
 } from "@/types/anime";
 
 import { ProgressTracker } from "./progress-tracker";
+import { posterUrl } from "@/lib/poster";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -639,7 +640,7 @@ export default async function AnimeDetailPage({
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                       {s.posterUrl ? (
                         <Image
-                          src={s.posterUrl}
+                          src={posterUrl(s.posterUrl, "card")!}
                           alt={s.title}
                           fill
                           sizes="(max-width: 640px) 33vw, 200px"

@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
+import { posterUrl } from "@/lib/poster";
 
 export type RecItem = {
   malId: number | null;
@@ -89,7 +90,7 @@ export function RecommendationCard({
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
-            src={item.posterUrl}
+            src={posterUrl(item.posterUrl, "card")!}
             alt={item.title}
             fill
             sizes="192px"

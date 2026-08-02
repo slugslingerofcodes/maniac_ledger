@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { fisheye, smoothing } from "@/lib/cosmos-math";
+
 /**
- * The mosaic's lens, mirrored from PosterCosmos so the geometry can be checked
- * without a GPU.
+ * The mosaic's lens and easing. Both live in `lib/cosmos-math` precisely so
+ * they can be imported here — this file used to keep a hand-copied duplicate of
+ * `fisheye`, because `PosterCosmos` builds a WebGL context on import and Node
+ * has no answer for that. A mirrored copy can drift from the original without
+ * either looking wrong, so it tested nothing after the first edit.
  *
  * The whole look depends on the cells staying a gap-free, non-overlapping grid
  * while the one under the cursor swells: a lens that let boundaries cross would
@@ -10,15 +15,6 @@ import { describe, expect, it } from "vitest";
  * tear the mosaic away from the screen edges. Neither is visible to a
  * typecheck, and both are subtle enough to miss by eye mid-motion.
  */
-function fisheye(b: number, f: number, distortion: number): number {
-  if (b === f) return f;
-  const ahead = b > f;
-  const dmax = ahead ? 1 - f : f;
-  if (dmax <= 0) return b;
-  const d = Math.abs(b - f) / dmax;
-  const warped = ((distortion + 1) * d) / (distortion * d + 1);
-  return f + (ahead ? 1 : -1) * warped * dmax;
-}
 
 const boundaries = (n: number) => Array.from({ length: n + 1 }, (_, i) => i / n);
 
@@ -70,5 +66,52 @@ describe("mosaic fisheye", () => {
     const warped = boundaries(30).map((b) => fisheye(b, 0.2, 8));
     const total = warped.slice(1).reduce((s, b, i) => s + (b - warped[i]!), 0);
     expect(total).toBeCloseTo(1, 10);
+  });
+});
+
+/**
+ * The lens easing. Its whole reason for existing is that the same gesture must
+ * feel the same on a 60 Hz desktop and a 144 Hz laptop — a property no
+ * typecheck and no amount of looking at one machine can confirm, since the bug
+ * it replaces (a fixed per-frame factor) looks perfect on whatever hardware you
+ * happen to be developing on.
+ */
+describe("frame-rate-independent smoothing", () => {
+  /** Follow a target from 0 to 1 for `seconds`, stepping at `hz`. */
+  function converge(tau: number, hz: number, seconds: number): number {
+    const dt = 1 / hz;
+    let value = 0;
+    for (let t = 0; t < seconds; t += dt) {
+      value += (1 - value) * smoothing(tau, dt);
+    }
+    return value;
+  }
+
+  it("lands in the same place at 30, 60, 120 and 144 Hz", () => {
+    const reference = converge(0.085, 60, 0.5);
+    for (const hz of [30, 120, 144, 240]) {
+      // Within a thousandth over half a second: visually indistinguishable,
+      // and far tighter than the ~2x spread a fixed per-frame factor gives.
+      expect(converge(0.085, hz, 0.5)).toBeCloseTo(reference, 3);
+    }
+  });
+
+  it("covers ~63% of the distance in exactly one time constant", () => {
+    // That is the definition of tau, and it's what makes the constants in
+    // PosterCosmos readable as durations rather than magic numbers.
+    expect(smoothing(0.085, 0.085)).toBeCloseTo(1 - 1 / Math.E, 10);
+  });
+
+  it("never overshoots, however long the frame", () => {
+    // A blend factor above 1 would send the lens past its target and snap back.
+    for (const dt of [0.001, 0.016, 0.05, 1, 10]) {
+      const k = smoothing(0.085, dt);
+      expect(k).toBeGreaterThan(0);
+      expect(k).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("treats a zero time constant as an instant snap rather than dividing by zero", () => {
+    expect(smoothing(0, 0.016)).toBe(1);
   });
 });

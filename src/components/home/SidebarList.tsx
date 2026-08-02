@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { posterUrl } from "@/lib/poster";
 
 /** One pre-formatted row for a sidebar list panel. */
 export type SidebarListItem = {
@@ -41,7 +42,7 @@ export function SidebarList({
               <div className="relative aspect-[2/3] w-11 shrink-0 overflow-hidden rounded bg-muted">
                 {item.posterUrl ? (
                   <Image
-                    src={item.posterUrl}
+                    src={posterUrl(item.posterUrl, "card")!}
                     alt=""
                     fill
                     sizes="44px"

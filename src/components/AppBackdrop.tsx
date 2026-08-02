@@ -1,17 +1,41 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 
-import { EyeClockBackdrop } from "@/components/EyeClockBackdrop";
-import { GalaxyBackdrop } from "@/components/GalaxyBackdrop";
-import { SearchPosterWall } from "@/components/search/SearchPosterWall";
-import { VideoBackdrop } from "@/components/VideoBackdrop";
 import { VortexBackdrop } from "@/components/VortexBackdrop";
 import {
   BACKGROUND_VIDEO,
   useBackground,
   useCustomBackgroundImage,
 } from "@/hooks/use-background";
+
+/**
+ * Only one backdrop is ever on screen, but importing all five statically made
+ * every route download all five — the galaxy's particle field, the eye clock,
+ * the poster wall and the video player, on pages that render none of them.
+ *
+ * Vortex stays a static import because it is the default for most routes, so
+ * lazy-loading it would only add a round trip before the common case paints.
+ * The rest are `ssr: false`: each is a decorative, client-only canvas whose
+ * server render is an empty fixed div anyway.
+ */
+const EyeClockBackdrop = dynamic(
+  () => import("@/components/EyeClockBackdrop").then((m) => m.EyeClockBackdrop),
+  { ssr: false },
+);
+const GalaxyBackdrop = dynamic(
+  () => import("@/components/GalaxyBackdrop").then((m) => m.GalaxyBackdrop),
+  { ssr: false },
+);
+const SearchPosterWall = dynamic(
+  () => import("@/components/search/SearchPosterWall").then((m) => m.SearchPosterWall),
+  { ssr: false },
+);
+const VideoBackdrop = dynamic(
+  () => import("@/components/VideoBackdrop").then((m) => m.VideoBackdrop),
+  { ssr: false },
+);
 
 /**
  * The app-wide backdrop behind the (app) and manga routes — the single place

@@ -56,6 +56,21 @@ export default function RootLayout({
       lang="en"
       className={`dark ${sans.variable} ${display.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
     >
+      <head>
+        {/*
+          Posters are served straight from their source CDNs (see
+          `images.unoptimized` in next.config.ts), so the LCP image on almost
+          every page is a third-party request that can't start until DNS + TLS
+          finish. Warming those connections in the head overlaps the handshake
+          with HTML parsing instead of paying for it after the first <img> is
+          discovered. `crossOrigin` must match how next/image fetches them, or
+          the browser opens a second, unwarmed connection.
+        */}
+        <link rel="preconnect" href="https://cdn.myanimelist.net" crossOrigin="" />
+        <link rel="preconnect" href="https://s4.anilist.co" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://cdn.myanimelist.net" />
+        <link rel="dns-prefetch" href="https://s4.anilist.co" />
+      </head>
       <body className="min-h-full flex flex-col">
         <Providers>
           {/* Shared tooltip delay: once one icon's tooltip is open, hovering

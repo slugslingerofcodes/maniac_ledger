@@ -57,12 +57,13 @@ export function CosmosStage({ items }: { items: CosmosItem[] }) {
   );
 
   if (items.length === 0) {
+    // The pool draws from the catalog, not the user's library, so an empty
+    // cosmos now means every upstream is down — not that they've added nothing.
     return (
-      <CosmosMessage title="Your cosmos is empty">
-        Add a few titles to your library and they&apos;ll appear here as a
-        galaxy you can explore.{" "}
-        <Link href="/search" className="text-primary underline">
-          Find something to watch
+      <CosmosMessage title="The cosmos is dark right now">
+        Couldn&apos;t reach the anime catalog. Try again in a moment, or{" "}
+        <Link href="/library" className="text-primary underline">
+          browse your library
         </Link>
         .
       </CosmosMessage>

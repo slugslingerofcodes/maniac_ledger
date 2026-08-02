@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { getTopAnime } from "@/lib/jikan";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * Two counter-scrolling rows of trending posters for the landing hero.
@@ -57,7 +58,7 @@ function MarqueeRow({
           key={i}
           className="relative aspect-[2/3] w-20 shrink-0 overflow-hidden rounded-lg opacity-70 ring-1 ring-white/10 sm:w-24"
         >
-          <Image src={src} alt="" fill sizes="96px" className="object-cover" />
+          <Image src={posterUrl(src, "card")!} alt="" fill sizes="96px" className="object-cover" />
         </div>
       ))}
     </div>

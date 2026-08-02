@@ -52,7 +52,8 @@ function withWebGL(supported: boolean) {
 
 const items: CosmosItem[] = [
   {
-    id: "a1",
+    key: "52991",
+    href: "/anime/mal/52991",
     title: "Sousou no Frieren",
     posterUrl: "https://cdn.example/p.jpg",
     score: 9,
@@ -87,16 +88,20 @@ describe("CosmosStage", () => {
     ).toBe("/library");
   });
 
-  it("offers a way to fill an empty library instead of an empty void", async () => {
+  it("explains an empty pool as an outage, not as an empty library", async () => {
+    // The pool comes from the catalog now, not the signed-in user's library,
+    // so "no items" means every upstream tier failed. Telling someone to go add
+    // anime would be advice that cannot possibly help.
     withWebGL(true);
     const CosmosStage = await freshStage();
 
     render(<CosmosStage items={[]} />);
 
     expect(screen.queryByTestId("cosmos-scene")).toBeNull();
+    expect(screen.getByText(/reach the anime catalog/i)).toBeDefined();
     expect(
-      screen.getByRole("link", { name: /find something/i }).getAttribute("href"),
-    ).toBe("/search");
+      screen.getByRole("link", { name: /library/i }).getAttribute("href"),
+    ).toBe("/library");
   });
 
   it("still mounts the scene under reduced motion — it tames it, never removes it", async () => {

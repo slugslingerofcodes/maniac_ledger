@@ -30,7 +30,7 @@ export function SiteBanner({ className }: { className?: string }) {
     >
       <span className="brand-word text-[15px]">ANIME</span>
       <Image
-        src="/am-monogram.png"
+        src="/am-monogram.webp"
         alt=""
         width={80}
         height={80}

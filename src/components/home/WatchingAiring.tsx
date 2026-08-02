@@ -8,6 +8,7 @@ import { nextBroadcastMs, todayInJst } from "@/lib/jst";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 /** "23:00" JST → "11:00 PM" for the slot label. */
 function to12h(hhmm: string): string {
@@ -108,7 +109,7 @@ export async function WatchingAiring() {
             >
               {item.posterUrl ? (
                 <Image
-                  src={item.posterUrl}
+                  src={posterUrl(item.posterUrl, "card")!}
                   alt={item.title}
                   fill
                   sizes="144px"

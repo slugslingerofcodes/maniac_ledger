@@ -13,6 +13,7 @@ import { useAnimeFeed } from "@/hooks/use-anime-feed";
 import { genreChipStyle } from "@/lib/genre-color";
 import { GENRE_OPTIONS } from "@/lib/genres";
 import { cn } from "@/lib/utils";
+import { posterUrl } from "@/lib/poster";
 
 /**
  * Filterable, paginated movie browser. Runs on the same /api/anime/search
@@ -128,7 +129,7 @@ export function MoviesClient() {
                   <div data-morph className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-shadow hover:ring-2 hover:ring-primary/40">
                     {poster ? (
                       <Image
-                        src={poster}
+                        src={posterUrl(poster, "card")!}
                         alt={movie.title}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"

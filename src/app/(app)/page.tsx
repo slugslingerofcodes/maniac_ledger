@@ -21,12 +21,12 @@ import {
   getTopByPopularity,
   getTopMovies,
   getTopRated,
-  getTopTen,
   getUpcomingSeasons,
   type JikanAnime,
   type TopWindow,
 } from "@/lib/jikan";
 import { JST_DAYS, nowInJst, todayInJst } from "@/lib/jst";
+import { getTopTenChart } from "@/lib/top-ten";
 
 // Per-user page (library, continue-watching, personalized rows) — never
 // prerender a shell at build time. Also keeps deploys from stalling on the
@@ -101,7 +101,10 @@ function GridSkeleton() {
 /** One ranking window, mapped for the showcase; best-effort (empty on failure). */
 async function topTenItems(window: TopWindow): Promise<TopTenItem[]> {
   try {
-    const list = await getTopTen(window);
+    // MAL → AniList → catalog. Going through the chain (rather than calling
+    // getTopTen directly) is what keeps the chart populated when MAL answers
+    // `200 {"data": []}` instead of erroring, which is its usual degraded mode.
+    const list = await getTopTenChart(window);
     return list.map((a) => ({
       malId: a.mal_id,
       title: a.title,

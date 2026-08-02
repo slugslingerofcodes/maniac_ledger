@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { posterTransitionName } from "@/lib/view-transition";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import type { AnimeType, WatchStatus } from "@/types/anime";
+import { posterUrl } from "@/lib/poster";
 
 export type AnimeCardItem = {
   id: string;
@@ -39,7 +40,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
         aria-hidden
         className="absolute inset-x-3 top-3 -z-10 aspect-[2/3] scale-105 opacity-40 blur-2xl transition-opacity duration-300 group-hover:opacity-70"
       >
-        <Image src={item.posterUrl} alt="" fill sizes="200px" className="object-cover" />
+        <Image src={posterUrl(item.posterUrl, "blur")!} alt="" fill sizes="200px" className="object-cover" />
       </div>
     ) : null}
     <Tilt3D>
@@ -47,7 +48,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
       <div data-morph className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {item.posterUrl ? (
           <Image
-            src={item.posterUrl}
+            src={posterUrl(item.posterUrl, "card")!}
             alt={item.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"

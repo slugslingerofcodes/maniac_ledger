@@ -429,7 +429,7 @@ html:not(.dark) .text-gradient {
   }
 }
 .vortex-img {
-  background-image: url("/vortex.png");
+  background-image: url("/vortex.webp");
   background-size: cover;
   background-position: center;
   animation: vortex-kenburns 44s ease-in-out infinite;

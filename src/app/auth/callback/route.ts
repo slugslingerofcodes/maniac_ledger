@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
 // OAuth (Google) and other PKCE flows redirect back here with a `?code=` that
@@ -7,7 +8,9 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/choose";
+  // `next` is attacker-controllable — it arrives on a link the user clicks.
+  // Validated to a same-origin path before it is ever concatenated onto origin.
+  const next = safeRedirectPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();

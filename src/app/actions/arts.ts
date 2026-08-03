@@ -6,6 +6,7 @@ import {
   type ArtPiece,
   type FanArt,
 } from "@/lib/arts";
+import { requireUser } from "@/lib/supabase/auth";
 
 /**
  * Anime art gallery sources, fetched server-side so the browser never deals
@@ -35,6 +36,10 @@ export async function fetchAnimeArts(
   category: ArtCategory,
   amount = 12,
 ): Promise<FetchArtsResult> {
+  // Reachable by direct POST regardless of route (see Next's Server Action
+  // security guidance) — this proxies a rate-limited third party on the
+  // app's behalf, so it must not be an open relay for anonymous callers.
+  await requireUser();
   if (!ART_CATEGORIES.includes(category)) {
     return { ok: false, error: "Unknown category." };
   }
@@ -135,6 +140,10 @@ export async function fetchFanArts(
   query: string,
   page = 1,
 ): Promise<FetchFanArtsResult> {
+  // Reachable by direct POST regardless of route (see Next's Server Action
+  // security guidance) — this proxies a rate-limited third party on the
+  // app's behalf, so it must not be an open relay for anonymous callers.
+  await requireUser();
   try {
     const tag = query.trim() ? await resolveCharacterTag(query) : null;
     const tags = tag ?? "sort:score:desc";

@@ -8,6 +8,7 @@ import {
   searchAnime,
   type JikanAnime,
 } from "@/lib/jikan";
+import { requireUser } from "@/lib/supabase/auth";
 
 /** A single key visual, tagged with the anime it belongs to. */
 export type AnimePoster = {
@@ -101,6 +102,10 @@ function coversOf(anime: JikanAnime[]): AnimePoster[] {
  * endpoints fairly often.
  */
 export async function fetchAnimePosters(query: string): Promise<PostersResult> {
+  // Reachable by direct POST regardless of route (see Next's Server Action
+  // security guidance) — this proxies a rate-limited third party on the
+  // app's behalf, so it must not be an open relay for anonymous callers.
+  await requireUser();
   const q = query.trim();
 
   let anime: JikanAnime[] = [];

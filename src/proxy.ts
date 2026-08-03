@@ -1,10 +1,29 @@
 import { type NextRequest } from "next/server";
+
+import { buildCsp } from "@/lib/csp";
 import { updateSession } from "@/lib/supabase/middleware";
 
 // Next.js 16 renamed `middleware.ts` -> `proxy.ts` (function `middleware` -> `proxy`).
 // Proxy runs on the Node.js runtime, which is what @supabase/ssr needs.
 export async function proxy(request: NextRequest) {
-  return await updateSession(request);
+  const { nonce, policy } = buildCsp(process.env.NODE_ENV === "development");
+
+  // Next reads the nonce off the *request*-side CSP header and stamps it onto
+  // the bootstrap scripts it injects. Without this, the page's own scripts are
+  // blocked by the policy we're about to set — the classic way a first CSP
+  // rollout white-screens an app.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", policy);
+
+  // Passed through rather than applied here: updateSession rebuilds its
+  // response whenever Supabase refreshes cookies, so the headers have to be
+  // baked into every `NextResponse.next()` it makes. Replacing the response
+  // afterwards would drop those cookies and silently sign people out.
+  const response = await updateSession(request, requestHeaders);
+  response.headers.set("Content-Security-Policy", policy);
+
+  return response;
 }
 
 export const config = {

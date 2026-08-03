@@ -38,8 +38,23 @@ export function isPublicPath(pathname: string): boolean {
  * auth cookies in sync between the request and the response. Called from the
  * Next.js 16 proxy (src/proxy.ts).
  */
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+export async function updateSession(
+  request: NextRequest,
+  /**
+   * Extra headers to forward to the render. Used to hand the CSP nonce to
+   * Next (via `x-nonce` and the request-side `Content-Security-Policy`), which
+   * is how Next knows to stamp its own bootstrap scripts with it.
+   *
+   * Threaded through here rather than applied in the proxy because every
+   * `NextResponse.next()` below must carry them — rebuilding the response
+   * afterwards would drop the refreshed Supabase auth cookies.
+   */
+  requestHeaders?: Headers,
+) {
+  const nextInit = requestHeaders
+    ? { request: { headers: requestHeaders } }
+    : { request };
+  let supabaseResponse = NextResponse.next(nextInit);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +68,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next(nextInit);
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );

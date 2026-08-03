@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { checkRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -18,6 +19,20 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // This reads up to 50,000 episode rows per call. Nobody exports their library
+  // six times a minute, and without a ceiling it is a one-line way for an
+  // authenticated account to hammer the database.
+  const verdict = checkRateLimit(`export:${user.id}`, 5, 60_000);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      { error: "Export was requested too recently. Please wait a moment." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(verdict.retryAfterSeconds) },
+      },
+    );
   }
 
   const [{ data: library, error: libErr }, { data: episodes, error: epErr }] =

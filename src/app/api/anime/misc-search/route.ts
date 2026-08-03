@@ -11,6 +11,7 @@ import {
   type JikanAnime,
 } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET /api/anime/misc-search?q=&page=1&mode=both
@@ -49,6 +50,9 @@ export interface MiscSearchResponse {
   degraded?: boolean;
 }
 
+const RATE_LIMIT = 60;
+const RATE_WINDOW_MS = 60_000;
+
 export async function GET(request: NextRequest) {
   // Defense in depth: the proxy already gates this path, but return JSON 401
   // (not a redirect) so the client fetch fails cleanly.
@@ -58,6 +62,23 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+
+  // Keyed by user, not IP: this route is authenticated, so the account is the
+  // thing worth limiting. It fronts the same rate-limited upstream quota as
+  // /api/anime/search, which a signed-in scraper could otherwise drain.
+  const verdict = checkRateLimit(`misc-search:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      { error: "Too many searches. Please slow down." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(verdict.retryAfterSeconds),
+          "Cache-Control": "no-store",
+        },
+      },
+    );
   }
 
   const { searchParams } = request.nextUrl;

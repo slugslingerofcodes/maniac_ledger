@@ -4,6 +4,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 
 import { GENRE_OPTIONS } from "@/lib/genres";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { requireUser } from "@/lib/supabase/auth";
 import {
   COUNTRY_OPTIONS,
   FORMAT_OPTIONS,
@@ -64,7 +66,34 @@ export type NlSearchResult =
 const stripFences = (s: string) =>
   s.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
 
+/**
+ * Per-user ceiling on AI search. Every call is a billable Gemini request, so
+ * this is a spend limit as much as an abuse limit — generous for a human
+ * typing queries, useless for a script.
+ */
+const NL_SEARCH_LIMIT = 20;
+const NL_SEARCH_WINDOW_MS = 60_000;
+
 export async function parseNaturalQuery(text: string): Promise<NlSearchResult> {
+  // Server Actions are reachable by direct POST regardless of which route the
+  // caller is on — Next's own docs say to treat them that way and check inside
+  // each one ("Server Actions ... verify authentication and authorization
+  // inside each one"). The proxy's redirect is not a boundary here, and this
+  // action spends real money on every call.
+  const user = await requireUser();
+
+  const verdict = checkRateLimit(
+    `nl-search:${user.id}`,
+    NL_SEARCH_LIMIT,
+    NL_SEARCH_WINDOW_MS,
+  );
+  if (!verdict.ok) {
+    return {
+      ok: false,
+      error: `Too many AI searches. Try again in ${verdict.retryAfterSeconds}s.`,
+    };
+  }
+
   const input = text.trim().slice(0, 300);
   if (input.length < 3) {
     return { ok: false, error: "Describe what you're looking for." };

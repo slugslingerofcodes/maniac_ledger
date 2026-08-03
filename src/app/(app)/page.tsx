@@ -27,6 +27,7 @@ import {
 } from "@/lib/jikan";
 import { JST_DAYS, nowInJst, todayInJst } from "@/lib/jst";
 import { getTopTenChart } from "@/lib/top-ten";
+import { requireUser } from "@/lib/supabase/auth";
 
 // Per-user page (library, continue-watching, personalized rows) — never
 // prerender a shell at build time. Also keeps deploys from stalling on the
@@ -293,7 +294,11 @@ async function SchedulePanel() {
   return <MiniSchedule days={days} />;
 }
 
-export default function Home() {
+export default async function Home() {
+  // Defence in depth: the proxy already redirects signed-out visitors, but a
+  // middleware bypass (Next has shipped advisories for exactly that) would
+  // otherwise leave this page rendering. The server guard is the real gate.
+  await requireUser();
   return (
     // No bg-background here: the fixed vortex backdrop sits at -z-10 and an
     // opaque page background would cover it. The hero paints its own.

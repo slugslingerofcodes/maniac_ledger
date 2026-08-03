@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { randomAnilistAnime } from "@/lib/anilist";
 import { randomCatalogAnime } from "@/lib/catalog-fallback";
 import { getRandomAnime, JikanError, type JikanAnime } from "@/lib/jikan";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/anime/random — a random SFW anime for the recommendations page's
@@ -17,7 +19,35 @@ export interface RandomAnimeResponse {
   degraded?: boolean;
 }
 
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60_000;
+
 export async function GET() {
+  // Each roll can miss the cache and hit the 350ms-spaced upstream queue, so an
+  // unlimited caller here starves every other request on the instance. The
+  // proxy gates the path; this returns a clean JSON 401 rather than a redirect.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+
+  const verdict = checkRateLimit(`random:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      { error: "Rolling too fast. Please wait a moment." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(verdict.retryAfterSeconds),
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
   try {
     const anime = await getRandomAnime();
     return NextResponse.json({ anime } satisfies RandomAnimeResponse, {

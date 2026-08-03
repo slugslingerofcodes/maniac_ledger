@@ -60,11 +60,37 @@ const escapeHtml = (s: string) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
   );
 
+/**
+ * Constant-time string comparison.
+ *
+ * `!==` on a secret leaks its prefix through timing: the comparison stops at
+ * the first differing byte, so an attacker can recover the key one character at
+ * a time. The margin is tiny over a network and this endpoint is not a
+ * realistic target — but the secret being compared is the *service-role key*,
+ * which bypasses RLS entirely, so the downside is total and the fix is free.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  // Length is not secret (and differing lengths can't be compared bytewise),
+  // but keep the loop over a fixed span so it doesn't exit early either.
+  let diff = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
   // Only the cron job (which carries the service-role key) may trigger a send,
   // so a logged-in end user can't fan out emails. verify_jwt also gates this,
   // but the explicit check restricts it to the service role specifically.
-  if (req.headers.get("Authorization") !== `Bearer ${SERVICE_ROLE_KEY}`) {
+  if (
+    !timingSafeEqual(
+      req.headers.get("Authorization") ?? "",
+      `Bearer ${SERVICE_ROLE_KEY}`,
+    )
+  ) {
     return json({ error: "Unauthorized" }, 401);
   }
 

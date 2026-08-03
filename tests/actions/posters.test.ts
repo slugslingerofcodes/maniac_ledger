@@ -12,6 +12,16 @@ import { animeFixture, paginationFixture } from "../helpers/fixtures";
  * message, even though two other engines could have filled the grid.
  */
 
+/**
+ * The action now calls `requireUser()` first — Server Actions are reachable by
+ * direct POST, so this one can't be an open relay to a rate-limited upstream.
+ * Stub a signed-in user so these tests still exercise the fallback chain rather
+ * than the guard; the guard itself is covered by `posters-auth.test.ts`.
+ */
+vi.mock("@/lib/supabase/auth", () => ({
+  requireUser: vi.fn(async () => ({ id: "user-1" })),
+}));
+
 vi.mock("@/lib/jikan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/jikan")>();
   return {

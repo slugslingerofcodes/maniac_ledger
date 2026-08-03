@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CosmosStage } from "@/components/cosmos/CosmosStage";
 import type { CosmosItem } from "@/components/cosmos/PosterCosmos";
 import { getCosmosPool } from "@/lib/cosmos-pool";
+import { requireUser } from "@/lib/supabase/auth";
 
 export const metadata = {
   title: "Cosmos · anime_maniacs",
@@ -13,6 +14,10 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function CosmosPage() {
+  // Defence in depth: the proxy already redirects signed-out visitors, but a
+  // middleware bypass (Next has shipped advisories for exactly that) would
+  // otherwise leave this page rendering. The server guard is the real gate.
+  await requireUser();
   const pool = await getCosmosPool();
   const items: CosmosItem[] = pool.map((entry) => ({
     key: String(entry.malId),

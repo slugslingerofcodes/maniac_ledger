@@ -10,7 +10,11 @@ import type { NextConfig } from "next";
 const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  // The real Content-Security-Policy is set per-request in `src/proxy.ts`,
+  // because it carries a fresh nonce each time and a static header cannot.
+  // Deliberately not duplicated here: two CSP headers are intersected by the
+  // browser, so the weaker static one would silently override nothing while
+  // making the effective policy impossible to reason about.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",

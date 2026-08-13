@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { AdvanceEpisodeButton } from "@/components/anime/AdvanceEpisodeButton";
 import { getUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { posterUrl } from "@/lib/poster";
@@ -51,10 +52,12 @@ export async function ContinueWatching() {
             : 0;
 
           return (
+            // The +1 button is a sibling of the link, not a child: an
+            // interactive control nested in an anchor swallows taps.
+            <div key={anime.id} className="group relative w-72 shrink-0 sm:w-80">
             <Link
-              key={anime.id}
               href={`/anime/${anime.id}#ep-${nextEp}`}
-              className="group w-72 shrink-0 sm:w-80"
+              className="block"
             >
               <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
                 {anime.poster_url ? (
@@ -100,6 +103,19 @@ export async function ContinueWatching() {
                 </div>
               </div>
             </Link>
+            {/* One tap to advance, straight from the rail. Always visible on
+                touch; on desktop it fades in with the card hover. */}
+            <AdvanceEpisodeButton
+              animeId={anime.id}
+              title={anime.title}
+              episodesWatched={row.episodes_watched}
+              totalEpisodes={total}
+              status="watching"
+              variant="full"
+              source="rail"
+              className="absolute right-3 top-3 z-10 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            />
+            </div>
           );
         })}
       </div>

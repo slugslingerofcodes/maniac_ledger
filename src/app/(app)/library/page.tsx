@@ -67,9 +67,13 @@ export default async function LibraryPage({
       </div>
 
       {/* Client-side, TanStack Query–backed grid: cached + persisted to
-          IndexedDB so it survives offline. Filtering is client-side. */}
+          IndexedDB so it survives offline. Filtering is client-side, with the
+          filter state kept in the URL — hence the Suspense boundary, which
+          `useSearchParams` requires. */}
       <div className="mt-6">
-        <LibraryGridClient filter={filter} />
+        <Suspense fallback={null}>
+          <LibraryGridClient filter={filter} />
+        </Suspense>
       </div>
     </main>
   );

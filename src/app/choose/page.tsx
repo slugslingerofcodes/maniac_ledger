@@ -25,11 +25,12 @@ export default function ChoosePage() {
       </div>
 
       <div className="grid w-full max-w-3xl gap-6 sm:grid-cols-2">
-        {/* Lands on the cosmos, not the home feed: arriving inside your own
-            collection is the first impression worth making. Home is a nav tab
-            from there. */}
+        {/* Both sides land on their newsstand: picking a side is the start of
+            a session, and "what happened since I was last here?" is the
+            question that opens one. Everything else — library, cosmos, search
+            — is a tab away and is where you go once you know what's new. */}
         <Link
-          href="/cosmos"
+          href="/news"
           className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-10 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
         >
           <span className="grid size-16 place-items-center rounded-full bg-primary/15 text-primary transition-transform duration-300 group-hover:scale-110">
@@ -39,10 +40,13 @@ export default function ChoosePage() {
           <span className="text-sm text-muted-foreground">
             Track what you watch — library, schedule, seasons and more.
           </span>
+          <span className="text-xs font-medium text-primary">
+            Opens the Anime Times →
+          </span>
         </Link>
 
         <Link
-          href="/manga"
+          href="/manga/news"
           className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-10 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
         >
           <span className="grid size-16 place-items-center rounded-full bg-primary/15 text-primary transition-transform duration-300 group-hover:scale-110">
@@ -51,6 +55,9 @@ export default function ChoosePage() {
           <span className="text-2xl font-semibold tracking-tight">Manga</span>
           <span className="text-sm text-muted-foreground">
             Track what you read — reading list, chapters and volumes.
+          </span>
+          <span className="text-xs font-medium text-primary">
+            Opens the Manga Times →
           </span>
         </Link>
       </div>

@@ -12,8 +12,17 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "anime_maniacs",
     short_name: "anime_maniacs",
     description: "Track the anime you watch.",
-    start_url: "/",
+    // Launching the installed app runs the same opening as the web sign-in
+    // flow: pick a side, land on that side's newsstand. Going straight to "/"
+    // skipped the picker entirely, so manga readers opened the app on the
+    // anime dashboard every time.
+    start_url: "/choose",
     display: "standalone",
+    shortcuts: [
+      { name: "Anime Times", url: "/news" },
+      { name: "Manga Times", url: "/manga/news" },
+      { name: "My Library", url: "/library" },
+    ],
     background_color: "#09090b",
     theme_color: "#09090b",
     icons: [

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckIcon, Trash2 } from "lucide-react";
+import { CheckIcon, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +16,11 @@ import {
 import { bulkUpdateStatus, upsertProgress } from "@/app/actions/progress";
 import { WATCH_STATUS_META } from "@/lib/watch-status";
 import { genreChipStyle } from "@/lib/genre-color";
+import { AdvanceEpisodeButton } from "@/components/anime/AdvanceEpisodeButton";
+import {
+  QuickLookSheet,
+  type QuickLookItem,
+} from "@/components/anime/QuickLookSheet";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -69,15 +75,61 @@ function sortItems<T extends { title: string; score: number | null; genres: stri
   return sorted;
 }
 
+const SORT_VALUES = SORT_OPTIONS.map((o) => o.value) as readonly string[];
+
 export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const queryClient = useQueryClient();
   const reduce = useReducedMotion();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [titleLang] = useTitleLanguage();
-  const [genre, setGenre] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortValue>("recent");
-  // Free-text filter over the cached library (title + english). Purely
-  // client-side — never hits the network, so it searches your library only.
-  const [query, setQuery] = useState("");
+
+  /*
+   * Genre, sort and the in-library search live in the URL rather than in
+   * component state. They used to reset on every navigation — open a title
+   * from a filtered grid, press back, and you were staring at the unfiltered
+   * library again — and a filtered view couldn't be bookmarked or sent to
+   * anyone. `replace` (not `push`) keeps one history entry per *page*, so Back
+   * still leaves the library instead of unwinding each chip tap.
+   */
+  const genre = searchParams.get("genre");
+  const rawSort = searchParams.get("sort");
+  const sort: SortValue = (
+    rawSort && SORT_VALUES.includes(rawSort) ? rawSort : "recent"
+  ) as SortValue;
+  const query = searchParams.get("q") ?? "";
+
+  const setParam = useCallback(
+    (key: string, value: string | null) => {
+      const next = new URLSearchParams(searchParams.toString());
+      if (value === null || value === "") next.delete(key);
+      else next.set(key, value);
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setGenre = useCallback(
+    (g: string | null) => setParam("genre", g),
+    [setParam],
+  );
+  const setSort = useCallback(
+    (s: SortValue) => setParam("sort", s === "recent" ? null : s),
+    [setParam],
+  );
+  const setQuery = useCallback((q: string) => setParam("q", q), [setParam]);
+
+  const filtersActive = genre !== null || query.trim() !== "" || sort !== "recent";
+  const clearFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const key of ["genre", "sort", "q"]) next.delete(key);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+  // Quick-look target: status/score edits without leaving the grid.
+  const [quickLook, setQuickLook] = useState<QuickLookItem | null>(null);
   // Bulk-edit mode: card clicks toggle selection instead of navigating.
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -238,6 +290,15 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
             <span />
           )}
           <div className="ml-auto flex items-center gap-3">
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              Clear filters
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
@@ -269,14 +330,22 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           </div>
         </div>
         {items.length === 0 ? (
-          query.trim() !== "" ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No anime in your library match “{query.trim()}”.
-            </p>
-          ) : genre !== null ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Nothing in your library matches “{genre}” with this status.
-            </p>
+          filtersActive ? (
+            // A dead end used to be a sentence with no way out — the filter
+            // that emptied the grid was often off-screen by then. Always offer
+            // the exit next to the explanation.
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                {query.trim() !== ""
+                  ? `No anime in your library match “${query.trim()}”.`
+                  : genre !== null
+                    ? `Nothing in your library matches “${genre}” with this status.`
+                    : "Nothing here with these filters."}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            </div>
           ) : (
             <EmptyState isAll={filter === "all"} />
           )
@@ -334,16 +403,39 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
                         </span>
                       </button>
                     ) : (
-                      <Tooltip label="Remove from library">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item)}
-                          aria-label={`Remove ${item.title} from library`}
-                          className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white focus-visible:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100"
-                        >
-                          <Trash2 className="size-4" aria-hidden />
-                        </button>
-                      </Tooltip>
+                      <div className="absolute right-2 top-2 z-10 flex gap-1.5 focus-within:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100">
+                        {/* The core action, one tap from the grid. Hidden by
+                            AdvanceEpisodeButton itself once the entry is
+                            finished, so completed titles keep a clean corner. */}
+                        <AdvanceEpisodeButton
+                          animeId={item.id}
+                          title={item.title}
+                          episodesWatched={item.episodesWatched}
+                          totalEpisodes={item.totalEpisodes}
+                          status={item.status}
+                          source="grid"
+                        />
+                        <Tooltip label="Quick look">
+                          <button
+                            type="button"
+                            onClick={() => setQuickLook(item)}
+                            aria-label={`Quick look at ${item.title}`}
+                            className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-muted hover:text-foreground"
+                          >
+                            <Pencil className="size-4" aria-hidden />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Remove from library">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item)}
+                            aria-label={`Remove ${item.title} from library`}
+                            className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white"
+                          >
+                            <Trash2 className="size-4" aria-hidden />
+                          </button>
+                        </Tooltip>
+                      </div>
                     )}
                   </div>
                 </motion.div>
@@ -382,6 +474,16 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
             </div>
           </div>
         ) : null}
+
+        {/* One sheet for the whole grid, driven by whichever card was tapped —
+            mounting one per card would put N dialogs in the tree. */}
+        <QuickLookSheet
+          item={quickLook}
+          open={quickLook !== null}
+          onOpenChange={(v) => {
+            if (!v) setQuickLook(null);
+          }}
+        />
       </>
     );
   }
@@ -436,9 +538,21 @@ function EmptyState({ isAll }: { isAll: boolean }) {
             ? "Your library is empty — start by searching for an anime."
             : "Nothing here with this status yet — add or update some anime."}
         </p>
-        <Link href="/search" className={cn(buttonVariants())}>
-          Search anime
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link href="/search" className={cn(buttonVariants())}>
+            Search anime
+          </Link>
+          {/* The fastest route out of an empty library was buried at the
+              bottom of /profile. Offer it where the emptiness is. */}
+          {isAll ? (
+            <Link
+              href="/profile#import"
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              Import from MAL / AniList
+            </Link>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

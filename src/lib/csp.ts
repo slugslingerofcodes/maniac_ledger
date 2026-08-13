@@ -11,7 +11,8 @@
  *
  * **`script-src` is strict**: a per-request nonce plus `strict-dynamic`, so an
  * injected `<script>` cannot run without guessing the nonce. That is where
- * essentially all of the value is.
+ * essentially all of the value is. The one exception is a hash for the theme
+ * bootstrap — see `THEME_SCRIPT_HASH` below.
  *
  * **`style-src` keeps `'unsafe-inline'`**, deliberately. Framer Motion and GSAP
  * both write inline `style` attributes on every animation frame — that is their
@@ -26,7 +27,27 @@
  * was chosen from what the app actually loads, not copied from a template.
  */
 
+import { createHash } from "node:crypto";
+
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
+
 export type CspResult = { nonce: string; policy: string };
+
+/**
+ * The theme bootstrap in the root layout is inline and must run *before first
+ * paint*, so it can't be a nonce'd script: reading the per-request nonce means
+ * calling `headers()` in the root layout, which opts every route in the app out
+ * of static rendering for the sake of one eleven-line script.
+ *
+ * A hash is the better fit and is not a loosening — `'strict-dynamic'` keeps
+ * both nonces and hashes, and a hash pins one exact byte sequence forever,
+ * whereas a nonce authorises whatever happens to carry it on that request.
+ * Computed from the source of truth at module load, so editing the script can
+ * never leave a stale digest behind in a hand-copied constant.
+ */
+const THEME_SCRIPT_HASH = `'sha256-${createHash("sha256")
+  .update(THEME_INIT_SCRIPT, "utf8")
+  .digest("base64")}'`;
 
 /**
  * Build a policy and the nonce it embeds. A fresh nonce per request is the
@@ -43,7 +64,7 @@ export function buildCsp(isDev: boolean): CspResult {
     // ignoring host allow-lists — the modern, harder-to-bypass shape.
     // `unsafe-eval` is dev-only: React uses eval there to rebuild server error
     // stacks in the browser. Neither React nor Next needs it in production.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' ${THEME_SCRIPT_HASH} 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
 
     // See the note above — animation libraries mutate style attributes.
     `style-src 'self' 'unsafe-inline'`,

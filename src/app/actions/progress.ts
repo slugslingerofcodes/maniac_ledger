@@ -119,6 +119,176 @@ export async function markEpisodesUpTo(
   return { ok: true, watched: true };
 }
 
+export type AdvanceEpisodeResult =
+  | {
+      ok: true;
+      /** The episode number just marked watched. */
+      episode: number;
+      episodesWatched: number;
+      totalEpisodes: number | null;
+      /** True when this advance finished the series (status → completed). */
+      completed: boolean;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Marks the *next* unwatched episode of an anime watched, from wherever the
+ * user happens to be — the home rail, the library grid — without a trip to the
+ * detail page. This is the app's core action, so it deliberately works whether
+ * or not the `episodes` catalog has been backfilled for this title yet
+ * (`ensureEpisodes` only runs when a detail page is opened):
+ *
+ *   - if the matching `episodes` row exists we insert `episode_progress`, which
+ *     fires the `touch_last_watched_at` trigger and feeds `anime_watched_count`,
+ *     keeping the per-episode checklist and this button in agreement;
+ *   - either way `user_progress.episodes_watched` is set to the new number, so
+ *     an un-backfilled title still advances instead of silently doing nothing.
+ *
+ * Reaching the finale flips the entry to `completed`; any other advance from a
+ * non-watching status flips it to `watching` (bumping a `plan_to_watch` entry
+ * means you started it).
+ */
+export async function advanceEpisode(
+  animeId: string,
+): Promise<AdvanceEpisodeResult> {
+  if (!z.string().uuid().safeParse(animeId).success) {
+    return { ok: false, error: "Invalid anime." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to track episodes." };
+  }
+
+  const { data: current, error: readErr } = await supabase
+    .from("user_progress")
+    .select("episodes_watched, status, anime:anime_id (total_episodes)")
+    // Public profiles' progress is readable (migration 0015), so an unscoped
+    // maybeSingle() can match several rows and error instead of answering.
+    .eq("user_id", user.id)
+    .eq("anime_id", animeId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!current) {
+    return { ok: false, error: "That anime isn't in your library yet." };
+  }
+
+  const total = current.anime?.total_episodes ?? null;
+  const next = current.episodes_watched + 1;
+  if (total != null && total > 0 && next > total) {
+    return { ok: false, error: "You've already finished this one." };
+  }
+
+  const completed = total != null && total > 0 && next === total;
+
+  // Best-effort per-episode row: absent until the detail page backfills the
+  // catalog, and a failure here must not block the counter below.
+  const { data: episode } = await supabase
+    .from("episodes")
+    .select("id")
+    .eq("anime_id", animeId)
+    .eq("number", next)
+    .maybeSingle();
+  if (episode?.id) {
+    await supabase
+      .from("episode_progress")
+      .upsert(
+        { user_id: user.id, episode_id: episode.id },
+        { onConflict: "user_id,episode_id", ignoreDuplicates: true },
+      );
+  }
+
+  const { error } = await supabase
+    .from("user_progress")
+    .update({
+      episodes_watched: next,
+      status: completed ? "completed" : "watching",
+      // The trigger sets this from episode_progress, but only when the catalog
+      // row existed — write it here too so "Continue Watching" reorders either
+      // way.
+      last_watched_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("anime_id", animeId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/anime/${animeId}`);
+  revalidatePath("/library");
+  revalidatePath("/");
+
+  return {
+    ok: true,
+    episode: next,
+    episodesWatched: next,
+    totalEpisodes: total,
+    completed,
+  };
+}
+
+/**
+ * The exact inverse of {@link advanceEpisode} — un-watches the highest watched
+ * episode and drops the counter by one. Exists so the "+1" button can offer a
+ * real undo: reverting the counter alone would leave an orphaned
+ * `episode_progress` row and the detail-page checklist disagreeing with the
+ * card. `status` is restored by the caller, which knows what it was.
+ */
+export async function rewindEpisode(
+  animeId: string,
+  restoreStatus?: ProgressPatch["status"],
+): Promise<UpsertProgressResult> {
+  if (!z.string().uuid().safeParse(animeId).success) {
+    return { ok: false, error: "Invalid anime." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const { data: current } = await supabase
+    .from("user_progress")
+    .select("episodes_watched")
+    .eq("user_id", user.id)
+    .eq("anime_id", animeId)
+    .maybeSingle();
+  if (!current) return { ok: false, error: "Entry not found." };
+
+  const previous = Math.max(0, current.episodes_watched - 1);
+
+  const { data: episode } = await supabase
+    .from("episodes")
+    .select("id")
+    .eq("anime_id", animeId)
+    .eq("number", current.episodes_watched)
+    .maybeSingle();
+  if (episode?.id) {
+    await supabase
+      .from("episode_progress")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("episode_id", episode.id);
+  }
+
+  const { error } = await supabase
+    .from("user_progress")
+    .update({
+      episodes_watched: previous,
+      ...(restoreStatus ? { status: restoreStatus } : {}),
+    })
+    .eq("user_id", user.id)
+    .eq("anime_id", animeId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/anime/${animeId}`);
+  revalidatePath("/library");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /**
  * Patch shape for a user_progress row. Every field is optional so callers can
  * send just what changed; upsert leaves unspecified columns untouched. `.strict()`

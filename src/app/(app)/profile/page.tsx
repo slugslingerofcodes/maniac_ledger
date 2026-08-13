@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, Clapperboard, Megaphone, ShieldCheck } from "lucide-react";
+import { BookOpen, Clapperboard, Eye, Megaphone, ShieldCheck } from "lucide-react";
 
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { LogoutButton } from "@/components/logout-button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { BackgroundCard } from "@/components/profile/BackgroundCard";
 import { ImportExportCard } from "@/components/profile/ImportExportCard";
 import { PushToggle } from "@/components/profile/PushToggle";
@@ -94,6 +95,23 @@ export default async function ProfilePage() {
         <UsernameForm initialUsername={username} />
       </div>
 
+      {/* `/users/[username]` existed but nothing linked to it — you could not
+          see the page other people see of you without typing the URL. */}
+      {username ? (
+        <Link
+          href={`/users/${username}`}
+          className="mt-4 flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition hover:ring-primary/40"
+        >
+          <Eye className="size-5 text-muted-foreground" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">View my public profile</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              What friends see at /users/{username}
+            </span>
+          </span>
+        </Link>
+      ) : null}
+
       <SocialSettingsCard suggestedUsername={username || name} />
 
       <BackgroundCard />
@@ -101,6 +119,18 @@ export default async function ProfilePage() {
       <ImportExportCard />
 
       <PushToggle />
+
+      {/* The stylesheet has always carried a full light palette; until now
+          `<html class="dark">` was hardcoded so it could never be used. */}
+      <div className="mt-4 flex items-center justify-between gap-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Appearance
+          </p>
+          <p className="mt-1 text-sm">Light, dark, or follow your system.</p>
+        </div>
+        <ThemeToggle />
+      </div>
 
       <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">

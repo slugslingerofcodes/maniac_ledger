@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { BookOpen, Bookmark, Search, User } from "lucide-react";
+import { BookOpen, Bookmark, Newspaper, Search, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { label: "Home", href: "/manga", Icon: BookOpen },
+  { label: "News", href: "/manga/news", Icon: Newspaper },
   { label: "Search", href: "/manga/search", Icon: Search },
   { label: "Library", href: "/manga/library", Icon: Bookmark },
   { label: "Profile", href: "/profile", Icon: User },

@@ -11,6 +11,8 @@ export type AnalyticsEvents = {
     source: "search" | "recommendation" | "miscellaneous";
   };
   episode_marked_watched: { animeId: string; episodeId: string };
+  /** The one-tap "+1" on a card, as opposed to the detail-page checklist. */
+  episode_advanced: { animeId: string; source: "rail" | "grid" | "quick-look" };
   status_changed: { animeId: string; status: string };
   recommendation_clicked: { malId: number; title: string };
 };

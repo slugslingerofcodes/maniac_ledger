@@ -4,6 +4,79 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 
+export type ReminderItem = {
+  id: string;
+  malId: number;
+  title: string;
+  posterUrl: string | null;
+  /** ISO date (YYYY-MM-DD), or null when the air date was unknown. */
+  scheduledDate: string | null;
+  /** Set once the digest job has emailed/pushed this one. */
+  notifiedAt: string | null;
+  /** True when the air date has arrived or passed — the actionable ones. */
+  due: boolean;
+  createdAt: string;
+};
+
+/**
+ * The signed-in user's air-date reminders, most imminent first, for the
+ * notification inbox. Until now `notifications` rows were write-only from the
+ * app's point of view: you could set a reminder, and it could reach you by
+ * email or push, but there was nowhere in the product to see what you'd asked
+ * for or to catch up on one you'd missed.
+ *
+ * RLS scopes the table to `auth.uid()`, so no user filter is needed here.
+ */
+export async function getReminders(): Promise<ReminderItem[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, mal_id, anime_title, poster_url, scheduled_date, notified_at, created_at")
+    .order("scheduled_date", { ascending: true, nullsFirst: false })
+    .limit(100);
+  if (error || !data) return [];
+
+  const today = new Date().toISOString().slice(0, 10);
+  return data.map((row) => ({
+    id: row.id,
+    malId: row.mal_id,
+    title: row.anime_title,
+    posterUrl: row.poster_url,
+    scheduledDate: row.scheduled_date,
+    notifiedAt: row.notified_at,
+    // A null date can never be "due" — we don't know when it airs, so
+    // announcing it as ready would be a lie.
+    due: row.scheduled_date != null && row.scheduled_date <= today,
+    createdAt: row.created_at,
+  }));
+}
+
+/** Drops a reminder from the inbox (same row the bell counts). */
+export async function dismissReminder(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/notifications");
+  return { ok: true };
+}
+
 export type ToggleNotifyInput = {
   malId: number;
   animeTitle: string;

@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/manga" },
+  // First after Home: it's where /choose lands you, so it should read as a
+  // primary destination rather than an afterthought at the end of the row.
+  { label: "News", href: "/manga/news" },
   { label: "Search", href: "/manga/search" },
   { label: "Light Novels", href: "/manga/lightnovels" },
   { label: "Web", href: "/manga/web" },

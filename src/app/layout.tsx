@@ -8,6 +8,7 @@ import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ShojiDoors } from "@/components/ShojiDoors";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 
 // Body + UI face: Plus Jakarta Sans — warm, rounded, modern, crisp at small
@@ -52,11 +53,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // No `dark` class here any more — THEME_INIT_SCRIPT puts it on before
+    // first paint based on the stored choice (default: follow the OS).
+    // suppressHydrationWarning because that script mutates <html> between the
+    // server render and hydration, by design.
     <html
       lang="en"
-      className={`dark ${sans.variable} ${display.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${sans.variable} ${display.variable} ${geistMono.variable} ${didot.variable} h-full antialiased`}
     >
       <head>
+        {/* Must run before any painted markup, or the page flashes the wrong
+            theme on every single load. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {/*
           Posters are served straight from their source CDNs (see
           `images.unoptimized` in next.config.ts), so the LCP image on almost

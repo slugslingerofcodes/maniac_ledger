@@ -57,7 +57,12 @@ export function ImportExportCard() {
   }
 
   return (
-    <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+    // `id` so the library's empty state and onboarding can deep-link here —
+    // scroll-mt clears the sticky nav that would otherwise cover the heading.
+    <div
+      id="import"
+      className="mt-4 scroll-mt-20 rounded-xl bg-card p-4 ring-1 ring-foreground/10"
+    >
       <p className="text-xs uppercase tracking-wide text-muted-foreground">
         Import &amp; export
       </p>

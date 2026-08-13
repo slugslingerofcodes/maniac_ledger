@@ -2,12 +2,26 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Clapperboard, CornerDownLeft, Search } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { Clapperboard, Clock, CornerDownLeft, Search } from "lucide-react";
 
 import { NAV_ITEMS } from "@/lib/nav-items";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
+import {
+  COMMAND_PALETTE_OPEN_EVENT,
+  getPaletteRecentsServerSnapshot,
+  getPaletteRecentsSnapshot,
+  pushPaletteRecent,
+  subscribeToPaletteRecents,
+} from "@/lib/command-palette";
 import type { JikanAnime } from "@/lib/jikan";
 import { posterUrl } from "@/lib/poster";
 
@@ -39,6 +53,7 @@ const PAGES: PageResult[] = [
   { kind: "page", label: "Home", href: "/" },
   ...NAV_ITEMS.map((i) => ({ kind: "page" as const, label: i.label, href: i.href })),
   { kind: "page", label: "Profile", href: "/profile" },
+  { kind: "page", label: "Reminders", href: "/notifications" },
   { kind: "page", label: "Announcements", href: "/announcements" },
 ];
 
@@ -48,8 +63,16 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [animeResults, setAnimeResults] = useState<AnimeResult[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  // localStorage is the source of truth for recents — subscribe to it rather
+  // than mirroring it into state (same pattern as `useRecentSearches`).
+  const recents = useSyncExternalStore(
+    subscribeToPaletteRecents,
+    getPaletteRecentsSnapshot,
+    getPaletteRecentsServerSnapshot,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebounce(query, 300);
+  const panelRef = useFocusTrap<HTMLDivElement>(open);
 
   // Global shortcut. ⌘K on mac, Ctrl+K elsewhere; "/" is left alone (search
   // boxes own it).
@@ -62,6 +85,13 @@ export function CommandPalette() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The nav's search field and the mobile search icon open it by event.
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
   }, []);
 
   const close = useCallback(() => {
@@ -103,19 +133,31 @@ export function CommandPalette() {
   }
 
   const q = query.trim().toLowerCase();
+  // Empty query → what you actually use, then everything else. A cold start
+  // (no recents yet) still shows the full list, so nothing is ever hidden.
+  const recentHrefs = new Set(recents.map((r) => r.href));
+  const recentPages: PageResult[] = q
+    ? []
+    : recents.map((r) => ({ kind: "page" as const, label: r.label, href: r.href }));
   const pageMatches = q
     ? PAGES.filter((p) => p.label.toLowerCase().includes(q))
-    : PAGES;
+    : [...recentPages, ...PAGES.filter((p) => !recentHrefs.has(p.href))];
   const showAnime = q.length >= 2;
   const results: Result[] = [
     ...pageMatches,
     ...(showAnime ? animeResults : []),
   ];
   const active = Math.min(activeIndex, Math.max(0, results.length - 1));
+  const recentCount = recentPages.length;
 
   function go(result: Result) {
     close();
-    router.push(result.kind === "page" ? result.href : `/anime/mal/${result.malId}`);
+    if (result.kind === "page") {
+      pushPaletteRecent({ label: result.label, href: result.href });
+      router.push(result.href);
+    } else {
+      router.push(`/anime/mal/${result.malId}`);
+    }
   }
 
   function onInputKeyDown(e: React.KeyboardEvent) {
@@ -149,7 +191,10 @@ export function CommandPalette() {
         className="absolute inset-0 cursor-default bg-black/55 backdrop-blur-sm"
       />
 
-      <div className="glass relative w-full max-w-lg overflow-hidden rounded-xl border border-border shadow-2xl">
+      <div
+        ref={panelRef}
+        className="glass relative w-full max-w-lg overflow-hidden rounded-xl border border-border shadow-2xl"
+      >
         <div className="flex items-center gap-2 border-b border-border px-3">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <input
@@ -187,6 +232,15 @@ export function CommandPalette() {
           ) : (
             results.map((r, i) => (
               <li key={r.kind === "page" ? r.href : `mal-${r.malId}`}>
+                {/* Section labels, rendered inline so the flat listbox and its
+                    arrow-key indexing stay untouched. */}
+                {recentCount > 0 && i === 0 ? <GroupLabel>Recent</GroupLabel> : null}
+                {recentCount > 0 && i === recentCount ? (
+                  <GroupLabel>All pages</GroupLabel>
+                ) : null}
+                {showAnime && r.kind === "anime" && results[i - 1]?.kind === "page" ? (
+                  <GroupLabel>Anime</GroupLabel>
+                ) : null}
                 <button
                   id={`palette-opt-${i}`}
                   type="button"
@@ -203,7 +257,11 @@ export function CommandPalette() {
                 >
                   {r.kind === "page" ? (
                     <>
-                      <Clapperboard className="size-4 shrink-0 opacity-60" aria-hidden />
+                      {recentCount > 0 && i < recentCount ? (
+                        <Clock className="size-4 shrink-0 opacity-60" aria-hidden />
+                      ) : (
+                        <Clapperboard className="size-4 shrink-0 opacity-60" aria-hidden />
+                      )}
                       <span className="flex-1">{r.label}</span>
                       <span className="text-xs opacity-50">{r.href}</span>
                     </>
@@ -228,7 +286,49 @@ export function CommandPalette() {
             ))
           )}
         </ul>
+
+        {/* The shortcuts were invisible; now they're printed on the thing that
+            uses them. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+          <Hint keys={["↑", "↓"]}>navigate</Hint>
+          <Hint keys={["↵"]}>open</Hint>
+          <Hint keys={["esc"]}>close</Hint>
+          <Hint keys={["⌘", "K"]}>anywhere</Hint>
+        </div>
       </div>
     </div>
+  );
+}
+
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      aria-hidden
+      className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70"
+    >
+      {children}
+    </p>
+  );
+}
+
+function Hint({
+  keys,
+  children,
+}: {
+  keys: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {keys.map((k) => (
+        <kbd
+          key={k}
+          className="rounded border border-border px-1 py-0.5 font-sans text-[10px] leading-none"
+        >
+          {k}
+        </kbd>
+      ))}
+      {children}
+    </span>
   );
 }

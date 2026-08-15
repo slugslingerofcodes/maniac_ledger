@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { seedCatalog } from "@/lib/catalog-seed";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin, requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -225,4 +226,46 @@ export async function setRequestStatus(formData: FormData) {
   if (error) redirect(`/admin?message=${encodeURIComponent(error.message)}`);
   revalidatePath("/admin");
   redirect("/admin");
+}
+
+/**
+ * Top up the local catalog from MyAnimeList (admin only).
+ *
+ * The catalog is the app's last-resort data tier — when MAL and AniList are
+ * both down, it is the only thing standing between a user and a page of empty
+ * rails. It normally fills as a side effect of people adding titles, so a young
+ * install has nothing to fall back *to*.
+ *
+ * Deliberately incremental: a full seed is minutes of rate-limited upstream
+ * requests, well past a serverless function's budget, so one press takes a
+ * bounded bite and is idempotent (upsert on `mal_id`). Press it a few times.
+ * Partial success is reported rather than treated as failure — during the
+ * outage this was built for, most pages 504 and the few that answer are
+ * exactly what we want to keep.
+ */
+export async function seedCatalogAction(formData: FormData) {
+  await requireAdmin();
+
+  const pages = z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .catch(2)
+    .parse(formData.get("pages"));
+
+  let message: string;
+  try {
+    const { written, pagesOk, pagesFailed } = await seedCatalog(pages);
+    message =
+      written === 0
+        ? "MyAnimeList is unreachable right now — nothing added. Try again shortly; the seed is idempotent."
+        : `Added or refreshed ${written} titles (${pagesOk} page(s) fetched, ${pagesFailed} unavailable).`;
+  } catch (err) {
+    message = err instanceof Error ? err.message : "Catalog seed failed.";
+  }
+
+  // The rails read the catalog, so refresh the surfaces that degrade to it.
+  revalidatePath("/", "layout");
+  redirect(`/admin?message=${encodeURIComponent(message)}`);
 }

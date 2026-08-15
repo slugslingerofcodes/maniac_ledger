@@ -5,10 +5,12 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   deleteProduct,
+  seedCatalogAction,
   setProductAvailability,
   setRequestStatus,
   setUserAdmin,
 } from "@/app/admin/actions";
+import { catalogSize } from "@/lib/catalog-seed";
 import { ProductForm } from "@/components/store/ProductForm";
 import { formatPrice } from "@/lib/price";
 import { signOut } from "@/app/auth/actions";
@@ -33,6 +35,10 @@ export default async function AdminPage(props: {
 }) {
   const admin = await requireAdmin();
   const { message } = await props.searchParams;
+
+  // Same degradation as the user list below: no service-role key means the
+  // count is unknown, not that the dashboard should fail.
+  const catalogCount = await catalogSize().catch(() => 0);
 
   // Every user + their sign-in times (service role → bypasses RLS). Degrades
   // to an explanatory message when SUPABASE_SERVICE_ROLE_KEY isn't configured
@@ -108,6 +114,58 @@ export default async function AdminPage(props: {
           {message}
         </p>
       ) : null}
+
+      {/* Catalog fallback */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-lg font-semibold">Catalog fallback</h2>
+        <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+          <p className="text-sm text-muted-foreground">
+            The local catalog is the last tier of{" "}
+            <span className="font-medium text-foreground">
+              MAL → AniList → catalog
+            </span>
+            . When both live APIs are down it is the only thing keeping the home
+            rails, search, seasons and movies from rendering empty.
+          </p>
+          <p className="mt-3 text-sm">
+            Currently holding{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {catalogCount.toLocaleString()}
+            </span>{" "}
+            titles.
+            {catalogCount < 200 ? (
+              <span className="ml-1 text-amber-400">
+                Thin — seed a few times to give the fallback something to serve.
+              </span>
+            ) : null}
+          </p>
+          {/* Bounded per press: a full seed is minutes of rate-limited
+              requests, past a serverless budget. Idempotent, so pressing it
+              repeatedly tops up rather than duplicating. */}
+          <form action={seedCatalogAction} className="mt-4 flex items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="seed-pages" className="text-xs">
+                Pages per source
+              </Label>
+              <Input
+                id="seed-pages"
+                name="pages"
+                type="number"
+                min={1}
+                max={5}
+                defaultValue={2}
+                className="h-9 w-24"
+              />
+            </div>
+            <Button type="submit">Seed from MyAnimeList</Button>
+          </form>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Safe to run repeatedly — rows upsert on MAL id. Pages that MAL
+            can&apos;t serve are skipped, so a partial result is normal during an
+            outage.
+          </p>
+        </div>
+      </section>
 
       {/* Announcements */}
       <section className="mb-10">

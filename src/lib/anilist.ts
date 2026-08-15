@@ -122,11 +122,64 @@ function cacheSet(key: string, entry: CacheEntry): void {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Circuit breaker                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * AniList is this app's tier-2 engine: nearly every surface degrades to it when
+ * MAL wobbles. But AniList can be *globally* out of service — observed
+ * answering every query with
+ *
+ *   403 "The AniList API has been temporarily disabled due to severe
+ *        stability issues."
+ *
+ * The cache above only stores successes, so in that state every fallback path
+ * paid a full round-trip (plus this module's rate-limiter spacing) to an API
+ * guaranteed to fail — and it fired from several page sections at once. The
+ * result was the worst case: slow *and* broken, exactly when the app was
+ * already degraded.
+ *
+ * So: trip a breaker on **403 only** — the one status where AniList explicitly
+ * says it has taken itself out of service — and fail fast for a short while
+ * instead of re-asking.
+ *
+ * The narrowness is the point. It is tempting to trip on 5xx too, but a single
+ * 500 is far more often a transient blip than an outage, and disabling the
+ * app's entire backup engine for five minutes over one is a much worse trade
+ * than paying for a retry. `tests/lib/anilist.test.ts` pins that directly
+ * ("keeps the queue alive after a failure"). 429 is likewise excluded: a rate
+ * limit means AniList is alive and this module's limiter is the right tool.
+ *
+ * Short cooldown so recovery is automatic and no restart is needed. Mirrors
+ * jikan.ts's negative caching, which AniList never had.
+ */
+const BREAKER_COOLDOWN_MS = 5 * 60_000;
+let breakerOpenUntil = 0;
+let breakerReason = "";
+
+function breakerIsOpen(): boolean {
+  return Date.now() < breakerOpenUntil;
+}
+
+function tripBreaker(status: number, message: string): void {
+  // 403 is AniList's "this API is disabled" signal — persistent and explicit.
+  // Everything else (5xx, 429, 4xx) is left to the normal retry path.
+  if (status !== 403) return;
+  breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+  breakerReason = message;
+  console.warn(
+    `[anilist] circuit breaker open for ${BREAKER_COOLDOWN_MS / 1000}s: ${message}`,
+  );
+}
+
 /** Test hook: this module holds cache state across imports, like jikan's. */
 export function __resetAnilistCache(): void {
   responseCache.clear();
   inFlight.clear();
   nextSlotAt = 0;
+  breakerOpenUntil = 0;
+  breakerReason = "";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -213,6 +266,13 @@ async function anilistFetchLive<T>(
   variables: Record<string, unknown>,
   opts?: { revalidate?: number },
 ): Promise<T> {
+  // Fail fast while the service is known-down — before the rate limiter, so a
+  // burst of fallbacks doesn't serialise behind 350ms slots to reach a
+  // certain failure.
+  if (breakerIsOpen()) {
+    throw new AnilistError(503, `AniList unavailable: ${breakerReason}`);
+  }
+
   return rateLimited(async () => {
     const res = await fetch(ANILIST_URL, {
       method: "POST",
@@ -241,6 +301,7 @@ async function anilistFetchLive<T>(
       } catch {
         /* non-JSON error body */
       }
+      tripBreaker(res.status, detail);
       throw new AnilistError(
         res.status,
         `AniList request failed (${res.status}): ${detail}`,
@@ -442,7 +503,21 @@ export type AnilistSearchFilters = {
   maxDuration?: number;
   /** true → doujin (self-published) works only. */
   doujin?: boolean;
+  /**
+   * Override the default ranking. Omitted, an unqueried browse sorts by
+   * popularity and a text search by match quality — which is right for search,
+   * but wrong for a "Top Rated" rail that has to rank by score. Only the sorts
+   * the app actually asks for are allowed, so a typo can't become a GraphQL
+   * error at runtime.
+   */
+  sort?: AnilistSort;
 };
+
+export type AnilistSort =
+  | "POPULARITY_DESC"
+  | "SCORE_DESC"
+  | "START_DATE_DESC"
+  | "TRENDING_DESC";
 
 const MEDIA_FIELDS = `
   id
@@ -498,7 +573,7 @@ export async function searchAnilist(
   const args: string[] = [
     "type: ANIME",
     "isAdult: false",
-    filters.query ? "sort: SEARCH_MATCH" : "sort: POPULARITY_DESC",
+    `sort: ${filters.sort ?? (filters.query ? "SEARCH_MATCH" : "POPULARITY_DESC")}`,
   ];
   const add = (name: string, gqlType: string, argName: string, value: unknown) => {
     if (value === undefined || value === null) return;

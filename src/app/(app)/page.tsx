@@ -14,14 +14,16 @@ import { TrendingPosterMarquee } from "@/components/PosterMarquee";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import { getAnilistAiringSchedule, searchAnilist } from "@/lib/anilist";
 import {
+  getNewestAnime,
+  getPopularAnime,
+  getTopAiringAnime,
+  getTopRatedAnime,
+  getUpcomingAnime,
+} from "@/lib/discovery";
+import {
   getJustFinished,
   getSchedules,
-  getSeasonNow,
-  getTopAnime,
-  getTopByPopularity,
   getTopMovies,
-  getTopRated,
-  getUpcomingSeasons,
   type JikanAnime,
   type TopWindow,
 } from "@/lib/jikan";
@@ -48,7 +50,10 @@ function parseDurationMins(duration: string | null | undefined): number | null {
 async function HeroSection() {
   let slides: HeroSlide[] = [];
   try {
-    const { data } = await getTopAnime(10);
+    // Same MAL → AniList → catalog chain as the rails below: the hero is the
+    // first thing on the landing page, so it should be the last thing to
+    // collapse to the static fallback.
+    const data = await getTopAiringAnime(10);
     slides = data.slice(0, 10).map((a) => ({
       malId: a.mal_id,
       title: a.title,
@@ -175,16 +180,19 @@ function dedupe(list: JikanAnime[]): JikanAnime[] {
 }
 
 async function Discovery() {
+  // Each rail runs MAL → AniList → catalog (src/lib/discovery.ts). Previously
+  // these were `.catch(() => [])` with nothing after the catch, so a MAL
+  // outage blanked all three tabs on the landing page.
   const [newest, popular, topRated] = await Promise.all([
-    getSeasonNow(18).then((r) => r.data).catch(() => []),
-    getTopByPopularity(18).then((r) => r.data).catch(() => []),
-    getTopRated(18).then((r) => r.data).catch(() => []),
+    getNewestAnime(18),
+    getPopularAnime(18),
+    getTopRatedAnime(18),
   ]);
   return (
     <DiscoveryTabs
-      newest={dedupe(newest).slice(0, 18).map(toDiscoveryItem)}
-      popular={dedupe(popular).slice(0, 18).map(toDiscoveryItem)}
-      topRated={dedupe(topRated).slice(0, 18).map(toDiscoveryItem)}
+      newest={newest.map(toDiscoveryItem)}
+      popular={popular.map(toDiscoveryItem)}
+      topRated={topRated.map(toDiscoveryItem)}
     />
   );
 }
@@ -197,25 +205,15 @@ async function Discovery() {
  */
 
 async function TopAiringPanel() {
-  let items: SidebarListItem[];
-  try {
-    const { data } = await getTopAnime(10);
-    items = dedupe(data).slice(0, 6).map(toSidebarItem);
-  } catch {
-    return null;
-  }
-  return <SidebarList title="Top Airing" items={items} />;
+  const items = await getTopAiringAnime(6);
+  if (items.length === 0) return null;
+  return <SidebarList title="Top Airing" items={items.map(toSidebarItem)} />;
 }
 
 async function UpcomingPanel() {
-  let items: SidebarListItem[];
-  try {
-    const list = await getUpcomingSeasons(1);
-    items = list.slice(0, 6).map(toSidebarItem);
-  } catch {
-    return null;
-  }
-  return <SidebarList title="Upcoming" items={items} />;
+  const items = await getUpcomingAnime(6);
+  if (items.length === 0) return null;
+  return <SidebarList title="Upcoming" items={items.map(toSidebarItem)} />;
 }
 
 async function JustFinishedPanel() {

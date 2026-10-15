@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { ScheduleClocks } from "@/components/ScheduleClocks";
 import { ScheduleList, type ScheduleItem } from "@/components/ScheduleList";
+import { AddToCalendarButton } from "@/components/schedule/AddToCalendarButton";
 import { SourceNotice } from "@/components/SourceNotice";
 import { getAnilistAiringSchedule } from "@/lib/anilist";
 import { getAiringSchedule, type JikanAnime } from "@/lib/jikan";
@@ -57,6 +58,7 @@ export default async function SchedulePage() {
       <ScheduleClocks />
 
       <div className="mt-6">
+        <AddToCalendarButton className="mb-4" />
         <SourceNotice source={source} anilistLabel="Schedule via AniList" />
         <ScheduleList items={items} />
       </div>

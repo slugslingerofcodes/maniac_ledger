@@ -31,6 +31,7 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0024_manga_chapters.sql` | `manga.mangadex_id`, `manga.chapters_synced_at`, `manga_chapters` table |
 | `supabase/migrations/0025_mangadex_only_manga.sql` | unique constraint on `manga.mangadex_id` (MAL-less titles) |
 | `supabase/migrations/0026_http_cache.sql` | `http_cache` table (service-role only) + hourly purge job — the durable Jikan cache |
+| `supabase/migrations/0029_revoke_trigger_fn_execute.sql` | revokes RPC access (`EXECUTE` from `public`/`anon`/`authenticated`) to the SECURITY DEFINER trigger functions; the triggers keep firing |
 
 (`0009` is run in step 3, after the Edge Functions are deployed; `0019` in step 3a.)
 
@@ -44,9 +45,10 @@ npm run check:schema     # anon key only, reads no rows; exit 1 on drift
 It probes every table/column the app depends on via PostgREST and names the
 migration behind anything missing. Objects it *can't* see — Realtime publications
 (`0006`), pg_cron schedules (`0009`, `0019`, `0026`), the avatars bucket (`0012`),
-and bare constraints (`0025`) — are listed in its output as needing a manual check.
+bare constraints (`0025`), and function grants (`0029`) — are listed in its output
+as needing a manual check.
 
-> As of the last run, `0001`–`0026` are **all applied** (verified, not assumed).
+> As of the last run, `0001`–`0029` are **all applied** (verified, not assumed).
 
 **`0026` is optional but recommended.** Without it — or without
 `SUPABASE_SERVICE_ROLE_KEY` (step 4) — the shared cache silently disables itself

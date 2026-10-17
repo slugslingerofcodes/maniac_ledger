@@ -3,12 +3,15 @@ import { z } from "zod";
 
 import {
   AnilistError,
+  anilistReadyWithin,
   searchAnilist,
   type AnilistSearchFilters,
 } from "@/lib/anilist";
 import { searchCatalog } from "@/lib/catalog-fallback";
+import { hedge, HedgeError } from "@/lib/hedge";
 import {
   JikanError,
+  JikanUnavailableError,
   searchAnime,
   type JikanAnime,
   type JikanSearchOptions,
@@ -43,7 +46,13 @@ import {
  *
  * Fallback chain when the primary engine fails: Jikan → AniList → the local
  * catalog (degraded). Responses carry `source` so the UI can say where the
- * results came from.
+ * results came from. A slow Jikan is *hedged*: past `HEDGE_DELAY_MS` AniList
+ * is raced alongside it rather than waiting out Jikan's timeout.
+ *
+ * Two knobs exist for the ⌘K palette, which shows six rows per keystroke:
+ *  - `limit=N` (1–25): one upstream request sized to N, no two-page stitch.
+ *  - `engine=catalog`: the local catalog only — a single database query, so
+ *    the palette can paint known titles while the live engines are still out.
  */
 
 const FORMAT_VALUES = new Set<string>(FORMAT_OPTIONS.map((f) => f.value));
@@ -95,6 +104,8 @@ const QuerySchema = z
     min_dur: optionalInt(0, 10_000),
     max_dur: optionalInt(0, 10_000),
     doujin: z.enum(["true"]).optional(),
+    limit: optionalInt(1, 25),
+    engine: z.enum(["catalog"]).optional(),
     // Unknown tag names are dropped (never forwarded), capped at 5.
     tags: z
       .string()
@@ -130,6 +141,19 @@ const QuerySchema = z
 
 /** Results per app page: two 25-result Jikan pages stitched together. */
 const JIKAN_PAGES_PER_APP_PAGE = 2;
+
+/**
+ * How long Jikan gets before AniList is raced alongside it. Type-ahead
+ * (`limit`) hedges sooner: a person is watching a dropdown. The search page
+ * waits longer, both because it stitches two Jikan pages (two latencies) and
+ * because a hedge there spends AniList budget on fifty-row pages.
+ */
+const HEDGE_DELAY_MS = { typeahead: 1_200, page: 2_500 } as const;
+/**
+ * Don't hedge into a backed-up AniList queue (2.1s spacing): a hedge that
+ * waits there can't beat Jikan, and still uses a slot real fallbacks need.
+ */
+const HEDGE_MAX_QUEUE_WAIT_MS = 300;
 
 /**
  * AniList hard-caps `Page.pageInfo.total` at 5000 (→ exactly 100 pages of 50).
@@ -174,7 +198,13 @@ export async function GET(request: NextRequest) {
   // only over-limits, never under-limits.
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const verdict = checkRateLimit(`anime-search:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const { searchParams } = request.nextUrl;
+  // Catalog-only lookups get their own bucket: they never touch the upstream
+  // quota this limit protects, and the palette sends one alongside each live
+  // search — sharing a bucket would halve a typist's budget for nothing.
+  const bucket =
+    searchParams.get("engine") === "catalog" ? "anime-search-catalog" : "anime-search";
+  const verdict = checkRateLimit(`${bucket}:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
   if (!verdict.ok) {
     return NextResponse.json(
       { error: "Too many searches. Please slow down and try again shortly." },
@@ -187,8 +217,6 @@ export async function GET(request: NextRequest) {
       },
     );
   }
-
-  const { searchParams } = request.nextUrl;
 
   const parsed = QuerySchema.safeParse({
     q: searchParams.get("q") ?? undefined,
@@ -209,6 +237,8 @@ export async function GET(request: NextRequest) {
     max_dur: searchParams.get("max_dur") ?? undefined,
     doujin: searchParams.get("doujin") ?? undefined,
     tags: searchParams.get("tags") ?? undefined,
+    limit: searchParams.get("limit") ?? undefined,
+    engine: searchParams.get("engine") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -225,8 +255,10 @@ export async function GET(request: NextRequest) {
   const page = f.page;
   const genres = f.genres ?? [];
   const tags = f.tags ?? [];
+  const limit = f.limit;
 
   const anilistFilters: AnilistSearchFilters = {
+    perPage: limit,
     query: f.q,
     genreIds: genres,
     tags: tags as TagValue[],
@@ -260,6 +292,26 @@ export async function GET(request: NextRequest) {
     tags.length > 0;
 
   /**
+   * The page-1 catalog lookup, created at most once per request. The MAL path
+   * starts it up front, in parallel with the live engines — it used to begin
+   * only after they had answered, adding a database round trip to every
+   * search. The AniList-only path still starts it lazily, after AniList
+   * succeeds, so a failed advanced filter never touches the catalog.
+   */
+  let catalogLookup: Promise<JikanAnime[]> | undefined;
+  function lookupCatalog(): Promise<JikanAnime[]> {
+    if (!catalogLookup) {
+      catalogLookup = Promise.resolve().then(() =>
+        searchCatalog(f.q ?? "", genres, limit),
+      );
+      // Started eagerly and possibly never awaited (the live engine may answer
+      // with no merge needed): don't let a rejection go unhandled.
+      catalogLookup.catch(() => {});
+    }
+    return catalogLookup;
+  }
+
+  /**
    * Enrich page-1 text-query results with local-catalog substring matches the
    * live engine missed. AniList's SEARCH_MATCH only matches whole tokens
    * ("naruto" works, "narut" returns nothing), so typing letters progressively
@@ -269,20 +321,27 @@ export async function GET(request: NextRequest) {
   async function mergeCatalog(results: JikanAnime[]): Promise<JikanAnime[]> {
     if (!f.q || page !== 1) return results;
     try {
-      const catalog = await searchCatalog(f.q, genres);
+      const catalog = await lookupCatalog();
       if (catalog.length === 0) return results;
       const seen = new Set(results.map((r) => r.mal_id));
       const extra = catalog.filter((c) => !seen.has(c.mal_id));
       // Catalog substring hits go first when the live engine found nothing
       // (e.g. a partial prefix) so the obvious match isn't buried.
-      return results.length === 0 ? extra : [...results, ...extra];
+      const merged = results.length === 0 ? extra : [...results, ...extra];
+      return limit != null ? merged.slice(0, limit) : merged;
     } catch {
       return results;
     }
   }
 
-  async function fromAnilist(): Promise<NextResponse> {
-    const res = await searchAnilist(anilistFilters, page);
+  // The request's signal lets a caller who has gone (the palette aborts the
+  // previous keystroke's fetch) give up its place in AniList's 2.1s queue.
+  const fetchAnilist = () =>
+    searchAnilist(anilistFilters, page, { signal: request.signal });
+
+  async function anilistResponse(
+    res: Awaited<ReturnType<typeof searchAnilist>>,
+  ): Promise<NextResponse> {
     const results = await mergeCatalog(res.data);
     const rawTotal = res.pagination.items.total;
     const approxTotal = rawTotal >= ANILIST_MAX_TOTAL;
@@ -303,7 +362,10 @@ export async function GET(request: NextRequest) {
     // Local catalog understands only title + genres; never edge-cached so
     // recovery isn't masked.
     try {
-      const results = await searchCatalog(f.q ?? "", genres);
+      const results =
+        f.q && page === 1
+          ? await lookupCatalog()
+          : await searchCatalog(f.q ?? "", genres, limit);
       return NextResponse.json(
         {
           results,
@@ -321,10 +383,51 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ---- Catalog only (the palette's instant first paint). ------------------
+  if (f.engine === "catalog") {
+    // The catalog matches title + genres and nothing else. Answering a
+    // filtered query from it would silently ignore the filter, so refuse.
+    if (
+      anilistOnly ||
+      f.year != null ||
+      f.format != null ||
+      f.status != null ||
+      f.min_year != null ||
+      f.max_year != null
+    ) {
+      return NextResponse.json(
+        { error: "engine=catalog supports only q and genres." },
+        { status: 400 },
+      );
+    }
+    try {
+      const results = await searchCatalog(f.q ?? "", genres, limit);
+      return NextResponse.json(
+        {
+          results,
+          page: 1,
+          totalPages: 1,
+          totalItems: results.length,
+          source: "catalog",
+        } satisfies AnimeSearchResponse,
+        // Read under the caller's session (the catalog is RLS-gated to signed-in
+        // users), so never shared at the edge — but a repeat from the same
+        // browser within a minute needn't leave it.
+        { headers: { "Cache-Control": "private, max-age=60" } },
+      );
+    } catch (err) {
+      console.error("[/api/anime/search] catalog-only lookup failed:", err);
+      return NextResponse.json(
+        { error: "Catalog search failed. Please try again." },
+        { status: 500 },
+      );
+    }
+  }
+
   // ---- AniList-required filters: skip Jikan entirely. --------------------
   if (anilistOnly) {
     try {
-      return await fromAnilist();
+      return await anilistResponse(await fetchAnilist());
     } catch (err) {
       console.error("[/api/anime/search] AniList failure:", err);
       if (err instanceof AnilistError && err.status === 429) {
@@ -342,70 +445,98 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // ---- MAL primary. -------------------------------------------------------
-  try {
-    const jikanOpts: JikanSearchOptions = {
-      type: f.format
-        ? FORMAT_OPTIONS.find((o) => o.value === f.format)?.jikan
-        : undefined,
-      status: f.status
-        ? STATUS_OPTIONS.find((o) => o.value === f.status)?.jikan
-        : undefined,
-      startDate:
-        f.year != null
-          ? `${f.year}-01-01`
-          : f.min_year != null
-            ? `${f.min_year}-01-01`
-            : undefined,
-      endDate:
-        f.year != null
-          ? `${f.year}-12-31`
-          : f.max_year != null
-            ? `${f.max_year}-12-31`
-            : undefined,
-    };
+  // ---- MAL primary, hedged with AniList. ----------------------------------
+  const jikanOpts: JikanSearchOptions = {
+    type: f.format
+      ? FORMAT_OPTIONS.find((o) => o.value === f.format)?.jikan
+      : undefined,
+    status: f.status
+      ? STATUS_OPTIONS.find((o) => o.value === f.status)?.jikan
+      : undefined,
+    startDate:
+      f.year != null
+        ? `${f.year}-01-01`
+        : f.min_year != null
+          ? `${f.min_year}-01-01`
+          : undefined,
+    endDate:
+      f.year != null
+        ? `${f.year}-12-31`
+        : f.max_year != null
+          ? `${f.max_year}-12-31`
+          : undefined,
+    limit,
+  };
 
-    // Stitch two Jikan pages (25 results each) into one ≤50-result app page,
-    // so callers get everything matching the query with page numbers.
-    const firstJikanPage = (page - 1) * JIKAN_PAGES_PER_APP_PAGE + 1;
-    const first = await searchAnime(f.q ?? "", firstJikanPage, genres, jikanOpts);
-    let results = first.data;
-    if (first.pagination.has_next_page) {
-      const second = await searchAnime(
-        f.q ?? "",
-        firstJikanPage + 1,
-        genres,
-        jikanOpts,
-      );
-      results = results.concat(second.data);
+  async function fetchJikan() {
+    try {
+      if (limit != null) {
+        // Type-ahead: one request sized to what's shown.
+        const res = await searchAnime(f.q ?? "", page, genres, jikanOpts);
+        return {
+          results: res.data,
+          totalPages: Math.max(1, res.pagination.last_visible_page),
+          total: res.pagination.items.total,
+        };
+      }
+
+      // Stitch two Jikan pages (25 results each) into one ≤50-result app
+      // page, so callers get everything matching the query with page numbers.
+      const firstJikanPage = (page - 1) * JIKAN_PAGES_PER_APP_PAGE + 1;
+      const first = await searchAnime(f.q ?? "", firstJikanPage, genres, jikanOpts);
+      let results = first.data;
+      if (first.pagination.has_next_page) {
+        const second = await searchAnime(
+          f.q ?? "",
+          firstJikanPage + 1,
+          genres,
+          jikanOpts,
+        );
+        results = results.concat(second.data);
+      }
+      return {
+        results,
+        totalPages: Math.max(
+          1,
+          Math.ceil(first.pagination.last_visible_page / JIKAN_PAGES_PER_APP_PAGE),
+        ),
+        total: first.pagination.items.total,
+      };
+    } catch (err) {
+      // Log the real cause server-side, but never leak it to the client. A
+      // circuit-open rejection was already logged once, when it opened.
+      if (!(err instanceof JikanUnavailableError)) {
+        console.error("[/api/anime/search] MAL failure, trying AniList:", err);
+      }
+      throw err;
     }
+  }
 
-    const totalPages = Math.max(
-      1,
-      Math.ceil(first.pagination.last_visible_page / JIKAN_PAGES_PER_APP_PAGE),
-    );
+  if (f.q && page === 1) void lookupCatalog();
 
+  try {
+    const outcome = await hedge(fetchJikan, fetchAnilist, {
+      delayMs: limit != null ? HEDGE_DELAY_MS.typeahead : HEDGE_DELAY_MS.page,
+      canHedge: () => anilistReadyWithin(HEDGE_MAX_QUEUE_WAIT_MS),
+    });
+    if (outcome.winner === "backup") return await anilistResponse(outcome.value);
+
+    const { results, totalPages, total } = outcome.value;
     const merged = await mergeCatalog(results);
-
     return NextResponse.json(
       {
         results: merged,
         page,
         totalPages,
-        totalItems: Math.max(first.pagination.items.total, merged.length),
+        totalItems: Math.max(total, merged.length),
         source: "mal",
       } satisfies AnimeSearchResponse,
       { headers: CACHE_HEADERS },
     );
   } catch (err) {
-    // Log the real cause server-side, but never leak it to the client.
-    console.error("[/api/anime/search] MAL failure, trying AniList:", err);
-
-    // MAL is down (or throttling us) — re-run the same search on AniList.
-    try {
-      return await fromAnilist();
-    } catch (anilistErr) {
-      console.error("[/api/anime/search] AniList fallback failed:", anilistErr);
+    const jikanErr = err instanceof HedgeError ? err.primaryError : err;
+    if (err instanceof HedgeError) {
+      console.error("[/api/anime/search] AniList fallback failed:", err.backupError);
     }
 
     // Both live APIs down — the local catalog keeps known titles searchable.
@@ -413,7 +544,7 @@ export async function GET(request: NextRequest) {
     if (catalogRes) return catalogRes;
 
     // Pass through Jikan's rate-limit signal so clients can back off.
-    if (err instanceof JikanError && err.status === 429) {
+    if (jikanErr instanceof JikanError && jikanErr.status === 429) {
       return NextResponse.json(
         { error: "Rate limited by the upstream anime service. Try again shortly." },
         { status: 429 },

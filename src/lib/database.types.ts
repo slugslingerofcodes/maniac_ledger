@@ -877,6 +877,37 @@ export type Database = {
         };
         Relationships: [];
       };
+      /**
+       * Calendar subscription tokens (migration 0028), one per user. Holds a
+       * SHA-256 of the token, never the token. Owner-only RLS for the server
+       * actions; the public feed route reads it with the service role.
+       */
+      calendar_feeds: {
+        Row: {
+          user_id: string;
+          token_hash: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          token_hash: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          token_hash?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_feeds_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       anime_watched_count: {

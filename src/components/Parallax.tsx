@@ -2,12 +2,7 @@
 
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
-import {
-  MOTION_CONDITIONS,
-  ensureScrollTrigger,
-  gsap,
-  ScrollTrigger,
-} from "@/lib/gsap";
+import { loadedGsap, withGsap } from "@/lib/gsap-loader";
 import { cn } from "@/lib/utils";
 
 /**
@@ -49,32 +44,36 @@ export function Parallax({
     const el = ref.current;
     if (!el) return;
 
-    ensureScrollTrigger();
+    // GSAP is fetched on first use (see gsap-loader); until it lands the
+    // layer just sits still, as it does under reduced motion.
+    return withGsap(({ gsap, ensureScrollTrigger, MOTION_CONDITIONS }) => {
+      ensureScrollTrigger();
 
-    // matchMedia gives us the reduced-motion branch *and* automatic cleanup:
-    // reverting the context removes the tween, its inline styles, and the
-    // ScrollTrigger together.
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_CONDITIONS, (ctx) => {
-      if (ctx.conditions?.reduce) return;
+      // matchMedia gives us the reduced-motion branch *and* automatic cleanup:
+      // reverting the context removes the tween, its inline styles, and the
+      // ScrollTrigger together.
+      const mm = gsap.matchMedia();
+      mm.add(MOTION_CONDITIONS, (ctx) => {
+        if (ctx.conditions?.reduce) return;
 
-      gsap.fromTo(
-        el,
-        { y: -distance / 2, scale },
-        {
-          y: distance / 2,
-          ease: "none",
-          scrollTrigger: {
-            trigger: el.parentElement ?? el,
-            start: "top bottom",
-            end: "bottom top",
-            scrub: true,
+        gsap.fromTo(
+          el,
+          { y: -distance / 2, scale },
+          {
+            y: distance / 2,
+            ease: "none",
+            scrollTrigger: {
+              trigger: el.parentElement ?? el,
+              start: "top bottom",
+              end: "bottom top",
+              scrub: true,
+            },
           },
-        },
-      );
-    });
+        );
+      });
 
-    return () => mm.revert();
+      return () => mm.revert();
+    });
   }, [distance, scale]);
 
   return (
@@ -106,37 +105,39 @@ export function ParallaxStagger({
     const el = ref.current;
     if (!el) return;
 
-    ensureScrollTrigger();
+    return withGsap(({ gsap, ensureScrollTrigger, MOTION_CONDITIONS }) => {
+      ensureScrollTrigger();
 
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_CONDITIONS, (ctx) => {
-      if (ctx.conditions?.reduce) return;
+      const mm = gsap.matchMedia();
+      mm.add(MOTION_CONDITIONS, (ctx) => {
+        if (ctx.conditions?.reduce) return;
 
-      const items = Array.from(el.children) as HTMLElement[];
-      if (items.length === 0) return;
+        const items = Array.from(el.children) as HTMLElement[];
+        if (items.length === 0) return;
 
-      gsap.fromTo(
-        items,
-        { opacity: 0, y: offset },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.5,
-          ease: "power2.out",
-          stagger: 0.04,
-          scrollTrigger: {
-            trigger: el,
-            // Start once the container's top is comfortably inside the fold,
-            // and fire once — re-hiding rows on scroll-up is disorienting in a
-            // grid you're trying to read.
-            start: "top 85%",
-            once: true,
+        gsap.fromTo(
+          items,
+          { opacity: 0, y: offset },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.5,
+            ease: "power2.out",
+            stagger: 0.04,
+            scrollTrigger: {
+              trigger: el,
+              // Start once the container's top is comfortably inside the fold,
+              // and fire once — re-hiding rows on scroll-up is disorienting in a
+              // grid you're trying to read.
+              start: "top 85%",
+              once: true,
+            },
           },
-        },
-      );
-    });
+        );
+      });
 
-    return () => mm.revert();
+      return () => mm.revert();
+    });
   }, [offset]);
 
   return (
@@ -152,5 +153,7 @@ export function ParallaxStagger({
  * keep firing at the old scroll offsets.
  */
 export function refreshScrollTriggers() {
-  ScrollTrigger.refresh();
+  // Nothing to re-measure until GSAP has loaded: no triggers exist yet, and
+  // the ones created later measure the layout as it is then.
+  loadedGsap()?.ScrollTrigger.refresh();
 }

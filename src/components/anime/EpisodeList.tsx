@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { Check, Star } from "lucide-react";
 import { toast } from "sonner";
 
@@ -288,7 +288,7 @@ function NextEpisodeSwipeCard({
   const [armed, setArmed] = useState(false);
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="relative mb-3 overflow-hidden rounded-xl ring-1 ring-foreground/10"
@@ -299,7 +299,7 @@ function NextEpisodeSwipeCard({
         Marked watched
       </div>
 
-      <motion.div
+      <m.div
         drag={armed ? false : "x"}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={{ left: 0, right: 0.6 }}
@@ -325,7 +325,7 @@ function NextEpisodeSwipeCard({
         <span className="shrink-0 text-xs text-muted-foreground" aria-hidden>
           swipe →
         </span>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 }

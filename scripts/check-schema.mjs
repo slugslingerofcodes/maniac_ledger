@@ -68,6 +68,7 @@ export const MANIFEST = [
   { migration: "0024", table: "manga", columns: ["mangadex_id", "chapters_synced_at"] },
   { migration: "0024", table: "manga_chapters", columns: ["id", "manga_id"] },
   { migration: "0026", table: "http_cache", columns: ["key", "value", "expires_at"] },
+  { migration: "0028", table: "calendar_feeds", columns: ["user_id", "token_hash", "created_at"] },
 ];
 
 /** Objects PostgREST cannot see; verify these by hand (see DEPLOY.md). */
@@ -78,6 +79,7 @@ export const UNPROBEABLE = [
   { migration: "0019", what: "pg_cron: weekly digest" },
   { migration: "0025", what: "unique constraint: manga.mangadex_id" },
   { migration: "0026", what: "pg_cron: hourly http_cache purge" },
+  { migration: "0029", what: "EXECUTE revoked from anon/authenticated on SECURITY DEFINER trigger functions" },
 ];
 
 /**

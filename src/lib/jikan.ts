@@ -180,6 +180,114 @@ export class JikanError extends Error {
   }
 }
 
+/**
+ * Thrown without touching the network while the host circuit breaker is open
+ * (see below). A `JikanError` with status 503, so every existing `catch` that
+ * falls back on a Jikan failure treats it exactly like an outage — which it is.
+ */
+export class JikanUnavailableError extends JikanError {
+  constructor(message: string) {
+    super(503, message);
+    this.name = "JikanUnavailableError";
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Host circuit breaker                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * When api.jikan.moe can't be *reached* at all — DNS-blocked, a dead route, a
+ * hung TCP connect — every call sits out the full `UPSTREAM_TIMEOUT_MS` before
+ * its fallback runs. The 60s negative cache below is per path, so it can't
+ * help: each new search prefix ("on", "one", "one p"…) is a new path, and each
+ * paid 8s again before AniList (which answers in under a second) got a turn.
+ *
+ * So the breaker counts consecutive *transport* failures across the whole
+ * host, and after `BREAKER_FAILURE_THRESHOLD` of them fails every call fast
+ * for a cool-down. It mirrors AniList's breaker in `anilist.ts`, and is just as
+ * deliberately narrow about what trips it:
+ *
+ *  - Only failures where no HTTP response arrived (connection errors and
+ *    timeouts) count. Any response at all — 200, 404, 429, 504 — proves the
+ *    host is reachable and resets the count. That matters because Jikan fails
+ *    *per endpoint*: `/anime?q=` can 504 for an hour while `/top/anime` works,
+ *    and a 5xx-tripped breaker would take the working endpoints down too.
+ *  - Recovery is probed in the background. Once the cool-down lapses, the
+ *    next caller still fails fast, but kicks off one probe request; the first
+ *    response closes the breaker. Letting a real caller *be* the probe would
+ *    hand one page render a full timeout every cool-down period of a
+ *    sustained outage. A failed probe doubles the cool-down, up to a cap.
+ */
+const BREAKER_FAILURE_THRESHOLD = 3;
+const BREAKER_BASE_COOLDOWN_MS = 30_000;
+const BREAKER_MAX_COOLDOWN_MS = 5 * 60_000;
+
+let consecutiveTransportFailures = 0;
+/** 0 = closed. Otherwise the instant the cool-down ends and a probe may run. */
+let breakerOpenUntil = 0;
+let breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS;
+let probeInFlight = false;
+
+function openBreaker(reason: string) {
+  breakerOpenUntil = Date.now() + breakerCooldownMs;
+  console.warn(
+    `[jikan] circuit open for ${breakerCooldownMs / 1000}s — host unreachable (${reason})`,
+  );
+}
+
+/** Any HTTP response: the host is reachable, whatever the status. */
+function recordResponse() {
+  consecutiveTransportFailures = 0;
+  breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS;
+  if (breakerOpenUntil !== 0) {
+    breakerOpenUntil = 0;
+    console.warn("[jikan] circuit closed — host reachable again");
+  }
+}
+
+function recordTransportFailure(err: unknown) {
+  consecutiveTransportFailures += 1;
+  if (
+    breakerOpenUntil === 0 &&
+    consecutiveTransportFailures >= BREAKER_FAILURE_THRESHOLD
+  ) {
+    openBreaker(err instanceof Error ? err.name : "network error");
+  }
+}
+
+/**
+ * True while calls must fail fast. Past the cool-down it starts (at most) one
+ * background probe and still answers true until that probe gets a response.
+ */
+function breakerRejects(path: string): boolean {
+  if (breakerOpenUntil === 0) return false;
+  if (Date.now() >= breakerOpenUntil && !probeInFlight) probe(path);
+  return true;
+}
+
+function probe(path: string) {
+  probeInFlight = true;
+  void rateLimited(() =>
+    fetch(`${JIKAN_BASE_URL}${path}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    }),
+  )
+    .then((res) => {
+      recordResponse();
+      // Nobody reads the probe's body; release the connection.
+      void res.body?.cancel().catch(() => {});
+    })
+    .catch(() => {
+      breakerCooldownMs = Math.min(breakerCooldownMs * 2, BREAKER_MAX_COOLDOWN_MS);
+      openBreaker("probe failed");
+    })
+    .finally(() => {
+      probeInFlight = false;
+    });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Rate limiting                                                              */
 /* -------------------------------------------------------------------------- */
@@ -241,7 +349,23 @@ async function jikanFetchLive<T>(
   revalidate?: number,
 ): Promise<T> {
   const fallbackEligible = !path.startsWith("/random");
+
+  // Breaker open: same degradation as an outage (last-good if we have it),
+  // minus the timeout. Checked before the queue so a burst of callers doesn't
+  // serialise behind 350ms slots to reach a certain failure, and again when a
+  // queued call's slot comes up, in case the breaker opened meanwhile.
+  const failFast = (): T => {
+    const cached = fallbackEligible ? lastGood.get(path) : undefined;
+    if (cached !== undefined) return cached as T;
+    throw new JikanUnavailableError(`Jikan unreachable (circuit open): ${path}`);
+  };
+  if (breakerRejects(path)) return failFast();
+
   return rateLimited(async () => {
+    if (breakerRejects(path)) return failFast();
+    // Distinguishes "no response" (counts toward the breaker) from a response
+    // we then failed to read, which proves the host is up.
+    let responded = false;
     try {
       const res = await fetch(`${JIKAN_BASE_URL}${path}`, {
         headers: { Accept: "application/json" },
@@ -251,6 +375,8 @@ async function jikanFetchLive<T>(
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         ...(revalidate != null ? { next: { revalidate } } : {}),
       });
+      responded = true;
+      recordResponse();
 
       if (!res.ok) {
         // Jikan returns a JSON error body ({ status, type, message }) for most
@@ -275,6 +401,7 @@ async function jikanFetchLive<T>(
       if (fallbackEligible) rememberLastGood(path, body);
       return body;
     } catch (err) {
+      if (!responded) recordTransportFailure(err);
       // Serve the last-good copy through outages; rate limits (429) still
       // throw so callers can back off instead of masking the signal.
       if (fallbackEligible && !(err instanceof JikanError && err.status === 429)) {
@@ -404,8 +531,13 @@ async function jikanFetch<T>(
   })()
     .catch((err: unknown) => {
       // Don't negative-cache rate limits: callers back off on 429 themselves,
-      // and the next caller may well be inside the budget again.
-      if (!(err instanceof JikanError && err.status === 429)) {
+      // and the next caller may well be inside the budget again. Nor breaker
+      // rejections: they cost nothing to repeat, and caching one for 60s would
+      // outlive a recovery the breaker has already noticed.
+      if (
+        !(err instanceof JikanError && err.status === 429) &&
+        !(err instanceof JikanUnavailableError)
+      ) {
         cacheSet(path, {
           ok: false,
           error: err,
@@ -435,6 +567,12 @@ export type JikanSearchOptions = {
   /** Premiere window, YYYY-MM-DD (maps year / year-range filters). */
   startDate?: string;
   endDate?: string;
+  /**
+   * Results per page (Jikan caps it at 25, its default). Type-ahead surfaces
+   * that show a handful of rows ask for just those: a smaller payload, and
+   * one request instead of the two-page stitch the search page needs.
+   */
+  limit?: number;
 };
 
 /**
@@ -468,6 +606,7 @@ export function searchAnime(
   if (opts.status) params.set("status", opts.status);
   if (opts.startDate) params.set("start_date", opts.startDate);
   if (opts.endDate) params.set("end_date", opts.endDate);
+  if (opts.limit != null) params.set("limit", String(opts.limit));
   const hasFilters =
     genreIds.length > 0 ||
     Boolean(opts.type || opts.status || opts.startDate || opts.endDate);
@@ -1044,11 +1183,14 @@ export function searchManga(
   page = 1,
   genreIds: number[] = [],
   type?: JikanMangaType,
+  /** Results per page (Jikan's cap and default: 25). See `JikanSearchOptions.limit`. */
+  limit?: number,
 ): Promise<JikanMangaSearchResponse> {
   const params = new URLSearchParams({ sfw: "true", page: String(page) });
   if (query) params.set("q", query);
   if (genreIds.length > 0) params.set("genres", genreIds.join(","));
   if (type) params.set("type", type);
+  if (limit != null) params.set("limit", String(limit));
   if (!query) {
     params.set("order_by", "members");
     params.set("sort", "desc");

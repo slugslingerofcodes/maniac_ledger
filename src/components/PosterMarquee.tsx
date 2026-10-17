@@ -1,26 +1,24 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
 
-import { getTopAnime } from "@/lib/jikan";
+import { getPopularAnime } from "@/lib/discovery";
 import { cn } from "@/lib/utils";
-import { posterUrl } from "@/lib/poster";
 
 /**
- * Two counter-scrolling rows of trending posters for the landing hero.
- * Decorative: each row holds its list twice and the `marquee-track` keyframes
- * translate -50% for a seamless loop (paused under prefers-reduced-motion).
- * Fetches server-side, best-effort — renders nothing if Jikan is down.
+ * Two counter-scrolling rows of trending posters, used as a divider between
+ * groups of rows. Decorative: each row holds its list twice and the
+ * `marquee-track` keyframes translate -50% for a seamless loop (paused under
+ * prefers-reduced-motion).
+ *
+ * Fed by the Popular rail's own call (same limit, so the same cache key in
+ * every tier): it used to ask Jikan for a list of its own, which cost an extra
+ * rate-limited request and vanished whenever MAL did.
  */
 export async function TrendingPosterMarquee() {
-  let posters: string[] = [];
-  try {
-    const { data } = await getTopAnime(24);
-    posters = data
-      .map((a) => a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url)
-      .filter((url): url is string => Boolean(url));
-  } catch {
-    // best-effort backdrop; the hero works without it
-  }
+  const list = await getPopularAnime(18);
+  const posters = list
+    .map((a) => a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url)
+    .filter((url): url is string => Boolean(url));
   if (posters.length < 8) return null;
 
   const rowA = posters.filter((_, i) => i % 2 === 0);
@@ -29,7 +27,7 @@ export async function TrendingPosterMarquee() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none flex flex-col gap-3 overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]"
+      className="pointer-events-none mt-8 flex flex-col gap-3 overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]"
     >
       <MarqueeRow posters={rowA} duration="80s" />
       <MarqueeRow posters={rowB} duration="110s" reverse />
@@ -58,7 +56,7 @@ function MarqueeRow({
           key={i}
           className="relative aspect-[2/3] w-20 shrink-0 overflow-hidden rounded-lg opacity-70 ring-1 ring-white/10 sm:w-24"
         >
-          <Image src={posterUrl(src, "card")!} alt="" fill sizes="96px" className="object-cover" />
+          <Image src={src} alt="" fill sizes="96px" className="object-cover" />
         </div>
       ))}
     </div>

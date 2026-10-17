@@ -1,18 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
 
+import { DiscoverCard } from "@/components/browse/DiscoverCard";
+import { BrowseRow } from "@/components/browse/BrowseRow";
+import { RowTabs } from "@/components/home/DiscoveryTabs";
+import type { BrowseItem, LibraryEntry } from "@/lib/browse-item";
 import { cn } from "@/lib/utils";
-import { posterUrl } from "@/lib/poster";
 
-export type TopTenItem = {
-  malId: number;
-  title: string;
-  posterUrl: string | null;
-  score: number | null;
-  type: string | null;
+export type TopTenItem = BrowseItem & {
   /** MAL members — the viewer count the list is ranked by. */
   members: number | null;
 };
@@ -20,23 +16,31 @@ export type TopTenItem = {
 const COMPACT = new Intl.NumberFormat("en", { notation: "compact" });
 
 const WINDOWS = [
-  { key: "weekly", label: "Weekly" },
-  { key: "monthly", label: "Monthly" },
-  { key: "yearly", label: "Yearly" },
+  { key: "weekly", label: "Week" },
+  { key: "monthly", label: "Month" },
+  { key: "yearly", label: "Year" },
 ] as const;
 
 type WindowKey = (typeof WINDOWS)[number]["key"];
 
+/** Slot = numeral gutter + poster; the poster overlaps the numeral's right edge. */
+const SLOT_WIDTH = "w-40 sm:w-48 md:w-52 lg:w-56 xl:w-60";
+const SLOT_PAD = "pl-10 sm:pl-14 lg:pl-16";
+
 /**
- * Home-page "Top 10" — ranked list with Weekly / Monthly / Yearly tabs. All
- * three lists are fetched server-side and passed in, so switching tabs is
- * instant (no refetch). Rows link to the anime detail page via mal_id.
+ * Home-page Top 10 — ranked posters with Week / Month / Year switching. All
+ * three charts are fetched server-side and passed in, so switching is instant.
+ *
+ * The rank is set as a Didot numeral standing behind each poster, outlined
+ * rather than filled; the top three are struck in gold leaf. The numeral is the
+ * one decorative flourish on the page, and it encodes the ranking itself.
  */
 export function TopTenShowcase({
   weekly,
   monthly,
   yearly,
-}: Record<WindowKey, TopTenItem[]>) {
+  library = {},
+}: Record<WindowKey, TopTenItem[]> & { library?: Record<number, LibraryEntry> }) {
   const [window, setWindow] = useState<WindowKey>("weekly");
   const lists: Record<WindowKey, TopTenItem[]> = { weekly, monthly, yearly };
   const items = lists[window];
@@ -44,97 +48,43 @@ export function TopTenShowcase({
   if (weekly.length + monthly.length + yearly.length === 0) return null;
 
   return (
-    <section className="mt-2">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-gradient text-lg font-semibold tracking-tight">
-          Top 10 Anime
-        </h2>
-        <div className="flex gap-1.5">
-          {WINDOWS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setWindow(key)}
-              aria-pressed={window === key}
-              className={cn(
-                "rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200 motion-safe:hover:scale-110",
-                window === key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <BrowseRow
+      title="Top 10 anime"
+      eyebrow="Ranked by viewers"
+      className="pt-4"
+      resetKey={window}
+      actions={
+        <RowTabs tabs={WINDOWS} value={window} onChange={setWindow} label="Top 10 period" />
+      }
+    >
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Couldn&apos;t load this chart right now.
+        <p className="py-16 text-sm text-muted-foreground">
+          This chart isn&apos;t available right now. Try another period.
         </p>
       ) : (
-        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {items.map((item, i) => (
-            <li key={item.malId}>
-              <Link
-                href={`/anime/mal/${item.malId}`}
-                className="group relative isolate flex items-center gap-3 overflow-hidden rounded-xl bg-card p-2.5 ring-1 ring-foreground/10 transition hover:ring-2 hover:ring-primary/40"
+        items.map((item, i) => (
+          <DiscoverCard
+            key={item.malId}
+            item={item}
+            entry={library[item.malId] ?? null}
+            widthClassName={SLOT_WIDTH}
+            className={SLOT_PAD}
+            leading={
+              <span
+                aria-hidden
+                className={cn(
+                  "top10-numeral pointer-events-none absolute bottom-11 left-0 select-none font-didot text-[6.5rem] leading-[0.78] tracking-[-0.12em] sm:text-[8.5rem] lg:text-[9.5rem]",
+                  i < 3 && "top10-numeral-gold",
+                )}
               >
-                {/* Editorial ghost rank behind the row (outline-only type). */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    "text-ghost-outline pointer-events-none absolute -right-1 -top-4 -z-10 font-didot text-7xl font-bold leading-none select-none",
-                    i < 3 && "text-ghost-outline-amber",
-                  )}
-                >
-                  {i + 1}
-                </span>
-                <span
-                  className={cn(
-                    "w-8 shrink-0 text-center font-didot text-2xl",
-                    i < 3 ? "text-amber-400" : "text-muted-foreground",
-                  )}
-                >
-                  {i + 1}
-                </span>
-                <div className="relative aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                  {item.posterUrl ? (
-                    <Image
-                      src={posterUrl(item.posterUrl, "card")!}
-                      alt={item.title}
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                    />
-                  ) : null}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-1 text-sm font-medium group-hover:text-primary">
-                    {item.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.members != null ? (
-                      <span className="text-sky-300">
-                        👥 {COMPACT.format(item.members)} viewers
-                      </span>
-                    ) : null}
-                    {item.members != null && item.score != null ? " · " : null}
-                    {item.score != null ? (
-                      <span className="text-amber-400">★ {item.score}</span>
-                    ) : null}
-                    {(item.members != null || item.score != null) && item.type
-                      ? " · "
-                      : null}
-                    {item.type ?? null}
-                  </p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ol>
+                {i + 1}
+              </span>
+            }
+            rankLabel={`#${i + 1}`}
+            extraMeta={item.members != null ? `${COMPACT.format(item.members)} members` : null}
+          />
+        ))
       )}
-    </section>
+    </BrowseRow>
   );
 }

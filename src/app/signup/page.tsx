@@ -32,6 +32,7 @@ export default async function SignupPage(props: {
               alt="Anime Maniac"
               fill
               priority
+              unoptimized
               sizes="384px"
               className="object-cover"
             />
@@ -52,10 +53,19 @@ export default async function SignupPage(props: {
                 type="text"
                 placeholder="e.g. slime_king"
                 autoComplete="username"
-                minLength={2}
-                maxLength={32}
+                // Mirrors profiles.username's CHECK and the server-side guard
+                // in `signup`. This is the sign-in credential now, so the name
+                // typed here has to be the name that works at login.
+                pattern="[A-Za-z0-9_]{3,24}"
+                title="3–24 characters: letters, numbers or underscores."
+                minLength={3}
+                maxLength={24}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                You&apos;ll sign in with this. 3–24 characters — letters,
+                numbers or underscores.
+              </p>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>

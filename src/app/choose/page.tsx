@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, Clapperboard } from "lucide-react";
+import { BookOpen, Clapperboard, Globe } from "lucide-react";
 
-import { ImageBackdrop } from "@/components/ImageBackdrop";
+import { LeatherBackdrop } from "@/components/LeatherBackdrop";
 
 export const metadata: Metadata = { title: "Choose · anime_maniacs" };
 
@@ -11,9 +11,11 @@ export default function ChoosePage() {
     // No bg-background: the backdrop below sits at -z-10, and an opaque page
     // background would paint straight over it.
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16 text-foreground">
-      {/* This artwork belongs to the pick-a-side screen alone — every other
-          page keeps the ambient vortex backdrop. */}
-      <ImageBackdrop src="/choose-bg.webp" fixed />
+      {/* Plain blue leather, generated in CSS — this screen alone; every other
+          page keeps the ambient vortex backdrop. It replaced a character
+          portrait: the three cards are the whole content here, and artwork with
+          a subject in it competed with them for the eye. */}
+      <LeatherBackdrop fixed />
 
       <div className="mb-10 text-center">
         <h1 className="text-gradient text-3xl font-bold tracking-tight sm:text-5xl">
@@ -24,13 +26,17 @@ export default function ChoosePage() {
         </p>
       </div>
 
-      <div className="grid w-full max-w-3xl gap-6 sm:grid-cols-2">
-        {/* Both sides land on their newsstand: picking a side is the start of
-            a session, and "what happened since I was last here?" is the
-            question that opens one. Everything else — library, cosmos, search
-            — is a tab away and is where you go once you know what's new. */}
+      {/* Three sides now. Anime and Manga are both "what am I tracking";
+          Community is the other question — what everyone else is watching —
+          so it earns a card here rather than a row in the drawer.
+
+          The anime card lands on the dashboard rather than a newsstand: the
+          in-app broadsheet was retired when News was repointed at Anime
+          Corner, and opening a session by leaving the app would be a strange
+          way to pick a side. The manga side still has its own paper. */}
+      <div className="grid w-full max-w-5xl gap-6 sm:grid-cols-3">
         <Link
-          href="/news"
+          href="/"
           className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-10 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
         >
           <span className="grid size-16 place-items-center rounded-full bg-primary/15 text-primary transition-transform duration-300 group-hover:scale-110">
@@ -41,7 +47,7 @@ export default function ChoosePage() {
             Track what you watch — library, schedule, seasons and more.
           </span>
           <span className="text-xs font-medium text-primary">
-            Opens the Anime Times →
+            Opens your dashboard →
           </span>
         </Link>
 
@@ -58,6 +64,24 @@ export default function ChoosePage() {
           </span>
           <span className="text-xs font-medium text-primary">
             Opens the Manga Times →
+          </span>
+        </Link>
+
+        <Link
+          href="/community"
+          className="group relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card p-10 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40"
+        >
+          <span className="grid size-16 place-items-center rounded-full bg-primary/15 text-primary transition-transform duration-300 group-hover:scale-110">
+            <Globe className="size-8" aria-hidden />
+          </span>
+          <span className="text-2xl font-semibold tracking-tight">
+            Community
+          </span>
+          <span className="text-sm text-muted-foreground">
+            News, database and polls from Anime Corner, plus your feed.
+          </span>
+          <span className="text-xs font-medium text-primary">
+            Opens the Community hub →
           </span>
         </Link>
       </div>

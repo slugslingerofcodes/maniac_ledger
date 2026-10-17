@@ -68,7 +68,14 @@ export function GalaxyBackdrop() {
 
     const drawNebula = () => {
       // Deep-space base with two off-center nebula glows.
-      ctx.fillStyle = "#05060d";
+      //
+      // The two glows used to be violet and cyan — a pairing from no particular
+      // palette, which is what made the detail page read as a different product
+      // from the rest of the app. They're now the app's own two accents, indigo
+      // and gold leaf, so the backdrop belongs to the same world as the chrome
+      // in front of it. The base is warmed off pure blue-black for the same
+      // reason: a cold void under warm surfaces reads as a seam.
+      ctx.fillStyle = "#08070e";
       ctx.fillRect(0, 0, width, height);
 
       const g1 = ctx.createRadialGradient(
@@ -79,8 +86,8 @@ export function GalaxyBackdrop() {
         cy * 0.6,
         Math.max(width, height) * 0.7,
       );
-      g1.addColorStop(0, "rgba(112, 72, 230, 0.42)");
-      g1.addColorStop(1, "rgba(112, 72, 230, 0)");
+      g1.addColorStop(0, "rgba(86, 96, 216, 0.42)");
+      g1.addColorStop(1, "rgba(86, 96, 216, 0)");
       ctx.fillStyle = g1;
       ctx.fillRect(0, 0, width, height);
 
@@ -92,8 +99,8 @@ export function GalaxyBackdrop() {
         cy * 1.4,
         Math.max(width, height) * 0.6,
       );
-      g2.addColorStop(0, "rgba(36, 168, 190, 0.34)");
-      g2.addColorStop(1, "rgba(36, 168, 190, 0)");
+      g2.addColorStop(0, "rgba(206, 168, 88, 0.26)");
+      g2.addColorStop(1, "rgba(206, 168, 88, 0)");
       ctx.fillStyle = g2;
       ctx.fillRect(0, 0, width, height);
     };

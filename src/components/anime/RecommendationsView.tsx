@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Dices } from "lucide-react";
 import { toast } from "sonner";
 
@@ -125,7 +125,7 @@ export function RecommendationsView({
       {/* Random roll result */}
       <AnimatePresence>
         {randomPick ? (
-          <motion.section
+          <m.section
             key={randomPick.mal_id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -204,7 +204,7 @@ export function RecommendationsView({
                 </button>
               </div>
             </div>
-          </motion.section>
+          </m.section>
         ) : null}
       </AnimatePresence>
 
@@ -218,7 +218,7 @@ export function RecommendationsView({
         <div className="scrollbar-subtle flex gap-4 overflow-x-auto pb-4">
           <AnimatePresence initial={false} mode="popLayout">
             {items.map((item) => (
-              <motion.div
+              <m.div
                 key={item.malId ?? item.title}
                 layout
                 initial={{ opacity: 0, y: 8 }}
@@ -231,7 +231,7 @@ export function RecommendationsView({
                   onDismiss={handleDismiss}
                   onRestore={handleRestore}
                 />
-              </motion.div>
+              </m.div>
             ))}
           </AnimatePresence>
         </div>

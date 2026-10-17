@@ -1,8 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { loadGsap } from "@/lib/gsap-loader";
+
+/**
+ * GSAP is fetched on first use (lib/gsap-loader), so the reveal is set up a
+ * tick after mount. Wait for that, or these assert on the pre-GSAP render —
+ * which is plainly visible, and would make the reduced-motion test pass for
+ * the wrong reason.
+ */
+async function settle() {
+  await act(async () => {
+    await loadGsap();
+  });
+}
 
 /**
  * Reduced-motion half of the ScrollReveal pair (see scroll-reveal.test.tsx
@@ -38,12 +51,14 @@ beforeEach(() => {
 });
 
 describe("ScrollReveal (reduced motion)", () => {
-  it("renders content plainly, with no hidden initial state", () => {
+  it("renders content plainly, with no hidden initial state", async () => {
     const { getByText } = render(
       <ScrollReveal>
         <p>synopsis</p>
       </ScrollReveal>,
     );
+
+    await settle();
 
     const wrapper = getByText("synopsis").parentElement!;
     expect(wrapper.style.opacity === "" || wrapper.style.opacity === "1").toBe(

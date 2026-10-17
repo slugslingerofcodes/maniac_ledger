@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { DescribeSearchBox } from "@/components/anime/DescribeSearchBox";
 import {
   RecommendationsView,
 } from "@/components/anime/RecommendationsView";
@@ -37,6 +38,9 @@ export default async function RecommendationsPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      {/* Above the picks on purpose: someone arriving with a specific show in
+          mind is here to name it, not to browse suggestions. */}
+      <DescribeSearchBox />
       <RecommendationsView initial={items} lastGeneratedAt={lastGeneratedAt} />
     </main>
   );

@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 
 import { MangaLibraryGridClient } from "@/components/manga/MangaLibraryGridClient";
 import { MangaPosterCard } from "@/components/manga/MangaPosterCard";
+import { PosterGridSkeleton } from "@/components/skeletons";
 import { SourceNotice } from "@/components/SourceNotice";
+import { Skeleton } from "@/components/ui/skeleton";
 import { searchAnilistManga } from "@/lib/anilist";
 import { getTopManga, type JikanManga } from "@/lib/jikan";
 import { topMangaCatalog } from "@/lib/manga-catalog-fallback";
@@ -57,6 +60,15 @@ async function PopularManga() {
   );
 }
 
+function PopularMangaSkeleton() {
+  return (
+    <section className="mt-12">
+      <Skeleton className="mb-4 h-6 w-40" />
+      <PosterGridSkeleton count={10} />
+    </section>
+  );
+}
+
 export default function MangaHome() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
@@ -92,7 +104,11 @@ export default function MangaHome() {
         <MangaLibraryGridClient filter="all" limit={10} />
       </section>
 
-      <PopularManga />
+      {/* Streamed: the hero and the user's own shelf are ours and paint at
+          once; only this rail waits on MAL → AniList → catalog. */}
+      <Suspense fallback={<PopularMangaSkeleton />}>
+        <PopularManga />
+      </Suspense>
     </main>
   );
 }

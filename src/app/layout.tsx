@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Geist_Mono, Sora, GFS_Didot } from "next/font/google";
+import {
+  Plus_Jakarta_Sans,
+  Geist_Mono,
+  Shippori_Mincho,
+  GFS_Didot,
+} from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -7,7 +12,6 @@ import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ShojiDoors } from "@/components/ShojiDoors";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 
@@ -19,10 +23,18 @@ const sans = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-// Display face for headings/hero: Sora pairs cleanly with Jakarta and gives
-// section titles real personality.
-const display = Sora({
+// Display face for headings/hero.
+//
+// This was Sora, which is — like Jakarta — a geometric humanist sans: at UI
+// sizes the two were near-indistinguishable, so the second download bought
+// almost no typographic contrast. Shippori Mincho is a mincho serif with real
+// stroke modulation and brush-derived terminals, so a heading now reads as a
+// different voice from the body text rather than a slightly different sans.
+// Latin subset only — the Japanese subset is an order of magnitude larger and
+// nothing in the UI is set in kana.
+const display = Shippori_Mincho({
   variable: "--font-display-src",
+  weight: ["500", "700", "800"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -82,16 +94,16 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <Providers>
-          {/* Shared tooltip delay: once one icon's tooltip is open, hovering
-              the next one in a toolbar shows instantly. */}
-          <TooltipProvider>
-            {children}
-            {/* Route-change shōji doors — root level so they outlive navigation
-                and can close *and* reopen across every route (anime + manga). */}
-            <ShojiDoors />
-            <Toaster />
-            <ServiceWorkerRegister />
-          </TooltipProvider>
+          {/* The shared TooltipProvider lives in the (app) and manga layouts,
+              which hold every tooltip in the app. Up here it put base-ui's
+              floating-positioning layer into the first-load JS of the auth
+              pages, which have none. */}
+          {children}
+          {/* Route-change shōji doors — root level so they outlive navigation
+              and can close *and* reopen across every route (anime + manga). */}
+          <ShojiDoors />
+          <Toaster />
+          <ServiceWorkerRegister />
         </Providers>
         <Analytics />
         <SpeedInsights />

@@ -31,6 +31,8 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0024_manga_chapters.sql` | `manga.mangadex_id`, `manga.chapters_synced_at`, `manga_chapters` table |
 | `supabase/migrations/0025_mangadex_only_manga.sql` | unique constraint on `manga.mangadex_id` (MAL-less titles) |
 | `supabase/migrations/0026_http_cache.sql` | `http_cache` table (service-role only) + hourly purge job — the durable Jikan cache |
+| `supabase/migrations/0028_calendar_feeds.sql` | `calendar_feeds` table (SHA-256 token hashes, one per user) + owner-only RLS — the live calendar subscription on `/schedule` |
+| `supabase/migrations/0029_revoke_trigger_fn_execute.sql` | revokes RPC access (`EXECUTE` from `public`/`anon`/`authenticated`) to the SECURITY DEFINER trigger functions; the triggers keep firing |
 
 (`0009` is run in step 3, after the Edge Functions are deployed; `0019` in step 3a.)
 
@@ -44,14 +46,21 @@ npm run check:schema     # anon key only, reads no rows; exit 1 on drift
 It probes every table/column the app depends on via PostgREST and names the
 migration behind anything missing. Objects it *can't* see — Realtime publications
 (`0006`), pg_cron schedules (`0009`, `0019`, `0026`), the avatars bucket (`0012`),
-and bare constraints (`0025`) — are listed in its output as needing a manual check.
+bare constraints (`0025`), and function grants (`0029`) — are listed in its output
+as needing a manual check.
 
-> As of the last run, `0001`–`0026` are **all applied** (verified, not assumed).
+> As of the last run, `0001`–`0029` are **all applied** (verified, not assumed).
 
 **`0026` is optional but recommended.** Without it — or without
 `SUPABASE_SERVICE_ROLE_KEY` (step 4) — the shared cache silently disables itself
 and the app runs on the in-process cache alone, exactly as it did before. Nothing
 breaks; cold starts just stay slow.
+
+**`0028` also needs `SUPABASE_SERVICE_ROLE_KEY`.** Calendar apps fetch
+`/api/calendar/feed/<token>.ics` without cookies, so the route resolves the token
+with the service role. Until both are in place the "Get subscription link"
+control on `/schedule` stays hidden; the one-time "Add to calendar" download
+works either way.
 
 **Make an administrator** (for the `/admin` dashboard) — after `0011`, flag a user,
 then have them sign out/in so the claim lands in their token:
@@ -97,8 +106,10 @@ select * from cron.job_run_details order by start_time desc limit 5;
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | **Baked at build time** — changing requires a redeploy |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same; RLS protects the data |
-| `GEMINI_API_KEY` | Server-only; required for `/recommendations` |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only; bypasses RLS.** Used solely by the `/admin` dashboard (`src/lib/supabase/admin.ts`) to list users via the Auth admin API. Also add to `.env.local` for local admin testing. Never expose to the client. |
+| `XAI_API_KEY` | Server-only; required for `/recommendations` — the AI picks and the describe-it search box (xAI / Grok) |
+| `XAI_MODEL` | Optional; overrides the default Grok model. Set this when xAI retires one rather than editing code |
+| `GEMINI_API_KEY` | Server-only; required for the natural-language filter box on `/search` |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only; bypasses RLS.** Used by the `/admin` dashboard (`src/lib/supabase/admin.ts`) to list users via the Auth admin API, by the shared Jikan cache (`0026`), and by the calendar subscription feed (`0028`) to resolve feed tokens. Also add to `.env.local` for local admin and feed testing. Never expose to the client. |
 
 Resend keys live in Supabase Edge secrets (step 2), **not** Vercel.
 
@@ -113,7 +124,7 @@ In the Vercel dashboard, enable **Web Analytics** and **Speed Insights** — the
 
 ## 6. Post-deploy smoke test (prod URL, signed in)
 
-- Library loads; search → add; episode toggle; `/upcoming` notify; `/recommendations` → Generate (needs `GEMINI_API_KEY` + some completed/rated anime).
+- Library loads; search → add; episode toggle; `/upcoming` notify; `/recommendations` → Generate and the describe-it box (both need `XAI_API_KEY`; Generate also needs some completed/rated anime).
 - PWA: install prompt (manifest + icons + HTTPS), service worker registers (prod-only), offline `/library` shows cached data.
 - Analytics: trigger events (`anime_added`, etc.) and confirm they land in the Vercel Analytics dashboard.
 

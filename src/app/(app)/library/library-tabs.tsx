@@ -28,9 +28,11 @@ export function LibraryTabs({
         router.push(next === "all" ? "/library" : `/library?status=${next}`);
       }}
     >
-      <TabsList>
+      {/* Five tabs are ~440px wide — wider than a phone. Scroll them inside
+          their own strip instead of letting them widen the whole page. */}
+      <TabsList className="scrollbar-subtle max-w-full justify-start overflow-x-auto">
         {filters.map((filter) => (
-          <TabsTrigger key={filter.value} value={filter.value}>
+          <TabsTrigger key={filter.value} value={filter.value} className="shrink-0">
             {filter.label}
           </TabsTrigger>
         ))}

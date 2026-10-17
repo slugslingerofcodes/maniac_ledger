@@ -1,11 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Paths reachable without a session: the auth pages, the /auth/* email and
  * OAuth callback routes, the public anime search API (it only proxies
- * third-party MyAnimeList data), and the PWA assets — which must be fetchable
- * signed-out or install/offline breaks.
+ * third-party MyAnimeList data), the PWA assets — which must be fetchable
+ * signed-out or install/offline breaks — and the calendar subscription feed,
+ * which calendar apps fetch without cookies and which checks its own
+ * per-user token (src/app/api/calendar/feed/[token]/route.ts).
  */
 const PUBLIC_PATHS = [
   "/login",
@@ -13,6 +16,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/auth",
   "/api/anime/search",
+  "/api/calendar/feed",
   "/admin/login",
   "/manifest.webmanifest",
   "/sw.js",
@@ -31,6 +35,44 @@ export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
+}
+
+/**
+ * Whether the request carries a session whose access token verifies.
+ *
+ * `getClaims()`, not `getUser()`: this runs before *every* matched request, and
+ * `getUser()` is a network round trip to Supabase Auth each time — before the
+ * page has even started rendering, and from a Vercel region that may be an
+ * ocean away from the project. `getClaims()` verifies the JWT's signature
+ * locally with WebCrypto against the project's published JWKS (an ES256 key;
+ * auth-js caches the key set process-wide for 10 minutes), so a warm instance
+ * gates a request with no network I/O at all. A token signed with the legacy
+ * HS256 secret can't be verified that way, and for those auth-js falls back
+ * to `getUser()` on its own — so no project setting makes this slower than it
+ * was.
+ *
+ * What it gives up: `getUser()` would also notice a session revoked
+ * server-side (sign out everywhere, a deleted or banned user) before its
+ * access token expires — up to the JWT lifetime, an hour by default. That is
+ * acceptable *here* because this is the optimistic gate, not the security
+ * boundary: `requireUser()` in every protected page and action still calls
+ * `getUser()`, and RLS already honours that same unexpired token for that
+ * same window, so nothing behind this gate becomes reachable that the
+ * database wouldn't serve anyway.
+ */
+async function hasVerifiedSession(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    return !error && typeof data?.claims?.sub === "string";
+  } catch {
+    // getClaims only models auth failures as `{ error }`; anything else it
+    // rethrows (a WebCrypto failure, say). A gate that throws 500s every route
+    // on the site, so fall back to the authoritative check instead.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user != null;
+  }
 }
 
 /**
@@ -77,15 +119,14 @@ export async function updateSession(
     },
   );
 
-  // IMPORTANT: Do not run code between createServerClient and getUser().
-  // getUser() revalidates the token and triggers the cookie refresh above.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // IMPORTANT: Do not run code between createServerClient and the session
+  // check. It reads the session from the cookies — refreshing it, and so
+  // triggering the cookie sync above, when the access token is expiring.
+  const signedIn = await hasVerifiedSession(supabase);
 
   const { pathname } = request.nextUrl;
 
-  if (!user && !isPublicPath(pathname)) {
+  if (!signedIn && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     // Unauthenticated admin routes go to the admin sign-in, not the user one.
     url.pathname = pathname.startsWith("/admin") ? "/admin/login" : "/login";

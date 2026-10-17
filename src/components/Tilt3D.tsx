@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
-  motion,
+  m,
   useMotionTemplate,
   useMotionValue,
   useSpring,
@@ -102,7 +102,7 @@ export function Tilt3D({
   }
 
   return (
-    <motion.div
+    <m.div
       ref={ref}
       className={cn("relative [transform-style:preserve-3d]", className)}
       style={{
@@ -117,7 +117,7 @@ export function Tilt3D({
     >
       {children}
       {enabled ? (
-        <motion.div
+        <m.div
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-0 z-10 rounded-xl mix-blend-overlay",
@@ -126,6 +126,6 @@ export function Tilt3D({
           style={{ background: glareBackground, opacity: glareOpacity }}
         />
       ) : null}
-    </motion.div>
+    </m.div>
   );
 }

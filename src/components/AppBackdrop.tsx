@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 
+import { LeatherBackdrop } from "@/components/LeatherBackdrop";
 import { VortexBackdrop } from "@/components/VortexBackdrop";
 import {
   BACKGROUND_VIDEO,
@@ -43,11 +44,19 @@ const VideoBackdrop = dynamic(
  * themselves: the layout mounts this behind every route, so a page-level
  * backdrop would stack a second fixed layer on top of it.
  *
- * The user's profile choice (see `useBackground`) wins: a motion video or
- * their own picture replaces everything, app-wide. On "default" the choice is
- * path-aware: /library supplies its own trending-poster backdrop (render
- * nothing), /search gets the cinematic Netflix-style poster wall, /anime/* gets
- * the galaxy, and everywhere else the animated "Great Sage" vortex.
+ * Two kinds of choice (see `useBackground`), and the difference matters:
+ *
+ * - **Takeover choices** — a motion video, the eye clock, or the user's own
+ *   picture — replace everything, app-wide. Picking one is a statement that
+ *   you want *that*, everywhere.
+ * - **Ambient choices** — "Blue leather" (the default) and "Scenes" — are
+ *   path-aware, and differ from each other only on general pages. The routes
+ *   with a backdrop of their own keep it either way: /library supplies its own
+ *   trending-poster wall (render nothing), /cosmos paints its own deep space,
+ *   /search gets the cinematic poster wall, and /anime/* gets the galaxy.
+ *   Those are part of what those pages *are*, not ambient decoration, so a
+ *   preference about the quiet background behind everything else has no
+ *   business switching them off.
  */
 export function AppBackdrop() {
   const pathname = usePathname();
@@ -75,7 +84,9 @@ export function AppBackdrop() {
   if (pathname.startsWith("/anime/")) {
     return <GalaxyBackdrop />;
   }
-  return <VortexBackdrop />;
+  // The general-page backdrop — the one slot the two ambient choices actually
+  // disagree about. Leather is the default; "Scenes" keeps the animated vortex.
+  return choice === "leather" ? <LeatherBackdrop fixed /> : <VortexBackdrop />;
 }
 
 /**

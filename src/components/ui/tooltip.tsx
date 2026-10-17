@@ -17,8 +17,10 @@ import { cn } from "@/lib/utils"
  *
  * A tooltip is never the only label: the child must still carry its own
  * `aria-label`/text, because tooltips don't exist for touch or screen readers.
- * `TooltipProvider` (mounted once in the root layout) shares the open delay, so
- * moving along a row of icons shows the rest instantly instead of re-waiting.
+ * `TooltipProvider` (mounted in the (app) and manga layouts, which hold every
+ * tooltip — not the root, so the auth pages don't download it) shares the
+ * open delay, so moving along a row of icons shows the rest instantly instead
+ * of re-waiting.
  */
 function TooltipProvider(props: TooltipPrimitive.Provider.Props) {
   return <TooltipPrimitive.Provider delay={350} closeDelay={0} {...props} />

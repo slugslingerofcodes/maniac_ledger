@@ -1,8 +1,12 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { after } from "next/server";
 
+import {
+  ChapterListSkeleton,
+  StreamedChapterList,
+} from "@/app/manga/_components/StreamedChapterList";
 import { MangaChapterList } from "@/components/manga/MangaChapterList";
 import { MangaReadingTracker } from "@/components/manga/MangaReadingTracker";
 import { PosterLightbox } from "@/components/PosterLightbox";
@@ -10,10 +14,6 @@ import { SourceNotice } from "@/components/SourceNotice";
 import { Badge } from "@/components/ui/badge";
 import { getAnilistMangaByMalId } from "@/lib/anilist";
 import { getMangaById, type JikanManga } from "@/lib/jikan";
-import {
-  ensureMangaChapters,
-  getStoredChapters,
-} from "@/lib/manga-chapters";
 import {
   catalogMangaByMalId,
   toJikanMangaShape,
@@ -113,35 +113,7 @@ export default async function MangaDetailPage(props: {
     .eq("manga_id", mangaId)
     .maybeSingle();
 
-  // Chapter list: lazily synced from MangaDex, read from the shared catalog.
-  // Stored rows render immediately with the re-sync deferred until after the
-  // response (`after()`, same pattern as franchise resolution) — only a manga
-  // with no rows yet blocks on the sync, so its first view isn't empty.
-  // Best-effort throughout: the page renders without chapters if all fails.
-  const { data: syncMeta } = await supabase
-    .from("manga")
-    .select("mangadex_id, chapters_synced_at")
-    .eq("id", mangaId)
-    .maybeSingle();
   const isNovel = (manga.type ?? "").toLowerCase().includes("novel");
-  const syncArgs = {
-    id: mangaId,
-    mal_id: manga.mal_id,
-    title: manga.title,
-    title_english: manga.title_english,
-    status: manga.status,
-    type: manga.type,
-    chapters: manga.chapters,
-    mangadex_id: syncMeta?.mangadex_id ?? null,
-    chapters_synced_at: syncMeta?.chapters_synced_at ?? null,
-  };
-  let chapterRows = await getStoredChapters(mangaId);
-  if (chapterRows.length === 0 && !isNovel) {
-    await ensureMangaChapters(syncArgs);
-    chapterRows = await getStoredChapters(mangaId);
-  } else if (!isNovel) {
-    after(() => ensureMangaChapters(syncArgs));
-  }
 
   const cover = coverOf(manga);
   const title = manga.title_english ?? manga.title;
@@ -251,15 +223,22 @@ export default async function MangaDetailPage(props: {
               chaptersRead={progress?.volumes_read ?? 0}
             />
           ) : (
-            <MangaChapterList
-              chapters={chapterRows.map((c) => ({
-                // numeric column — some drivers serialize it as a string.
-                number: Number(c.number),
-                title: c.title,
-                publishedAt: c.published_at,
-              }))}
-              chaptersRead={progress?.chapters_read ?? 0}
-            />
+            // Streamed: a first view syncs from MangaDex before it can read.
+            <Suspense fallback={<ChapterListSkeleton />}>
+              <StreamedChapterList
+                row={{
+                  id: mangaId,
+                  mal_id: manga.mal_id,
+                  title: manga.title,
+                  title_english: manga.title_english,
+                  status: manga.status,
+                  type: manga.type,
+                  chapters: manga.chapters,
+                  mangadex_id: null,
+                }}
+                chaptersRead={progress?.chapters_read ?? 0}
+              />
+            </Suspense>
           )}
         </div>
       </div>

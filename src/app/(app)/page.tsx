@@ -1,18 +1,26 @@
 import { Suspense } from "react";
 
-import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { ContinueWatching } from "@/components/anime/ContinueWatching";
-import { DiscoveryTabs, type DiscoveryItem } from "@/components/home/DiscoveryTabs";
+import { BecauseYouWatchedRow } from "@/components/browse/BecauseYouWatchedRow";
+import { DiscoverRow } from "@/components/browse/DiscoverRow";
+import { LibraryRow } from "@/components/browse/LibraryRow";
+import { BannerSkeleton, RowSkeleton } from "@/components/browse/RowSkeleton";
+import { DiscoveryTabs } from "@/components/home/DiscoveryTabs";
 import { GenreRibbon } from "@/components/home/GenreRibbon";
 import { HeroCarousel, type HeroSlide } from "@/components/home/HeroCarousel";
 import { MiniSchedule, type ScheduleDay } from "@/components/home/MiniSchedule";
 import { ShareBanner } from "@/components/home/ShareBanner";
 import { WatchingAiring } from "@/components/home/WatchingAiring";
-import { SidebarList, type SidebarListItem } from "@/components/home/SidebarList";
-import { LibraryGrid } from "@/components/library-grid";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
 import { getAnilistAiringSchedule, searchAnilist } from "@/lib/anilist";
+import {
+  posterOfJikan,
+  toBrowseItem,
+  trailerYoutubeId,
+  uniqueByMalId,
+  type BrowseItem,
+} from "@/lib/browse-item";
 import {
   getNewestAnime,
   getPopularAnime,
@@ -20,14 +28,9 @@ import {
   getTopRatedAnime,
   getUpcomingAnime,
 } from "@/lib/discovery";
-import {
-  getJustFinished,
-  getSchedules,
-  getTopMovies,
-  type JikanAnime,
-  type TopWindow,
-} from "@/lib/jikan";
+import { getJustFinished, getSchedules, getTopMovies, type TopWindow } from "@/lib/jikan";
 import { JST_DAYS, nowInJst, todayInJst } from "@/lib/jst";
+import { getLibraryIndex } from "@/lib/library-snapshot";
 import { getTopTenChart } from "@/lib/top-ten";
 import { requireUser } from "@/lib/supabase/auth";
 
@@ -36,6 +39,19 @@ import { requireUser } from "@/lib/supabase/auth";
 // serial rate-limited Jikan fetches when MAL is slow or down.
 export const dynamic = "force-dynamic";
 
+/*
+ * Streaming layout. Every row below is its own async component inside its own
+ * <Suspense>, and none awaits another: each starts its fetches the moment the
+ * page renders, in parallel, and paints the moment *its* data is in. Rows
+ * share work without sharing waits — the viewer's library is one cached query
+ * (`getLibrarySnapshot`), and rows that draw on the same upstream list ask with
+ * the same arguments so the Jikan/AniList caches de-duplicate them.
+ *
+ * Fallbacks: rows that are always there get a shimmer skeleton of their exact
+ * size; personal rows that may legitimately be empty (Continue watching, …)
+ * get none, so a new account never sees a placeholder collapse to nothing.
+ */
+
 /** "24 min per ep" → 24; null when unparsable. */
 function parseDurationMins(duration: string | null | undefined): number | null {
   const m = /(\d+)\s*min/.exec(duration ?? "");
@@ -43,50 +59,41 @@ function parseDurationMins(duration: string | null | undefined): number | null {
 }
 
 /**
- * Streaming-style hero: top airing anime as a rotating full-bleed showcase.
- * Fetched server-side (day-cached), mapped to a serializable slide payload for
- * the client carousel. Falls back to the static hero if Jikan is down.
+ * One list feeds both the banner (first ten) and the "Airing now" row (the
+ * rest), so the page asks for it once and never shows the same title twice in
+ * its first two screens.
  */
+const AIRING_LIST = 24;
+const BANNER_SLIDES = 10;
+
 async function HeroSection() {
-  let slides: HeroSlide[] = [];
-  try {
-    // Same MAL → AniList → catalog chain as the rails below: the hero is the
-    // first thing on the landing page, so it should be the last thing to
-    // collapse to the static fallback.
-    const data = await getTopAiringAnime(10);
-    slides = data.slice(0, 10).map((a) => ({
-      malId: a.mal_id,
-      title: a.title,
-      titleEnglish: a.title_english,
-      imageUrl:
-        a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url ?? null,
-      type: a.type ?? null,
-      episodes: a.episodes,
-      score: a.score,
-      durationMins: parseDurationMins(a.duration),
-      genres: (a.genres ?? []).slice(0, 2).map((g) => g.name),
-      studio: a.studios?.[0]?.name ?? null,
-      synopsis: a.synopsis,
-      broadcastDay: a.broadcast?.day ?? null,
-      broadcastTime: a.broadcast?.time ?? null,
-      airing: a.status === "Currently Airing",
-    }));
-  } catch {
-    // best-effort: fall through to the static hero
-  }
+  // Same MAL → AniList → catalog chain as the rows: the banner is the first
+  // thing on the page, so it should be the last thing to collapse.
+  const [airing, library] = await Promise.all([
+    getTopAiringAnime(AIRING_LIST),
+    getLibraryIndex(),
+  ]);
+  const slides: HeroSlide[] = airing.slice(0, BANNER_SLIDES).map((a) => ({
+    ...toBrowseItem(a),
+    durationMins: parseDurationMins(a.duration),
+    broadcastDay: a.broadcast?.day ?? null,
+    broadcastTime: a.broadcast?.time ?? null,
+    airing: a.status === "Currently Airing",
+    trailerId: trailerYoutubeId(a),
+  }));
   if (slides.length === 0) return <HeroFallback />;
-  return <HeroCarousel slides={slides} />;
+  return <HeroCarousel slides={slides} library={library} />;
 }
 
-/** Static hero shown while the carousel streams in (and if Jikan is down). */
+/** Shown if every upstream is down: the banner's frame, with the app's promise. */
 function HeroFallback() {
   return (
-    <section className="relative isolate overflow-hidden border-b border-white/10 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-zinc-50">
-      <div className="mx-auto flex min-h-[540px] w-full max-w-6xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6">
-        <p className="mb-3 text-xs font-medium uppercase tracking-[0.2em] text-primary/80">
+    <section className="banner-height relative isolate flex items-end overflow-hidden bg-banner pb-20 text-banner-foreground">
+      <div className="row-gutter">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
           Your anime, organized
         </p>
-        <h1 className="text-gradient max-w-2xl text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
+        <h1 className="mt-3 max-w-2xl text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
           Track everything you watch.
         </h1>
       </div>
@@ -94,161 +101,118 @@ function HeroFallback() {
   );
 }
 
-function GridSkeleton() {
+async function AiringNowRow() {
+  const [airing, library] = await Promise.all([
+    getTopAiringAnime(AIRING_LIST),
+    getLibraryIndex(),
+  ]);
+  // Past the banner's ten when the list is long enough; otherwise show it all
+  // rather than a stub row.
+  const rest = airing.length >= BANNER_SLIDES + 6 ? airing.slice(BANNER_SLIDES) : airing;
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <AnimeCardSkeleton key={i} />
-      ))}
-    </div>
+    <DiscoverRow
+      title="Airing now"
+      eyebrow="This season's most watched"
+      href="/seasons"
+      items={rest.map(toBrowseItem)}
+      library={library}
+    />
   );
 }
 
 /** One ranking window, mapped for the showcase; best-effort (empty on failure). */
 async function topTenItems(window: TopWindow): Promise<TopTenItem[]> {
-  try {
-    // MAL → AniList → catalog. Going through the chain (rather than calling
-    // getTopTen directly) is what keeps the chart populated when MAL answers
-    // `200 {"data": []}` instead of erroring, which is its usual degraded mode.
-    const list = await getTopTenChart(window);
-    return list.map((a) => ({
-      malId: a.mal_id,
-      title: a.title,
-      posterUrl:
-        a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url ?? null,
-      score: a.score,
-      type: a.type ?? null,
-      members: a.members ?? null,
-    }));
-  } catch {
-    return [];
-  }
+  // MAL → AniList → catalog; never throws (see top-ten.ts).
+  const list = await getTopTenChart(window);
+  return list.map((a) => ({ ...toBrowseItem(a), members: a.members ?? null }));
 }
 
-/** Server section: fetches all three charts, renders the tabbed Top 10. */
 async function TopTen() {
-  const [weekly, monthly, yearly] = await Promise.all([
+  const [weekly, monthly, yearly, library] = await Promise.all([
     topTenItems("weekly"),
     topTenItems("monthly"),
     topTenItems("yearly"),
+    getLibraryIndex(),
   ]);
-  return <TopTenShowcase weekly={weekly} monthly={monthly} yearly={yearly} />;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Discovery dashboard (below Your Library)                                   */
-/* -------------------------------------------------------------------------- */
-
-const posterOf = (a: JikanAnime) =>
-  a.images?.jpg?.large_image_url ?? a.images?.jpg?.image_url ?? null;
-
-function toDiscoveryItem(a: JikanAnime): DiscoveryItem {
-  return {
-    malId: a.mal_id,
-    title: a.title,
-    titleEnglish: a.title_english,
-    posterUrl: posterOf(a),
-    type: a.type ?? null,
-    year: a.year,
-    episodes: a.episodes,
-    score: a.score,
-  };
-}
-
-function toSidebarItem(a: JikanAnime): SidebarListItem {
-  return {
-    malId: a.mal_id,
-    title: a.title_english ?? a.title,
-    posterUrl: posterOf(a),
-    meta: [
-      a.type,
-      a.year != null ? String(a.year) : null,
-      a.score != null ? `★ ${a.score}` : null,
-      a.episodes != null ? `${a.episodes} ep` : null,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-  };
-}
-
-/** Dedupes a Jikan list by mal_id (top charts can repeat ids). */
-function dedupe(list: JikanAnime[]): JikanAnime[] {
-  const seen = new Set<number>();
-  return list.filter((a) =>
-    seen.has(a.mal_id) ? false : (seen.add(a.mal_id), true),
-  );
+  return <TopTenShowcase weekly={weekly} monthly={monthly} yearly={yearly} library={library} />;
 }
 
 async function Discovery() {
-  // Each rail runs MAL → AniList → catalog (src/lib/discovery.ts). Previously
-  // these were `.catch(() => [])` with nothing after the catch, so a MAL
-  // outage blanked all three tabs on the landing page.
-  const [newest, popular, topRated] = await Promise.all([
+  // Each list runs MAL → AniList → catalog (src/lib/discovery.ts).
+  const [newest, popular, topRated, library] = await Promise.all([
     getNewestAnime(18),
+    // Same limit as the poster marquee, so the two share one cached call.
     getPopularAnime(18),
     getTopRatedAnime(18),
+    getLibraryIndex(),
   ]);
   return (
     <DiscoveryTabs
-      newest={newest.map(toDiscoveryItem)}
-      popular={popular.map(toDiscoveryItem)}
-      topRated={topRated.map(toDiscoveryItem)}
+      newest={newest.map(toBrowseItem)}
+      popular={popular.map(toBrowseItem)}
+      topRated={topRated.map(toBrowseItem)}
+      library={library}
+    />
+  );
+}
+
+async function UpcomingRow() {
+  const [items, library] = await Promise.all([getUpcomingAnime(18), getLibraryIndex()]);
+  return (
+    <DiscoverRow
+      title="Coming soon"
+      eyebrow="Announced, not yet airing"
+      href="/upcoming"
+      items={items.map(toBrowseItem)}
+      library={library}
     />
   );
 }
 
 /*
- * Best-effort sidebar panels: the fetch lives in try/catch, the JSX doesn't.
- * React renders lazily, so JSX built inside a try block escapes it before any
- * render error can fire (react-hooks/error-boundaries) — and a fetch failure
- * is the only failure these panels are meant to swallow.
+ * Best-effort rows: the fetch lives in try/catch, the JSX doesn't. React
+ * renders lazily, so JSX built inside a try block escapes it before any render
+ * error can fire (react-hooks/error-boundaries) — and a fetch failure is the
+ * only failure these rows are meant to swallow.
  */
 
-async function TopAiringPanel() {
-  const items = await getTopAiringAnime(6);
-  if (items.length === 0) return null;
-  return <SidebarList title="Top Airing" items={items.map(toSidebarItem)} />;
-}
-
-async function UpcomingPanel() {
-  const items = await getUpcomingAnime(6);
-  if (items.length === 0) return null;
-  return <SidebarList title="Upcoming" items={items.map(toSidebarItem)} />;
-}
-
-async function JustFinishedPanel() {
-  let items: SidebarListItem[];
+async function JustFinishedRow() {
+  // Started now, awaited last: the library read runs alongside the fetch.
+  const libraryP = getLibraryIndex();
+  let items: BrowseItem[];
   try {
-    const { data } = await getJustFinished(8);
-    items = dedupe(data).slice(0, 5).map(toSidebarItem);
+    const { data } = await getJustFinished(18);
+    items = uniqueByMalId(data.map(toBrowseItem));
   } catch {
-    // MAL down → finished titles from AniList so the rail still fills instead
-    // of vanishing (same degradation the schedule rail beside it already does).
+    // MAL down → finished titles from AniList so the row still fills.
     try {
       const { data } = await searchAnilist({ status: "complete" }, 1);
-      items = dedupe(data).slice(0, 5).map(toSidebarItem);
+      items = uniqueByMalId(data.map(toBrowseItem)).slice(0, 18);
     } catch {
       return null;
     }
   }
-  return <SidebarList title="Just Finished" items={items} />;
+  const library = await libraryP;
+  return <DiscoverRow title="Just finished" eyebrow="Complete and ready to binge" items={items} library={library} />;
 }
 
-async function TopMoviesPanel() {
-  let items: SidebarListItem[];
+async function TopMoviesRow() {
+  const libraryP = getLibraryIndex();
+  let items: BrowseItem[];
   try {
-    const { data } = await getTopMovies(8);
-    items = dedupe(data).slice(0, 5).map(toSidebarItem);
+    const { data } = await getTopMovies(18);
+    items = uniqueByMalId(data.map(toBrowseItem));
   } catch {
-    // MAL down → top movies from AniList (by popularity) so the box stays.
+    // MAL down → top movies from AniList (by popularity) so the row stays.
     try {
       const { data } = await searchAnilist({ format: "movie" }, 1);
-      items = dedupe(data).slice(0, 5).map(toSidebarItem);
+      items = uniqueByMalId(data.map(toBrowseItem)).slice(0, 18);
     } catch {
       return null;
     }
   }
-  return <SidebarList title="Top Movies" items={items} />;
+  const library = await libraryP;
+  return <DiscoverRow title="Top movies" href="/movies" items={items} library={library} />;
 }
 
 const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
@@ -275,14 +239,13 @@ async function SchedulePanel() {
         isToday: offset === 0,
         rows: all
           .filter((a) => a.broadcast?.day === dayName && a.broadcast?.time)
-          .sort((a, b) =>
-            (a.broadcast!.time ?? "").localeCompare(b.broadcast!.time ?? ""),
-          )
-          .slice(0, 9)
+          .sort((a, b) => (a.broadcast!.time ?? "").localeCompare(b.broadcast!.time ?? ""))
+          .slice(0, 16)
           .map((a) => ({
             malId: a.mal_id,
             time: a.broadcast!.time ?? "--:--",
             title: a.title_english ?? a.title,
+            posterUrl: posterOfJikan(a),
           })),
       };
     });
@@ -298,68 +261,58 @@ export default async function Home() {
   // otherwise leave this page rendering. The server guard is the real gate.
   await requireUser();
   return (
-    // No bg-background here: the fixed vortex backdrop sits at -z-10 and an
-    // opaque page background would cover it. The hero paints its own.
-    // Nav and backdrop come from the (app) layout.
-    <div className="relative flex flex-1 flex-col">
-      <Suspense fallback={<HeroFallback />}>
+    // `browse-scope` defines --gutter, which aligns every full-bleed row's
+    // first card with the page container. No bg here: the fixed backdrop sits
+    // behind the page. Nav and backdrop come from the (app) layout.
+    <div className="browse-scope relative flex flex-1 flex-col">
+      <Suspense fallback={<BannerSkeleton />}>
         <HeroSection />
       </Suspense>
       <GenreRibbon />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+
+      <main className="flex w-full flex-1 flex-col pb-12">
         <Suspense fallback={null}>
           <ContinueWatching />
         </Suspense>
-        {/* Ongoing shows from the user's watchlist — new episodes each day. */}
         <Suspense fallback={null}>
           <WatchingAiring />
         </Suspense>
-        {/* Trending poster marquee as a full-width divider between sections. */}
+        <Suspense fallback={null}>
+          <BecauseYouWatchedRow />
+        </Suspense>
+        <Suspense fallback={<RowSkeleton eyebrow ranked count={6} />}>
+          <TopTen />
+        </Suspense>
+        <Suspense fallback={<RowSkeleton eyebrow />}>
+          <LibraryRow />
+        </Suspense>
+
+        <div className="row-gutter pt-8 empty:hidden">
+          <ShareBanner />
+        </div>
+
+        <Suspense fallback={<RowSkeleton />}>
+          <Discovery />
+        </Suspense>
+        {/* Trending posters as a full-width divider between row groups. */}
         <Suspense fallback={null}>
           <TrendingPosterMarquee />
         </Suspense>
-        <Suspense fallback={null}>
-          <TopTen />
+        <Suspense fallback={<RowSkeleton eyebrow />}>
+          <AiringNowRow />
         </Suspense>
-        <div className="mb-4 mt-8 flex items-center justify-between">
-          <h2 className="text-gradient text-lg font-semibold tracking-tight">
-            Your Library
-          </h2>
-        </div>
-        <Suspense fallback={<GridSkeleton />}>
-          <LibraryGrid />
+        <Suspense fallback={<RowSkeleton eyebrow />}>
+          <UpcomingRow />
         </Suspense>
-
-        {/* Discovery dashboard: tabs grid + airing/upcoming rails */}
-        <section className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="flex min-w-0 flex-col gap-6">
-            <ShareBanner />
-            <Suspense fallback={null}>
-              <Discovery />
-            </Suspense>
-          </div>
-          <div className="flex flex-col gap-6">
-            <Suspense fallback={null}>
-              <TopAiringPanel />
-            </Suspense>
-            <Suspense fallback={null}>
-              <UpcomingPanel />
-            </Suspense>
-          </div>
-        </section>
-
-        {/* Bottom rails: just finished, movies, tonight's schedule */}
-        <section className="mt-6 grid items-start gap-6 md:grid-cols-3">
-          <Suspense fallback={null}>
-            <JustFinishedPanel />
-          </Suspense>
-          <Suspense fallback={null}>
-            <TopMoviesPanel />
-          </Suspense>
-          <Suspense fallback={null}>
-            <SchedulePanel />
-          </Suspense>
-        </section>
+        <Suspense fallback={<RowSkeleton eyebrow />}>
+          <JustFinishedRow />
+        </Suspense>
+        <Suspense fallback={<RowSkeleton />}>
+          <TopMoviesRow />
+        </Suspense>
+        <Suspense fallback={<RowSkeleton variant="schedule" eyebrow />}>
+          <SchedulePanel />
+        </Suspense>
       </main>
     </div>
   );

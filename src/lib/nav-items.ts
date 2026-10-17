@@ -5,12 +5,12 @@ import {
   Clock,
   Compass,
   Film,
+  Globe,
   House,
   LayoutList,
   Leaf,
   ListChecks,
   Music,
-  Newspaper,
   Rss,
   Search,
   Shapes,
@@ -21,6 +21,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { ANIME_CORNER_LINKS } from "@/lib/anime-corner";
+
 /**
  * The single source of truth for the anime side's authed navigation. Rendered by
  * `AppNav`'s drawer and by `BottomTabBar` (mobile), both mounted once in the
@@ -29,7 +31,7 @@ import {
  *
  * Grouped rather than flat: eighteen unlabelled links in one column read as
  * alphabet soup, and the pages nobody guessed existed (`/songs`, `/store`,
- * `/news`) were the ones buried mid-list. The sections answer "what am I trying
+ * `/community`) were the ones buried mid-list. The sections answer "what am I trying
  * to do?" — track, find, follow — and the icons give each row a shape to aim
  * for. `NAV_ITEMS` stays exported flat because the command palette wants one
  * list, not four.
@@ -40,6 +42,25 @@ export type NavItem = {
   Icon: LucideIcon;
   /** One-line hint shown under the label in the drawer. */
   hint?: string;
+  /**
+   * Off-site destination: rendered as a plain anchor opening in a new tab, and
+   * never a `<Link>`. Consumers must branch on this — `next/link` and the
+   * command palette's `router.push` both assume an in-app route, and an
+   * absolute URL through either one is a broken navigation rather than a
+   * visible error. External items never take the active state either, since
+   * the app's pathname can't match them.
+   */
+  external?: boolean;
+  /**
+   * Take the active state on an exact pathname match only, never on a prefix.
+   *
+   * Needed by any "home" row whose href is a prefix of its whole section:
+   * `/manga` is the parent of `/manga/news`, `/manga/library` and the rest, so
+   * without this the manga Home row highlights on every manga page at once.
+   * The anime side's `/` doesn't need it — the prefix test appends a slash, and
+   * nothing matches `//`.
+   */
+  exact?: boolean;
 };
 
 export type NavSection = {
@@ -105,12 +126,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     title: "Keeping up",
     items: [
       {
-        label: "News",
-        href: "/news",
-        Icon: Newspaper,
-        hint: "The community broadsheet",
-      },
-      {
         label: "Schedule",
         href: "/schedule",
         Icon: CalendarDays,
@@ -118,6 +133,30 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       },
       { label: "Feed", href: "/feed", Icon: Rss, hint: "Friend activity" },
       { label: "Friends", href: "/friends", Icon: Users, hint: "People you follow" },
+    ],
+  },
+  {
+    // News used to be an in-app broadsheet built from r/anime hot posts. It now
+    // points at Anime Corner, so it sits with the rest of the off-site coverage
+    // rather than alone under "Keeping up" — the whole section is one trip
+    // outside the app, and grouping it says so before the click does.
+    title: "Community",
+    items: [
+      {
+        label: "Community",
+        href: "/community",
+        Icon: Globe,
+        hint: "Anime Corner, feed and friends",
+      },
+      ...ANIME_CORNER_LINKS.map(
+        (link): NavItem => ({
+          label: link.label,
+          href: link.href,
+          Icon: link.Icon,
+          hint: link.blurb,
+          external: true,
+        }),
+      ),
     ],
   },
   {

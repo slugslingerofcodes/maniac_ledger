@@ -57,3 +57,18 @@ describe("isPublicPath", () => {
     },
   );
 });
+
+describe("calendar subscription feed", () => {
+  // A calendar app fetches the feed with no cookies, so the proxy must let it
+  // through to the route — which does its own token check.
+  it("lets a tokenized feed URL through without a session", () => {
+    expect(isPublicPath(`/api/calendar/feed/${"a".repeat(43)}.ics`)).toBe(true);
+  });
+
+  it.each(["/api/calendar", "/api/calendar/feedback", "/api/calendar/feeds/x.ics"])(
+    "keeps %s gated — only the feed route is public",
+    (path) => {
+      expect(isPublicPath(path)).toBe(false);
+    },
+  );
+});

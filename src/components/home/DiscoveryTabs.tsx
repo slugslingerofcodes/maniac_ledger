@@ -1,118 +1,82 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 
-import { MorphLink } from "@/components/MorphLink";
-import { ParallaxStagger } from "@/components/Parallax";
-import { displayTitle, useTitleLanguage } from "@/hooks/use-title-language";
+import { DiscoverRow } from "@/components/browse/DiscoverRow";
+import type { BrowseItem, LibraryEntry } from "@/lib/browse-item";
 import { cn } from "@/lib/utils";
-import { posterTransitionName } from "@/lib/view-transition";
-import { posterUrl } from "@/lib/poster";
-
-/** Serializable card payload for the discovery grid. */
-export type DiscoveryItem = {
-  malId: number;
-  title: string;
-  titleEnglish: string | null;
-  posterUrl: string | null;
-  type: string | null;
-  year: number | null;
-  episodes: number | null;
-  score: number | null;
-};
 
 const TABS = [
-  { key: "newest", label: "Newest" },
+  { key: "newest", label: "New" },
   { key: "popular", label: "Popular" },
-  { key: "topRated", label: "Top Rated" },
+  { key: "topRated", label: "Top rated" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
+/** Segmented switcher used in row headers (Discover, Top 10). */
+export function RowTabs<K extends string>({
+  tabs,
+  value,
+  onChange,
+  label,
+}: {
+  tabs: readonly { key: K; label: string }[];
+  value: K;
+  onChange: (key: K) => void;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex gap-1 rounded-full bg-muted p-1">
+      {tabs.map(({ key, label: tabLabel }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          aria-pressed={value === key}
+          className={cn(
+            "rounded-full px-3 py-1 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+            value === key
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {tabLabel}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Newest / Popular / Top Rated discovery grid. All three lists are fetched
- * server-side and passed in, so switching tabs is instant (TopTenShowcase
- * pattern).
+ * Newest / Popular / Top rated as one row with a switcher in its header. All
+ * three lists arrive from the server together, so switching is instant (no
+ * refetch); the row keeps its height, so nothing below it moves.
  */
-export function DiscoveryTabs(props: Record<TabKey, DiscoveryItem[]>) {
+export function DiscoveryTabs({
+  library,
+  ...lists
+}: Record<TabKey, BrowseItem[]> & { library?: Record<number, LibraryEntry> }) {
   // Only offer tabs that actually have data (an upstream slice can fail
   // independently); default to the first populated one.
-  const available = TABS.filter(({ key }) => props[key].length > 0);
+  const available = TABS.filter(({ key }) => lists[key].length > 0);
   const [tab, setTab] = useState<TabKey>(available[0]?.key ?? "newest");
-  const [titleLang] = useTitleLanguage();
-  const items = props[tab];
 
   if (available.length === 0) return null;
+  const current = lists[tab].length > 0 ? tab : available[0]!.key;
 
   return (
-    <section>
-      <div className="mb-3 flex gap-1.5">
-        {available.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            aria-pressed={tab === key}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-all duration-200 motion-safe:hover:scale-110",
-              tab === key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Scroll-staggered entrance (GSAP). Keyed by tab so switching replays
-          the stagger for the new set instead of showing it flat. */}
-      <ParallaxStagger
-        key={tab}
-        className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-6"
-      >
-        {items.map((item) => (
-          <MorphLink
-            key={item.malId}
-            href={`/anime/mal/${item.malId}`}
-            name={posterTransitionName(item.malId)}
-            className="group flex flex-col gap-1.5"
-          >
-            <div data-morph className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
-              {item.posterUrl ? (
-                <Image
-                  src={posterUrl(item.posterUrl, "card")!}
-                  alt=""
-                  fill
-                  sizes="(max-width: 640px) 33vw, 16vw"
-                  className="object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                  No image
-                </div>
-              )}
-            </div>
-            <p className="line-clamp-1 text-xs font-medium group-hover:text-primary">
-              <span aria-hidden className="mr-1 text-emerald-400">
-                ●
-              </span>
-              {displayTitle(titleLang, item.title, item.titleEnglish)}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {[
-                item.type,
-                item.year != null ? String(item.year) : null,
-                item.episodes != null ? `${item.episodes} ep` : null,
-                item.score != null ? `★ ${item.score}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </MorphLink>
-        ))}
-      </ParallaxStagger>
-    </section>
+    <DiscoverRow
+      title="Discover"
+      href="/search"
+      actions={
+        available.length > 1 ? (
+          <RowTabs tabs={available} value={current} onChange={setTab} label="Discover lists" />
+        ) : null
+      }
+      items={lists[current]}
+      library={library}
+      resetKey={current}
+    />
   );
 }

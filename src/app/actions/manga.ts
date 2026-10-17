@@ -170,18 +170,36 @@ export async function searchMangaAction(
   page = 1,
   type?: JikanMangaType,
   genreIds: number[] = [],
+  /**
+   * Merge MangaDex extras onto page 1. On by default, because the browse tabs
+   * genuinely need it (see `withMangaDexExtras`).
+   *
+   * Pass `false` from a type-ahead: it fires on every debounced keystroke, so
+   * leaving this on means a MangaDex round trip per keystroke to enrich a
+   * dropdown that shows the top hits only. (The ⌘K palette was that caller; it
+   * now uses its own abortable route, /api/manga/search, since server actions
+   * run one at a time per client and can't be cancelled.)
+   */
+  includeExtras = true,
 ): Promise<MangaSearchResult> {
+  const extras = includeExtras
+    ? withMangaDexExtras
+    : async (results: JikanManga[]) => results;
+
+  const trimmed = query.trim();
+
+  // Deliberately NOT rate-limited per user here. The obvious guard —
+  // `auth.getUser()` to key a limit — validates the JWT over the network, so
+  // it would add a round trip to every keystroke of a type-ahead in order to
+  // protect upstreams that are already protected: Jikan calls go through
+  // `jikanFetch`'s serial ~350ms queue with caching and negative caching, and
+  // AniList sits behind a circuit breaker. The real fix for palette volume was
+  // `includeExtras`, above.
   try {
-    const res = await searchManga(query.trim(), page, genreIds, type);
+    const res = await searchManga(trimmed, page, genreIds, type);
     return {
       ok: true,
-      results: await withMangaDexExtras(
-        dedupeManga(res.data),
-        query,
-        page,
-        type,
-        genreIds,
-      ),
+      results: await extras(dedupeManga(res.data), query, page, type, genreIds),
       totalPages: Math.max(res.pagination.last_visible_page, 1),
       source: "mal",
       degraded: false,
@@ -195,13 +213,7 @@ export async function searchMangaAction(
     const res = await searchAnilistManga(query, page, type, genreIds);
     return {
       ok: true,
-      results: await withMangaDexExtras(
-        dedupeManga(res.data),
-        query,
-        page,
-        type,
-        genreIds,
-      ),
+      results: await extras(dedupeManga(res.data), query, page, type, genreIds),
       totalPages: Math.max(res.pagination.last_visible_page, 1),
       source: "anilist",
       degraded: false,

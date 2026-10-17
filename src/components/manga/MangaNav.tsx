@@ -1,87 +1,35 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Clapperboard } from "lucide-react";
 
-import { SiteBanner } from "@/components/SiteBanner";
-import { cn } from "@/lib/utils";
-
-const NAV_ITEMS = [
-  { label: "Home", href: "/manga" },
-  // First after Home: it's where /choose lands you, so it should read as a
-  // primary destination rather than an afterthought at the end of the row.
-  { label: "News", href: "/manga/news" },
-  { label: "Search", href: "/manga/search" },
-  { label: "Light Novels", href: "/manga/lightnovels" },
-  { label: "Web", href: "/manga/web" },
-  { label: "Library", href: "/manga/library" },
-  { label: "Arts", href: "/manga/arts" },
-  { label: "Posters", href: "/manga/posters" },
-  { label: "Miscellaneous", href: "/manga/miscellaneous" },
-] as const;
-
-function isActive(pathname: string, href: string) {
-  if (href === "/manga") return pathname === "/manga";
-  return pathname === href || pathname.startsWith(href + "/");
-}
+import { FrameworkNav, type FrameworkNavConfig } from "@/components/FrameworkNav";
+import { MANGA_NAV_SECTIONS } from "@/lib/manga-nav-items";
+import type { NavUser } from "@/lib/nav-user";
 
 /**
- * Header for the manga framework — the manga-side equivalent of AppNav. Kept
- * deliberately simple (a handful of links). The right-hand pill switches back to
- * the anime side, satisfying the "shift between frameworks" requirement.
+ * The manga framework's header — now the same component the anime side uses,
+ * with a manga config.
+ *
+ * It used to be its own implementation: nine flat links scrolling sideways in
+ * the header, and none of the chrome the anime side had grown (the grouped
+ * drawer, the search field, reminders, the account menu with the theme
+ * control). Crossing between the two sides felt like crossing into a different
+ * product, and every addition to the anime header had to be remembered here.
+ *
+ * The one deliberate asymmetry is search: ⌘K resolves *anime* titles, so a
+ * manga header that opened it would be lying about what it searches. The pill
+ * links to /manga/search instead and drops the ⌘K hint, since there is no
+ * shortcut to advertise.
  */
-export function MangaNav() {
-  const pathname = usePathname();
+const CONFIG: FrameworkNavConfig = {
+  homeHref: "/manga",
+  homeLabel: "manga_maniacs",
+  sections: MANGA_NAV_SECTIONS,
+  search: { kind: "link", href: "/manga/search", placeholder: "Search manga…" },
+  crossLink: { href: "/", label: "Anime", Icon: Clapperboard },
+};
 
-  return (
-    <header className="glass sticky top-0 z-40 w-full border-b border-border">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link
-          href="/manga"
-          aria-label="manga_maniacs"
-          className="flex shrink-0 items-center"
-        >
-          <SiteBanner />
-        </Link>
-
-        <nav className="scrollbar-subtle flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200 motion-safe:hover:scale-110",
-                  active
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-1">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Clapperboard className="size-4" aria-hidden />
-            <span className="hidden sm:inline">Anime</span>
-          </Link>
-          <Link
-            href="/profile"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            Profile
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
+/** `user` comes from the layout, un-awaited — see `getNavUser`. */
+export function MangaNav({ user }: { user: Promise<NavUser | null> }) {
+  return <FrameworkNav config={CONFIG} user={user} />;
 }

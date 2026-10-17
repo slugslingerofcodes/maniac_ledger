@@ -1,16 +1,15 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { after } from "next/server";
 
-import { MangaChapterList } from "@/components/manga/MangaChapterList";
+import {
+  ChapterListSkeleton,
+  StreamedChapterList,
+} from "@/app/manga/_components/StreamedChapterList";
 import { MangaReadingTracker } from "@/components/manga/MangaReadingTracker";
 import { PosterLightbox } from "@/components/PosterLightbox";
 import { Badge } from "@/components/ui/badge";
-import {
-  ensureMangaChapters,
-  getStoredChapters,
-} from "@/lib/manga-chapters";
 import { getMangaDexMangaDetail } from "@/lib/mangadex";
 import { upsertCatalogManga } from "@/lib/manga";
 import { createClient } from "@/lib/supabase/server";
@@ -67,31 +66,6 @@ export default async function MangaDexDetailPage(props: {
     .select("status, chapters_read, volumes_read, score")
     .eq("manga_id", mangaId)
     .maybeSingle();
-
-  // Chapters: the MangaDex id is already known, so no resolution step.
-  const { data: syncMeta } = await supabase
-    .from("manga")
-    .select("chapters_synced_at")
-    .eq("id", mangaId)
-    .maybeSingle();
-  const syncArgs = {
-    id: mangaId,
-    mal_id: null,
-    title: manga.title,
-    title_english: manga.title_english,
-    status: manga.status,
-    type: manga.type,
-    chapters: manga.chapters,
-    mangadex_id: mdId,
-    chapters_synced_at: syncMeta?.chapters_synced_at ?? null,
-  };
-  let chapterRows = await getStoredChapters(mangaId);
-  if (chapterRows.length === 0) {
-    await ensureMangaChapters(syncArgs);
-    chapterRows = await getStoredChapters(mangaId);
-  } else {
-    after(() => ensureMangaChapters(syncArgs));
-  }
 
   const cover =
     manga.images?.jpg?.large_image_url ?? manga.images?.jpg?.image_url ?? null;
@@ -182,14 +156,23 @@ export default async function MangaDexDetailPage(props: {
             </p>
           ) : null}
 
-          <MangaChapterList
-            chapters={chapterRows.map((c) => ({
-              number: Number(c.number),
-              title: c.title,
-              publishedAt: c.published_at,
-            }))}
-            chaptersRead={progress?.chapters_read ?? 0}
-          />
+          {/* Streamed: a first view syncs from MangaDex before it can read.
+              The MangaDex id is already known, so no resolution step. */}
+          <Suspense fallback={<ChapterListSkeleton />}>
+            <StreamedChapterList
+              row={{
+                id: mangaId,
+                mal_id: null,
+                title: manga.title,
+                title_english: manga.title_english,
+                status: manga.status,
+                type: manga.type,
+                chapters: manga.chapters,
+                mangadex_id: mdId,
+              }}
+              chaptersRead={progress?.chapters_read ?? 0}
+            />
+          </Suspense>
         </div>
       </div>
     </main>

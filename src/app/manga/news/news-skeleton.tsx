@@ -1,16 +1,14 @@
 import { TextBlockSkeleton } from "@/components/skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Anime Times skeleton: masthead, lead story, then the column grid. */
-export default function Loading() {
+/**
+ * The lead story and the column grid. Shared by the route's loading.tsx and
+ * the page's own Suspense boundary, which shows it under the already-printed
+ * masthead while the Reddit wire streams in.
+ */
+export function NewsBodySkeleton() {
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
-      {/* Masthead */}
-      <div className="border-y-2 border-foreground/50 py-4 text-center">
-        <Skeleton className="mx-auto h-10 w-72 max-w-full" />
-        <Skeleton className="mx-auto mt-2 h-3 w-56 max-w-full" />
-      </div>
-
+    <>
       {/* Lead story */}
       <div className="mt-6 grid gap-5 border-b-2 border-foreground/50 pb-6 sm:grid-cols-[1fr_260px]">
         <div>
@@ -32,6 +30,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </main>
+    </>
   );
 }

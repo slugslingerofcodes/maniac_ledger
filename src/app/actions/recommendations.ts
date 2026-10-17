@@ -1,9 +1,14 @@
 "use server";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import {
+  grokJson,
+  isGrokBillingIssue,
+  isGrokConfigured,
+  isGrokRateLimited,
+} from "@/lib/grok";
 import { searchAnime } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,7 +28,7 @@ export type GenerateRecommendationsResult =
   | { ok: false; error: string };
 
 /* -------------------------------------------------------------------------- */
-/* Gemini response schema (lenient on field types — the model isn't reliable   */
+/* Grok response schema (lenient on field types — the model isn't reliable     */
 /* about number-vs-string, so we coerce rather than force a needless retry).   */
 /* -------------------------------------------------------------------------- */
 
@@ -33,7 +38,10 @@ const SuggestionSchema = z.object({
   reason: z.string().min(1),
   confidence: z.union([z.number(), z.string()]).nullish(),
 });
-const SuggestionsSchema = z.array(SuggestionSchema).min(1);
+/** Wrapped in an object because JSON mode cannot return a bare array. */
+const SuggestionsSchema = z.object({
+  suggestions: z.array(SuggestionSchema).min(1),
+});
 
 function toNum(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -44,57 +52,32 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
-function stripFences(text: string): string {
-  return text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-/** Calls Gemini and parses the suggestion array; retries once with a stricter
- *  prompt if the first response isn't valid JSON in our shape. Throws on a
- *  second failure or on a transport/rate-limit error. */
+/**
+ * Asks Grok for suggestions. The malformed-JSON retry lives in `grokJson`, so
+ * this is only the prompt; transport and rate-limit failures propagate.
+ */
 async function getSuggestions(
-  apiKey: string,
   loved: { title: string; rating: number }[],
-): Promise<z.infer<typeof SuggestionsSchema>> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    // Pinned flash models keep getting their free-tier quota zeroed on
-    // deprecation (1.5 → 2.0 → 2.5 all did, each as a 429/404 in prod); the
-    // rolling alias tracks whatever the current free-tier flash model is.
-    model: "gemini-flash-latest",
-    // Ask for raw JSON up front — the biggest lever against malformed output.
-    generationConfig: { responseMimeType: "application/json", temperature: 0.9 },
+): Promise<z.infer<typeof SuggestionsSchema>["suggestions"]> {
+  const { suggestions } = await grokJson({
+    schema: SuggestionsSchema,
+    // Variety is asked for explicitly because the failure mode of this feature
+    // isn't a bad pick, it's five picks from one franchise or one genre.
+    temperature: 0.9,
+    system:
+      `You recommend anime. Reply with a JSON object of the form ` +
+      `{"suggestions": [{"title": string, "mal_id_guess": integer|null, ` +
+      `"reason": string, "confidence": number between 0 and 1}]}. ` +
+      `Use the exact romaji or English title as it appears on MyAnimeList, ` +
+      `so it can be looked up. Give the reason in one sentence, addressed to ` +
+      `the user.`,
+    user:
+      `Here are anime the user loved, with the score they gave each: ` +
+      `${JSON.stringify(loved)}. Suggest exactly 5 anime they have not ` +
+      `watched. Prioritise variety of genre and tone, and do not suggest ` +
+      `sequels, prequels or spin-offs of anything in that list.`,
   });
-
-  const basePrompt =
-    `Based on these anime the user loved: ${JSON.stringify(loved)}, suggest 5 ` +
-    `anime they haven't watched yet. Return strict JSON: ` +
-    `[{title, mal_id_guess, reason, confidence}]. Prioritize variety in genre ` +
-    `and avoid sequels of what they've already seen.`;
-
-  const tryOnce = async (prompt: string) => {
-    const result = await model.generateContent(prompt);
-    return SuggestionsSchema.parse(JSON.parse(stripFences(result.response.text())));
-  };
-
-  try {
-    return await tryOnce(basePrompt);
-  } catch (err) {
-    // A transport/rate-limit error should bubble up, not trigger the JSON
-    // retry. Only retry when the failure was parsing/validation.
-    if (err instanceof SyntaxError || err instanceof z.ZodError) {
-      const stricter =
-        basePrompt +
-        ` Respond with ONLY a valid JSON array and nothing else — no markdown, ` +
-        `no prose. "mal_id_guess" must be an integer or null; "confidence" must ` +
-        `be a number between 0 and 1.`;
-      return await tryOnce(stricter);
-    }
-    throw err;
-  }
+  return suggestions;
 }
 
 /**
@@ -107,9 +90,8 @@ async function getSuggestions(
  * at add-time if you want genre signal in the prompt.
  */
 export async function generateRecommendations(): Promise<GenerateRecommendationsResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return { ok: false, error: "GEMINI_API_KEY is not configured." };
+  if (!isGrokConfigured()) {
+    return { ok: false, error: "XAI_API_KEY is not configured." };
   }
 
   const supabase = await createClient();
@@ -117,7 +99,10 @@ export async function generateRecommendations(): Promise<GenerateRecommendations
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return { ok: false, error: "You must be signed in to get recommendations." };
+    return {
+      ok: false,
+      error: "You must be signed in to get recommendations.",
+    };
   }
 
   // 1. Favorites: completed with the user's score >= 7. The user_id filter is
@@ -140,19 +125,29 @@ export async function generateRecommendations(): Promise<GenerateRecommendations
     };
   }
 
-  const loved = favorites.map((f) => ({ title: f.anime.title, rating: f.score! }));
+  const loved = favorites.map((f) => ({
+    title: f.anime.title,
+    rating: f.score!,
+  }));
   const watched = new Set(loved.map((l) => l.title.toLowerCase()));
 
-  // 2. Ask Gemini (with the malformed-JSON retry inside getSuggestions).
-  let suggestions: z.infer<typeof SuggestionsSchema>;
+  // 2. Ask Grok (with the malformed-JSON retry inside grokJson).
+  let suggestions: z.infer<typeof SuggestionsSchema>["suggestions"];
   try {
-    suggestions = await getSuggestions(apiKey, loved);
+    suggestions = await getSuggestions(loved);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/\b429\b|rate|quota|exhausted/i.test(msg)) {
+    if (isGrokBillingIssue(err)) {
       return {
         ok: false,
-        error: "Recommendations are rate-limited right now — try again shortly.",
+        error:
+          "The xAI account has no credits — top it up at console.x.ai, then try again.",
+      };
+    }
+    if (isGrokRateLimited(err)) {
+      return {
+        ok: false,
+        error:
+          "Recommendations are rate-limited right now — try again shortly.",
       };
     }
     if (err instanceof z.ZodError || err instanceof SyntaxError) {
@@ -180,7 +175,9 @@ export async function generateRecommendations(): Promise<GenerateRecommendations
       if (hit) {
         malId = hit.mal_id;
         posterUrl =
-          hit.images?.jpg?.large_image_url ?? hit.images?.jpg?.image_url ?? null;
+          hit.images?.jpg?.large_image_url ??
+          hit.images?.jpg?.image_url ??
+          null;
         score = hit.score;
       }
     } catch {

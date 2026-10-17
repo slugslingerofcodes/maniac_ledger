@@ -37,7 +37,7 @@ export const config = {
      *
      * Video matters as much as images here: a <video> streams via HTTP range
      * requests, so every seek/buffer would otherwise cost a Supabase
-     * `getUser()` round-trip in the proxy — and 307 away entirely for
+     * session check in the proxy — and 307 away entirely for
      * signed-out viewers. These are decorative files in public/, public by
      * nature.
      */

@@ -15,11 +15,23 @@ import { useCallback, useSyncExternalStore } from "react";
  */
 
 export type BackgroundChoice =
+  | "leather"
   | "default"
   | "gears"
   | "clockwork"
   | "eyeclock"
   | "custom";
+
+/**
+ * What you get having never chosen — now the plain blue leather.
+ *
+ * Note `"default"` is still a *value*, and deliberately keeps that name: it is
+ * what everyone who explicitly picked the animated scenes already has in
+ * localStorage, and renaming it would silently reset their choice. Only the
+ * fallback moved. Its user-facing label became "Scenes", because an option
+ * labelled "Default" that isn't the default is worse than a rename.
+ */
+const DEFAULT_CHOICE: BackgroundChoice = "leather";
 
 const STORAGE_KEY = "app-background";
 /** Data-URL of the user's own image, when `choice === "custom"`. */
@@ -31,10 +43,18 @@ export const BACKGROUND_OPTIONS: {
   label: string;
   description: string;
 }[] = [
+  // These two differ only in what sits behind general pages — the galaxy,
+  // poster wall and cosmos keep their own either way — so the descriptions are
+  // deliberately parallel and say exactly that.
+  {
+    value: "leather",
+    label: "Blue leather",
+    description: "Plain and quiet behind most pages.",
+  },
   {
     value: "default",
-    label: "Default",
-    description: "Animated scenes, picked per page.",
+    label: "Scenes",
+    description: "An animated vortex behind most pages.",
   },
   { value: "gears", label: "Gears", description: "Turning brass clockwork." },
   { value: "clockwork", label: "Clockwork", description: "The full movement." },
@@ -46,7 +66,7 @@ export const BACKGROUND_OPTIONS: {
   { value: "custom", label: "Custom", description: "Your own picture." },
 ];
 
-/** Video sources for the motion backgrounds (`default` paints its own CSS). */
+/** Video sources for the motion backgrounds (the rest paint their own CSS). */
 export const BACKGROUND_VIDEO: Partial<Record<BackgroundChoice, string>> = {
   gears: "/backgrounds/gears.mp4",
   clockwork: "/backgrounds/clockwork.mp4",
@@ -54,6 +74,7 @@ export const BACKGROUND_VIDEO: Partial<Record<BackgroundChoice, string>> = {
 
 function isChoice(value: string | null): value is BackgroundChoice {
   return (
+    value === "leather" ||
     value === "default" ||
     value === "gears" ||
     value === "clockwork" ||
@@ -73,10 +94,12 @@ function subscribe(onChange: () => void) {
 
 function getChoiceSnapshot(): BackgroundChoice {
   const stored = localStorage.getItem(STORAGE_KEY);
-  const choice = isChoice(stored) ? stored : "default";
+  const choice = isChoice(stored) ? stored : DEFAULT_CHOICE;
   // A "custom" choice whose image has been cleared (or never saved) has
-  // nothing to render — treat it as default instead of a black void.
-  if (choice === "custom" && !localStorage.getItem(IMAGE_KEY)) return "default";
+  // nothing to render — fall back instead of showing a black void.
+  if (choice === "custom" && !localStorage.getItem(IMAGE_KEY)) {
+    return DEFAULT_CHOICE;
+  }
   return choice;
 }
 
@@ -85,7 +108,7 @@ function getImageSnapshot(): string | null {
 }
 
 // SSR/hydration snapshots; the stored values apply right after hydration.
-const getServerChoice = (): BackgroundChoice => "default";
+const getServerChoice = (): BackgroundChoice => DEFAULT_CHOICE;
 const getServerImage = (): string | null => null;
 
 function emitChange() {

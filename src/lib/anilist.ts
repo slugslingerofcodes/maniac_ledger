@@ -62,24 +62,81 @@ export class AnilistError extends Error {
 /* Rate limiting (same serial-chain pattern as jikan.ts)                      */
 /* -------------------------------------------------------------------------- */
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 /**
- * Earliest instant the next request may *start*, reserved synchronously.
+ * Request *starts* are spaced `MIN_REQUEST_INTERVAL_MS` apart, first come
+ * first served.
  *
- * As in the Jikan client, this spaces request starts without making each one
- * wait for the previous to finish. At a 2.1s budget, chaining on completion
- * meant N × (2100ms + latency) — during a MAL outage, when every fallback
- * lands here, that alone put tens of seconds on the home page.
+ * As in the Jikan client, a start doesn't wait for the previous request to
+ * finish. At a 2.1s budget, chaining on completion meant N × (2100ms +
+ * latency) — during a MAL outage, when every fallback lands here, that alone
+ * put tens of seconds on the home page.
+ *
+ * It is a queue of waiters rather than pre-reserved timestamps so that a
+ * waiter can *leave*: when its caller stops wanting the answer (`signal`
+ * aborted — the ⌘K palette has moved on to the next keystroke), its slot goes
+ * to the next in line instead of being spent on a stale query. Without that, a
+ * type-ahead that queued each prefix answered the last one several 2.1s slots
+ * late, behind queries nobody was waiting for any more.
  */
-let nextSlotAt = 0;
+type Waiter = { run: () => void };
+const waiters: Waiter[] = [];
+let lastStartAt = Number.NEGATIVE_INFINITY;
+let pumpTimer: ReturnType<typeof setTimeout> | undefined;
 
-function rateLimited<T>(task: () => Promise<T>): Promise<T> {
-  const now = Date.now();
-  const startAt = Math.max(now, nextSlotAt);
-  nextSlotAt = startAt + MIN_REQUEST_INTERVAL_MS;
-  const delay = startAt - now;
-  return delay > 0 ? sleep(delay).then(task) : task();
+function pump(): void {
+  if (pumpTimer !== undefined) return;
+  const next = waiters[0];
+  if (!next) return;
+  const wait = lastStartAt + MIN_REQUEST_INTERVAL_MS - Date.now();
+  if (wait > 0) {
+    pumpTimer = setTimeout(() => {
+      pumpTimer = undefined;
+      pump();
+    }, wait);
+    return;
+  }
+  waiters.shift();
+  lastStartAt = Date.now();
+  next.run();
+  pump();
+}
+
+function rateLimited<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      const i = waiters.indexOf(waiter);
+      if (i !== -1) waiters.splice(i, 1);
+      reject(signal?.reason);
+    };
+    const waiter: Waiter = {
+      run: () => {
+        // Once started, the request runs to completion — the slot is spent
+        // either way, and its answer still fills the cache.
+        signal?.removeEventListener("abort", onAbort);
+        try {
+          task().then(resolve, reject);
+        } catch (err) {
+          reject(err);
+        }
+      },
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    waiters.push(waiter);
+    pump();
+  });
+}
+
+/** How long a request issued now would wait for its slot. */
+function queueWaitMs(): number {
+  const untilFree = Math.max(0, lastStartAt + MIN_REQUEST_INTERVAL_MS - Date.now());
+  return untilFree + waiters.length * MIN_REQUEST_INTERVAL_MS;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -98,7 +155,51 @@ type CacheEntry = { value: unknown; expiresAt: number };
 
 const MAX_CACHE_ENTRIES = 200;
 const responseCache = new Map<string, CacheEntry>();
-const inFlight = new Map<string, Promise<unknown>>();
+
+/**
+ * A live request shared by every concurrent caller of the same query. It is
+ * abandoned (left in the queue, never sent) only when *every* caller has
+ * withdrawn — one palette keystroke moving on must not cancel the same query
+ * for a page render that still wants it.
+ */
+interface Flight {
+  promise: Promise<unknown>;
+  controller: AbortController;
+  /** Callers still waiting; `Infinity` once one joins that can't withdraw. */
+  holders: number;
+}
+const inFlight = new Map<string, Flight>();
+
+/** Waits on `flight` for one caller; aborting `signal` withdraws only them. */
+function follow<T>(flight: Flight, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    flight.holders = Number.POSITIVE_INFINITY;
+    return flight.promise as Promise<T>;
+  }
+  flight.holders += 1;
+  return new Promise<T>((resolve, reject) => {
+    const withdraw = () => {
+      flight.holders -= 1;
+      if (flight.holders <= 0) flight.controller.abort(signal.reason);
+      reject(signal.reason);
+    };
+    if (signal.aborted) {
+      withdraw();
+      return;
+    }
+    signal.addEventListener("abort", withdraw, { once: true });
+    flight.promise.then(
+      (value) => {
+        signal.removeEventListener("abort", withdraw);
+        resolve(value as T);
+      },
+      (err: unknown) => {
+        signal.removeEventListener("abort", withdraw);
+        reject(err);
+      },
+    );
+  });
+}
 
 function cacheGet(key: string): CacheEntry | undefined {
   const hit = responseCache.get(key);
@@ -173,11 +274,25 @@ function tripBreaker(status: number, message: string): void {
   );
 }
 
+/**
+ * Whether a request issued now would start promptly: breaker closed and the
+ * rate-limit queue clear within `maxWaitMs`. For *optional* calls only — the
+ * search route's hedge asks before racing AniList against a slow Jikan, since
+ * a hedge that waits seconds in this 2.1s-spaced queue would win nothing and
+ * still spend budget that real fallbacks need.
+ */
+export function anilistReadyWithin(maxWaitMs: number): boolean {
+  return !breakerIsOpen() && queueWaitMs() <= maxWaitMs;
+}
+
 /** Test hook: this module holds cache state across imports, like jikan's. */
 export function __resetAnilistCache(): void {
   responseCache.clear();
   inFlight.clear();
-  nextSlotAt = 0;
+  waiters.length = 0;
+  lastStartAt = Number.NEGATIVE_INFINITY;
+  clearTimeout(pumpTimer);
+  pumpTimer = undefined;
   breakerOpenUntil = 0;
   breakerReason = "";
 }
@@ -209,6 +324,16 @@ function fingerprint(input: string): string {
 const cacheKeyFor = (query: string, variables: Record<string, unknown>) =>
   `anilist:${fingerprint(query)}:${query.length}:${JSON.stringify(variables)}`;
 
+type FetchOptions = {
+  revalidate?: number;
+  /**
+   * The caller's interest. Aborting it while the request still waits for a
+   * rate-limit slot withdraws the caller (see `follow`); once sent, a request
+   * runs to completion and its answer is cached for the next asker.
+   */
+  signal?: AbortSignal;
+};
+
 /**
  * Cached entry point. Without a `revalidate` the call is always live (callers
  * that must not be cached simply omit it).
@@ -216,7 +341,7 @@ const cacheKeyFor = (query: string, variables: Record<string, unknown>) =>
 async function anilistFetch<T>(
   query: string,
   variables: Record<string, unknown>,
-  opts?: { revalidate?: number },
+  opts?: FetchOptions,
 ): Promise<T> {
   const ttl = opts?.revalidate;
   if (ttl == null) return anilistFetchLive<T>(query, variables, opts);
@@ -228,8 +353,9 @@ async function anilistFetch<T>(
   // Collapse concurrent callers for the same query onto one request — during a
   // MAL outage the same fallback fires from several sections at once.
   const pending = inFlight.get(key);
-  if (pending) return pending as Promise<T>;
+  if (pending) return follow<T>(pending, opts?.signal);
 
+  const controller = new AbortController();
   const request = (async () => {
     // A cache lookup must never be why a page fails.
     const shared = await sharedCacheGet<T>(key).catch(() => undefined);
@@ -241,7 +367,10 @@ async function anilistFetch<T>(
       return shared.value;
     }
 
-    const value = await anilistFetchLive<T>(query, variables, opts);
+    const value = await anilistFetchLive<T>(query, variables, {
+      revalidate: ttl,
+      signal: controller.signal,
+    });
     cacheSet(key, { value, expiresAt: Date.now() + ttl * 1000 });
     // Nobody should wait on a cache write.
     void sharedCacheSet(key, value, ttl);
@@ -250,8 +379,9 @@ async function anilistFetch<T>(
     inFlight.delete(key);
   });
 
-  inFlight.set(key, request);
-  return request;
+  const flight: Flight = { promise: request, controller, holders: 0 };
+  inFlight.set(key, flight);
+  return follow<T>(flight, opts?.signal);
 }
 
 /**
@@ -264,7 +394,7 @@ export const __anilistFetchForTests = anilistFetch;
 async function anilistFetchLive<T>(
   query: string,
   variables: Record<string, unknown>,
-  opts?: { revalidate?: number },
+  opts?: FetchOptions,
 ): Promise<T> {
   // Fail fast while the service is known-down — before the rate limiter, so a
   // burst of fallbacks doesn't serialise behind 350ms slots to reach a
@@ -316,7 +446,7 @@ async function anilistFetchLive<T>(
       );
     }
     return body.data;
-  });
+  }, opts?.signal);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -511,6 +641,12 @@ export type AnilistSearchFilters = {
    * error at runtime.
    */
   sort?: AnilistSort;
+  /**
+   * Page size, 1–50 (default 50, the app's page contract). The command
+   * palette shows six rows, so it asks for six rather than shipping fifty
+   * full media records to throw away.
+   */
+  perPage?: number;
 };
 
 export type AnilistSort =
@@ -549,6 +685,8 @@ const PER_PAGE = 50;
 export async function searchAnilist(
   filters: AnilistSearchFilters,
   page = 1,
+  /** Withdraws this caller while the request still waits for its slot. */
+  opts: { signal?: AbortSignal } = {},
 ): Promise<JikanSearchResponse> {
   const { genres: genreNames, tags: genreTags } = malGenresToAnilist(
     filters.genreIds ?? [],
@@ -568,7 +706,8 @@ export async function searchAnilist(
 
   // Declare only the variables we actually pass — AniList treats an explicit
   // null filter differently from an omitted one.
-  const vars: Record<string, unknown> = { page: page, perPage: PER_PAGE };
+  const perPage = Math.min(Math.max(filters.perPage ?? PER_PAGE, 1), PER_PAGE);
+  const vars: Record<string, unknown> = { page: page, perPage };
   const defs: string[] = ["$page: Int", "$perPage: Int"];
   const args: string[] = [
     "type: ANIME",
@@ -643,6 +782,7 @@ export async function searchAnilist(
 
   const data = await anilistFetch<{ Page: AnilistPage }>(query, vars, {
     revalidate: ONE_HOUR_SECONDS,
+    signal: opts.signal,
   });
   const { pageInfo, media } = data.Page;
 
@@ -1075,6 +1215,7 @@ async function runAnilistMangaQuery(
   defs: string[],
   args: string[],
   vars: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<JikanMangaSearchResponse> {
   const gql = `
     query (${defs.join(", ")}) {
@@ -1089,7 +1230,7 @@ async function runAnilistMangaQuery(
 
   const data = await anilistFetch<{
     Page: { pageInfo: AnilistPage["pageInfo"]; media: AnilistMangaMedia[] };
-  }>(gql, vars, { revalidate: ONE_HOUR_SECONDS });
+  }>(gql, vars, { revalidate: ONE_HOUR_SECONDS, signal });
   const { pageInfo, media } = data.Page;
 
   const seen = new Set<number>();
@@ -1150,6 +1291,8 @@ export async function searchAnilistManga(
   page = 1,
   type?: JikanMangaType,
   genreIds: number[] = [],
+  /** Withdraws this caller while the request still waits for its slot. */
+  opts: { signal?: AbortSignal } = {},
 ): Promise<JikanMangaSearchResponse> {
   const vars: Record<string, unknown> = { page, perPage: PER_PAGE };
   const defs: string[] = ["$page: Int", "$perPage: Int"];
@@ -1176,7 +1319,7 @@ export async function searchAnilistManga(
     args.push("tag_in: $tags");
   }
 
-  return runAnilistMangaQuery(defs, args, vars);
+  return runAnilistMangaQuery(defs, args, vars, opts.signal);
 }
 
 /**

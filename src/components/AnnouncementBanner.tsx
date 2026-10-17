@@ -1,78 +1,37 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { XIcon } from "lucide-react";
-
-import { Tooltip } from "@/components/ui/tooltip";
-import { createClient } from "@/lib/supabase/client";
-
-type Announcement = { id: string; title: string; body: string };
+import { AnnouncementBannerView } from "@/components/AnnouncementBannerView";
+import { createClient } from "@/lib/supabase/server";
 
 /**
- * Slim banner under the nav showing the latest active announcement. Reads via
- * the browser Supabase client (RLS lets any signed-in user see active ones).
- * Dismissal is per-announcement, remembered in localStorage.
+ * Slim banner under the nav showing the latest active announcement (RLS lets
+ * any signed-in user see active ones). Dismissal is per-announcement,
+ * remembered in localStorage — see `AnnouncementBannerView`.
+ *
+ * Read on the server, and rendered by the layouts behind a Suspense boundary
+ * so the query never holds a route. It used to be a client component that
+ * built the browser Supabase client on mount just to read this one row, which
+ * put ~62 KB gzipped of supabase-js into every authed route's first-load JS
+ * and only started the fetch after hydration. Never throws: no banner is
+ * always an acceptable outcome.
  */
-export function AnnouncementBanner() {
-  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+export async function AnnouncementBanner() {
+  const announcement = await latestAnnouncement();
+  return announcement ? (
+    <AnnouncementBannerView announcement={announcement} />
+  ) : null;
+}
 
-  useEffect(() => {
-    const supabase = createClient();
-    let active = true;
-
-    supabase
+async function latestAnnouncement() {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
       .from("announcements")
       .select("id, title, body")
       .eq("active", true)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active || !data) return;
-        if (localStorage.getItem(`ann-dismissed-${data.id}`)) return;
-        setAnnouncement(data);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (!announcement) return null;
-
-  function dismiss() {
-    if (announcement) {
-      localStorage.setItem(`ann-dismissed-${announcement.id}`, "1");
-    }
-    setAnnouncement(null);
+      .maybeSingle();
+    return data;
+  } catch {
+    return null;
   }
-
-  return (
-    <div className="pattern-seigaiha border-b border-primary/20 bg-primary/10">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-2 text-sm sm:px-6">
-        <span aria-hidden>📢</span>
-        <p className="min-w-0 flex-1 truncate">
-          <span className="font-medium">{announcement.title}</span>
-          <span className="text-muted-foreground"> — {announcement.body}</span>
-        </p>
-        <Link
-          href="/announcements"
-          className="shrink-0 text-xs font-medium text-primary hover:underline"
-        >
-          View all
-        </Link>
-        <Tooltip label="Dismiss announcement">
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Dismiss announcement"
-            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <XIcon className="size-4" />
-          </button>
-        </Tooltip>
-      </div>
-    </div>
-  );
 }

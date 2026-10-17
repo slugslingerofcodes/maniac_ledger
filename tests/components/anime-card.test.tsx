@@ -49,19 +49,38 @@ describe("AnimeCard", () => {
   it("shows progress as watched / total", () => {
     render(<AnimeCard item={item()} />);
 
-    expect(screen.getByText("7 / 28 episodes")).toBeDefined();
+    expect(screen.getByText("7 / 28 ep")).toBeDefined();
   });
 
   it("drops the total when it is unknown", () => {
     render(<AnimeCard item={item({ totalEpisodes: null })} />);
 
-    expect(screen.getByText("7 episodes")).toBeDefined();
+    expect(screen.getByText("7 ep")).toBeDefined();
   });
 
-  it("falls back to a placeholder when there is no poster", () => {
-    render(<AnimeCard item={item({ posterUrl: null })} />);
+  it("fills the poster slot with the title's initial when there is no art", () => {
+    const { container } = render(<AnimeCard item={item({ posterUrl: null })} />);
 
-    expect(screen.getByText("No image")).toBeDefined();
+    // A missing poster must still occupy the full 2:3 cell, or the grid's
+    // rhythm breaks around it — so assert the placeholder is really there,
+    // not just that some substitute text rendered.
+    expect(container.querySelector('[data-slot="poster-fallback"]')).not.toBeNull();
+    expect(screen.getByText("S")).toBeDefined();
+  });
+
+  it("hides the progress bar when the episode total is unknown", () => {
+    // The bar encodes watched/total as a width; with no total there is no
+    // fraction to draw, and a full-width bar would read as "finished".
+    const withTotal = render(<AnimeCard item={item()} />);
+    expect(
+      withTotal.container.querySelector(".bg-\\[var\\(--status-accent\\)\\]"),
+    ).not.toBeNull();
+    withTotal.unmount();
+
+    const withoutTotal = render(<AnimeCard item={item({ totalEpisodes: null })} />);
+    expect(
+      withoutTotal.container.querySelector(".bg-\\[var\\(--status-accent\\)\\]"),
+    ).toBeNull();
   });
 
   it("renders the score ring only when rated", () => {

@@ -12,6 +12,7 @@ import { hedge, HedgeError } from "@/lib/hedge";
 import {
   JikanError,
   JikanUnavailableError,
+  jikanRecentlyUnreachable,
   searchAnime,
   type JikanAnime,
   type JikanSearchOptions,
@@ -147,8 +148,14 @@ const JIKAN_PAGES_PER_APP_PAGE = 2;
  * (`limit`) hedges sooner: a person is watching a dropdown. The search page
  * waits longer, both because it stitches two Jikan pages (two latencies) and
  * because a hedge there spends AniList budget on fifty-row pages.
+ *
+ * `suspect` applies to both while Jikan's last word on this instance was no
+ * response at all (`jikanRecentlyUnreachable`): the call is then more likely
+ * to hang than to be slow — the gap between an outage starting and the
+ * breaker opening. Any Jikan response clears that, so a healthy Jikan is
+ * still never hedged early.
  */
-const HEDGE_DELAY_MS = { typeahead: 1_200, page: 2_500 } as const;
+const HEDGE_DELAY_MS = { typeahead: 1_200, page: 2_500, suspect: 400 } as const;
 /**
  * Don't hedge into a backed-up AniList queue (2.1s spacing): a hedge that
  * waits there can't beat Jikan, and still uses a slot real fallbacks need.
@@ -516,7 +523,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const outcome = await hedge(fetchJikan, fetchAnilist, {
-      delayMs: limit != null ? HEDGE_DELAY_MS.typeahead : HEDGE_DELAY_MS.page,
+      delayMs: jikanRecentlyUnreachable()
+        ? HEDGE_DELAY_MS.suspect
+        : limit != null
+          ? HEDGE_DELAY_MS.typeahead
+          : HEDGE_DELAY_MS.page,
       canHedge: () => anilistReadyWithin(HEDGE_MAX_QUEUE_WAIT_MS),
     });
     if (outcome.winner === "backup") return await anilistResponse(outcome.value);

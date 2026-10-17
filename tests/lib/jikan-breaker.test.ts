@@ -142,6 +142,31 @@ describe("while open", () => {
   });
 });
 
+describe("jikanRecentlyUnreachable — the search hedge's cue to stop waiting", () => {
+  it("is set by a single unreachable call, well before the breaker opens", async () => {
+    const { searchAnime, jikanRecentlyUnreachable } = await loadJikan();
+    expect(jikanRecentlyUnreachable()).toBe(false);
+    fetchMock.mockRejectedValueOnce(timeout());
+
+    await settle(searchAnime("first"));
+
+    expect(jikanRecentlyUnreachable()).toBe(true);
+  });
+
+  it("is cleared by any response, so a healthy Jikan is never hedged early", async () => {
+    const { searchAnime, jikanRecentlyUnreachable } = await loadJikan();
+    fetchMock
+      .mockRejectedValueOnce(timeout())
+      // A 504 counts: the host answered.
+      .mockResolvedValueOnce(jsonResponse({ message: "Gateway Timeout" }, 504));
+
+    await settle(searchAnime("down"));
+    await settle(searchAnime("back"));
+
+    expect(jikanRecentlyUnreachable()).toBe(false);
+  });
+});
+
 describe("recovery", () => {
   it("probes in the background after the cool-down; the caller still fails fast", async () => {
     const { searchAnime, JikanUnavailableError } = await loadJikan();

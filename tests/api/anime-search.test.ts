@@ -15,7 +15,7 @@ import { animeFixture, paginationFixture } from "../helpers/fixtures";
 vi.mock("@/lib/jikan", async (importOriginal) => {
   // Keep the real JikanError: the route branches on `instanceof`.
   const actual = await importOriginal<typeof import("@/lib/jikan")>();
-  return { ...actual, searchAnime: vi.fn() };
+  return { ...actual, searchAnime: vi.fn(), jikanRecentlyUnreachable: vi.fn(() => false) };
 });
 vi.mock("@/lib/anilist", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/anilist")>();
@@ -23,7 +23,7 @@ vi.mock("@/lib/anilist", async (importOriginal) => {
 });
 vi.mock("@/lib/catalog-fallback", () => ({ searchCatalog: vi.fn() }));
 
-const { searchAnime, JikanError } = await import("@/lib/jikan");
+const { searchAnime, JikanError, jikanRecentlyUnreachable } = await import("@/lib/jikan");
 const { searchAnilist, AnilistError } = await import("@/lib/anilist");
 const { searchCatalog } = await import("@/lib/catalog-fallback");
 const { resetRateLimit } = await import("@/lib/rate-limit");
@@ -470,6 +470,32 @@ describe("hedging a slow Jikan", () => {
 
     expect((await (await res).json()).source).toBe("mal");
     expect(searchAnilistMock).not.toHaveBeenCalled();
+  });
+
+  it("hedges after 400ms while Jikan's last word on this instance was no response", async () => {
+    // The gap between an outage starting and the breaker opening: Jikan has
+    // already timed out once, so the next call is likelier to hang than lag.
+    vi.mocked(jikanRecentlyUnreachable).mockReturnValueOnce(true);
+    searchAnimeMock.mockImplementation(hang);
+    searchAnilistMock.mockResolvedValue(anilistPage(["Frieren"]));
+
+    const res = get("q=frieren&limit=6");
+    await vi.advanceTimersByTimeAsync(399);
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect((await (await res).json()).source).toBe("anilist");
+  });
+
+  it("uses the short delay on the search page too", async () => {
+    vi.mocked(jikanRecentlyUnreachable).mockReturnValueOnce(true);
+    searchAnimeMock.mockImplementation(hang);
+    searchAnilistMock.mockResolvedValue(anilistPage(["Frieren"]));
+
+    const res = get("q=frieren");
+    await vi.advanceTimersByTimeAsync(400);
+
+    expect((await (await res).json()).source).toBe("anilist");
   });
 
   it("hands AniList the request's signal, so a departed caller can leave its queue", async () => {

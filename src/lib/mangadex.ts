@@ -9,7 +9,7 @@
  *  3. Detail-page data source of last resort for MAL-keyed titles.
  *
  * Rate limits: MangaDex allows ~5 req/s; calls funnel through the same
- * serial-queue pattern as the Jikan/AniList clients (~300ms spacing). The API
+ * waiter-queue pattern as the AniList client (~300ms between starts). The API
  * requires a descriptive User-Agent.
  */
 
@@ -18,6 +18,8 @@ import type { JikanManga, JikanMangaType } from "@/lib/jikan";
 const MANGADEX_URL = "https://api.mangadex.org";
 const COVERS_URL = "https://uploads.mangadex.org/covers";
 const MIN_REQUEST_INTERVAL_MS = 300;
+/** Hard deadline for a single MangaDex call (see the Jikan client's twin). */
+const UPSTREAM_TIMEOUT_MS = 8_000;
 const USER_AGENT = "anime-maniacs/1.0 (personal tracker)";
 
 export class MangaDexError extends Error {
@@ -32,29 +34,89 @@ export class MangaDexError extends Error {
 
 /* ---------------------------- Rate limiting ------------------------------- */
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/**
+ * Request *starts* are spaced `MIN_REQUEST_INTERVAL_MS` apart, first come
+ * first served — the same waiter queue as anilist.ts.
+ *
+ * This used to chain each request on the previous one's *completion*, with no
+ * deadline. One hung MangaDex call therefore held every later call forever,
+ * and under ⌘K typing each superseded prefix still ran to completion (~1s
+ * apiece) before the query anyone was waiting for got a turn. Now a start
+ * doesn't wait for the previous request to finish, every request has a
+ * deadline, and a waiter whose caller stops wanting the answer (`signal`
+ * aborted) leaves the queue so its slot goes to the next in line.
+ */
+type Waiter = { run: () => void };
+const waiters: Waiter[] = [];
+let lastStartAt = Number.NEGATIVE_INFINITY;
+let pumpTimer: ReturnType<typeof setTimeout> | undefined;
 
-let lastRequestAt = 0;
-let chain: Promise<unknown> = Promise.resolve();
-
-function rateLimited<T>(task: () => Promise<T>): Promise<T> {
-  const run = chain.then(async () => {
-    const wait = MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt);
-    if (wait > 0) await sleep(wait);
-    lastRequestAt = Date.now();
-    return task();
-  });
-  chain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+function pump(): void {
+  if (pumpTimer !== undefined) return;
+  const next = waiters[0];
+  if (!next) return;
+  const wait = lastStartAt + MIN_REQUEST_INTERVAL_MS - Date.now();
+  if (wait > 0) {
+    pumpTimer = setTimeout(() => {
+      pumpTimer = undefined;
+      pump();
+    }, wait);
+    return;
+  }
+  waiters.shift();
+  lastStartAt = Date.now();
+  next.run();
+  pump();
 }
 
-async function mdFetch<T>(path: string): Promise<T> {
+function rateLimited<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      const i = waiters.indexOf(waiter);
+      if (i !== -1) waiters.splice(i, 1);
+      reject(signal?.reason);
+    };
+    const waiter: Waiter = {
+      run: () => {
+        // Once started, the request runs to completion — the slot is spent
+        // either way.
+        signal?.removeEventListener("abort", onAbort);
+        try {
+          task().then(resolve, reject);
+        } catch (err) {
+          reject(err);
+        }
+      },
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    waiters.push(waiter);
+    pump();
+  });
+}
+
+type FetchOptions = {
+  /**
+   * The caller's interest. Aborting it while the request still waits for a
+   * rate-limit slot withdraws it from the queue; once sent, a request runs to
+   * completion (or its deadline).
+   */
+  signal?: AbortSignal;
+};
+
+async function mdFetch<T>(path: string, opts?: FetchOptions): Promise<T> {
   return rateLimited(async () => {
     const res = await fetch(`${MANGADEX_URL}${path}`, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      // A hung upstream must not hold a render (or the palette) open; every
+      // caller has a cheaper fallback than waiting.
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       // Chapter lists change often for publishing titles; 1h in the Data
       // Cache keeps repeat syncs cheap without going stale for long.
       next: { revalidate: 3600 },
@@ -66,7 +128,7 @@ async function mdFetch<T>(path: string): Promise<T> {
       );
     }
     return (await res.json()) as T;
-  });
+  }, opts?.signal);
 }
 
 /* ----------------------- Manga records → Jikan shape ----------------------- */
@@ -177,6 +239,8 @@ export async function searchMangaDexManga(
   query: string,
   page = 1,
   type?: JikanMangaType,
+  /** Withdraws this caller while the request still waits for its slot. */
+  opts: { signal?: AbortSignal } = {},
 ): Promise<{ results: JikanManga[]; totalPages: number }> {
   const limit = 40;
   const params = new URLSearchParams({
@@ -202,7 +266,9 @@ export async function searchMangaDexManga(
   params.append("contentRating[]", "safe");
   params.append("contentRating[]", "suggestive");
 
-  const res = await mdFetch<MdMangaSearch>(`/manga?${params.toString()}`);
+  const res = await mdFetch<MdMangaSearch>(`/manga?${params.toString()}`, {
+    signal: opts.signal,
+  });
   return {
     results: res.data.map(toJikanMangaShape),
     totalPages: Math.max(1, Math.ceil((res.total ?? res.data.length) / limit)),

@@ -109,7 +109,10 @@ export async function GET(request: NextRequest) {
   try {
     const outcome = await hedge(
       () => searchManga(q, 1, [], undefined, limit),
-      () => searchMangaDexManga(q, 1),
+      // The request's signal: when the palette moves on to the next keystroke
+      // it aborts this fetch, and a MangaDex call still waiting for its queue
+      // slot withdraws instead of spending ~1s on an answer nobody will read.
+      () => searchMangaDexManga(q, 1, undefined, { signal: request.signal }),
       { delayMs: HEDGE_DELAY_MS },
     );
     return outcome.winner === "primary"

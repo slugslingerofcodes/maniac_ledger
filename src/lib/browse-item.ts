@@ -90,7 +90,8 @@ export function uniqueByMalId<T extends { malId: number }>(items: T[]): T[] {
 /**
  * YouTube id of a title's trailer, when the record carries one. Jikan list
  * endpoints often fill `embed_url` while leaving `youtube_id` null, so both are
- * read. AniList-served records carry no trailer, which simply means no preview.
+ * read. AniList-served records carry one only when AniList's trailer is on
+ * YouTube (`toJikanTrailer` drops Dailymotion); none simply means no preview.
  */
 export function trailerYoutubeId(a: JikanAnime): string | null {
   const t = a.trailer;

@@ -8,7 +8,8 @@ export type AnalyticsEvents = {
   anime_added: {
     malId: number;
     title: string;
-    source: "search" | "recommendation" | "miscellaneous";
+    /** "home" = the home page's banner and row cards. */
+    source: "search" | "recommendation" | "miscellaneous" | "home";
   };
   episode_marked_watched: { animeId: string; episodeId: string };
   /** The one-tap "+1" on a card, as opposed to the detail-page checklist. */

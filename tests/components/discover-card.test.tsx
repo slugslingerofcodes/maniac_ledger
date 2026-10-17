@@ -10,10 +10,12 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
 const { addToLibraryAction } = await import("@/app/actions/library");
 const { upsertProgress } = await import("@/app/actions/progress");
 const { toast } = await import("sonner");
+const { track } = await import("@/lib/analytics");
 const { DiscoverCard } = await import("@/components/browse/DiscoverCard");
 const { __resetLibraryState } = await import("@/components/browse/library-state");
 
@@ -22,6 +24,7 @@ beforeEach(() => {
   __resetLibraryState();
   vi.mocked(addToLibraryAction).mockReset();
   vi.mocked(upsertProgress).mockReset();
+  vi.mocked(track).mockReset();
 });
 
 /**
@@ -129,5 +132,64 @@ describe("DiscoverCard quick actions", () => {
 
     expect(screen.getAllByText(/In library · Plan to Watch/)).toHaveLength(2);
     await act(async () => pending.resolve({ ok: true, alreadyAdded: false, animeId: "uuid-1" }));
+  });
+});
+
+/**
+ * Home-page adds used to go untracked: the event schema had no "home" source,
+ * so the cards (and the banner, which shares these actions) never called
+ * `track` — the busiest add surface was invisible in analytics.
+ */
+describe("DiscoverCard add tracking", () => {
+  it("tracks a successful add as coming from home", async () => {
+    vi.mocked(addToLibraryAction).mockResolvedValue({ ok: true, alreadyAdded: false, animeId: "uuid-1" });
+    render(<DiscoverCard item={item} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add Frieren to your library" }));
+    });
+
+    expect(track).toHaveBeenCalledExactlyOnceWith("anime_added", {
+      malId: 52991,
+      title: "Sousou no Frieren",
+      source: "home",
+    });
+  });
+
+  it("doesn't track an add that failed", async () => {
+    vi.mocked(addToLibraryAction).mockResolvedValue({ ok: false, error: "You must be signed in." });
+    render(<DiscoverCard item={item} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add Frieren to your library" }));
+    });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("tracks the add that 'Mark watching' makes for a new title", async () => {
+    vi.mocked(addToLibraryAction).mockResolvedValue({ ok: true, alreadyAdded: false, animeId: "uuid-1" });
+    vi.mocked(upsertProgress).mockResolvedValue({ ok: true });
+    render(<DiscoverCard item={item} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark Frieren as watching" }));
+    });
+
+    expect(track).toHaveBeenCalledExactlyOnceWith(
+      "anime_added",
+      expect.objectContaining({ malId: 52991, source: "home" }),
+    );
+  });
+
+  it("doesn't count a status change on a title already in the library as an add", async () => {
+    vi.mocked(upsertProgress).mockResolvedValue({ ok: true });
+    render(<DiscoverCard item={item} entry={{ animeId: "uuid-9", status: "plan_to_watch" }} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark Frieren as watching" }));
+    });
+
+    expect(track).not.toHaveBeenCalled();
   });
 });

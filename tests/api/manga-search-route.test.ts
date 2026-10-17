@@ -81,6 +81,25 @@ describe("GET /api/manga/search", () => {
     expect(anilistMock).not.toHaveBeenCalled();
   });
 
+  it("hands MangaDex the request's signal, so an abandoned keystroke withdraws it", async () => {
+    malMock.mockRejectedValue(new JikanUnavailableError("circuit open"));
+    mangadexMock.mockResolvedValue(mdResults("Vagabond"));
+    const palette = new AbortController();
+
+    await GET(
+      new NextRequest("https://app.test/api/manga/search?q=vagabond", {
+        signal: palette.signal,
+      }),
+    );
+
+    const signal = mangadexMock.mock.calls[0][3]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+    // The palette moving on must reach the MangaDex call.
+    palette.abort();
+    expect(signal?.aborted).toBe(true);
+  });
+
   it("falls back to AniList, with the request's signal, when MAL and MangaDex fail", async () => {
     malMock.mockRejectedValue(new JikanError(504, "down"));
     mangadexMock.mockRejectedValue(new Error("down"));

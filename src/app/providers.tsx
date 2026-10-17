@@ -2,12 +2,28 @@
 
 import { useState, type ReactNode } from "react";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import { QueryClient } from "@tanstack/react-query";
+import {
+  defaultShouldDehydrateQuery,
+  QueryClient,
+  type Query,
+} from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { del, get, set } from "idb-keyval";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const FIVE_MIN_MS = 5 * 60 * 1000;
+
+/**
+ * What survives a reload. The ⌘K palette caches a query per debounced
+ * keystroke (`["palette", …]`, `use-palette-search.ts`), each living ten
+ * minutes — persisting them packed every save of the IndexedDB blob with
+ * search results that are useless offline and stale by the next visit.
+ * Everything else keeps TanStack's default (successful queries only), above
+ * all `["user-library"]`, which is what the library shows offline.
+ */
+function shouldPersistQuery(query: Query): boolean {
+  return defaultShouldDehydrateQuery(query) && query.queryKey[0] !== "palette";
+}
 
 /**
  * App-wide TanStack Query provider with the query cache persisted to IndexedDB.
@@ -49,6 +65,7 @@ export function Providers({ children }: { children: ReactNode }) {
       },
     }),
     maxAge: ONE_DAY_MS,
+    dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
   }));
 
   return (

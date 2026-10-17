@@ -35,6 +35,11 @@ export type HeroSlide = BrowseItem & {
   airing: boolean;
   /** YouTube id for the muted preview; null when the source had none. */
   trailerId: string | null;
+  /**
+   * Wide landscape key art (AniList's `bannerImage`); null for MAL-served
+   * slides, which have no equivalent, and for titles AniList has none for.
+   */
+  bannerUrl: string | null;
 };
 
 /** How long a slide holds before advancing (also the progress bar's fill). */
@@ -81,9 +86,15 @@ function previewAllowed(): boolean {
  * it. It rotates on a progress strip; hovering, scrolling it away, switching
  * tabs or pressing pause all hold it.
  *
+ * Key art is the portrait poster everywhere; on md+, AniList-served slides
+ * also set their landscape banner behind it. Slides without one (every
+ * MAL-served slide, since MAL has no such image, and the AniList titles that
+ * lack it) keep the blurred-poster backdrop.
+ *
  * On a desktop that has lingered on a slide, a muted trailer can fade in over
- * the art (when the source carried one — MAL does, AniList doesn't). Never on
- * touch, under reduced motion, or with Save-Data on.
+ * the art (when the record carries one — MAL's usually do, and AniList's do
+ * when its trailer is on YouTube). Never on touch, under reduced motion, or
+ * with Save-Data on.
  *
  * Motion is split by library, never shared on one element: GSAP's `Parallax`
  * owns the ambient layer's transform, Framer owns opacity crossfades, and the
@@ -222,9 +233,10 @@ function FeaturedBanner({
       onPointerLeave={() => setHovered(false)}
       className="banner-height relative isolate overflow-hidden bg-banner text-banner-foreground"
     >
-      {/* Ambient layer (md+): the key art blurred into colour behind
-          everything. GSAP scrubs this wrapper's transform; Framer only fades
-          the slides inside it. */}
+      {/* Ambient layer (md+). With landscape art, the scene itself, behind
+          the framed poster; without it, the poster blurred into colour. GSAP
+          scrubs this wrapper's transform; Framer only fades the slides inside
+          it. */}
       <div aria-hidden className="absolute inset-0 -z-10 hidden md:block">
         <Parallax className="absolute inset-0" distance={120} scale={1.2}>
           <AnimatePresence initial={false}>
@@ -236,7 +248,26 @@ function FeaturedBanner({
               transition={{ duration: reduce ? 0 : 0.7 }}
               className="absolute inset-0"
             >
-              {slide.posterUrl ? (
+              {slide.bannerUrl ? (
+                <Image
+                  // AniList publishes banners at one size (1900×400), so the
+                  // loader passes them through untouched. This band is up to
+                  // ~880px tall once the parallax scales it, so the art is
+                  // soft at any DPR: a touch of blur makes that read as depth
+                  // of field behind the sharp poster rather than as a low-res
+                  // photo (4px lost the scene; none fought the poster). The
+                  // 40% anchor puts the art's middle in the gap between the
+                  // text and the poster, not under the scrim.
+                  src={slide.bannerUrl}
+                  alt=""
+                  fill
+                  sizes="100vw"
+                  // Lazy (the default) keeps phones, where this layer is
+                  // hidden, from fetching it at all.
+                  fetchPriority={index === 0 ? "high" : "auto"}
+                  className="scale-105 object-cover object-[40%_50%] opacity-60 blur-[1.5px]"
+                />
+              ) : slide.posterUrl ? (
                 <Image
                   // Decorative and blurred to abstraction: the 100px
                   // rendition blurs to the same image as the 460px one.

@@ -80,6 +80,7 @@ async function HeroSection() {
     broadcastTime: a.broadcast?.time ?? null,
     airing: a.status === "Currently Airing",
     trailerId: trailerYoutubeId(a),
+    bannerUrl: a.banner_image ?? null,
   }));
   if (slides.length === 0) return <HeroFallback />;
   return <HeroCarousel slides={slides} library={library} />;

@@ -278,6 +278,61 @@ describe("mapping to the Jikan shape", () => {
     expect(anime.genres).toEqual([]);
     expect(anime.studios).toEqual([]);
   });
+
+  // The home banner's muted preview reads a YouTube id off the Jikan-shaped
+  // trailer; AniList-served slides used to carry none, so in AniList mode the
+  // banner never previewed anything.
+  it("maps a YouTube trailer onto Jikan's trailer shape", async () => {
+    const anime = await mapFirst({ trailer: { id: "qig4KOK2R2g", site: "youtube" } });
+
+    expect(anime.trailer).toEqual({
+      youtube_id: "qig4KOK2R2g",
+      url: "https://www.youtube.com/watch?v=qig4KOK2R2g",
+      embed_url: "https://www.youtube.com/embed/qig4KOK2R2g",
+    });
+  });
+
+  it("gives the home banner a trailer id to preview", async () => {
+    const { trailerYoutubeId } = await import("@/lib/browse-item");
+    const anime = await mapFirst({ trailer: { id: "qig4KOK2R2g", site: "youtube" } });
+
+    expect(trailerYoutubeId(anime)).toBe("qig4KOK2R2g");
+  });
+
+  it("drops a Dailymotion trailer, which the YouTube players can't embed", async () => {
+    const anime = await mapFirst({ trailer: { id: "x7tgad0", site: "dailymotion" } });
+
+    expect(anime.trailer).toBeUndefined();
+  });
+
+  it.each([null, { id: null, site: "youtube" }])("leaves no trailer for %o", async (trailer) => {
+    expect((await mapFirst({ trailer })).trailer).toBeUndefined();
+  });
+
+  it("asks AniList for the trailer", async () => {
+    await mapFirst();
+
+    expect(sentQuery()).toMatch(/trailer\s*\{\s*id\s+site\s*\}/);
+  });
+
+  // The home banner sets AniList's wide banner behind the poster on md+. MAL
+  // has no such image, so it rides on a field Jikan records simply lack.
+  const BANNER =
+    "https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg";
+
+  it("carries the landscape banner as banner_image", async () => {
+    expect((await mapFirst({ bannerImage: BANNER })).banner_image).toBe(BANNER);
+  });
+
+  it.each([null, ""])("leaves banner_image off for %o", async (bannerImage) => {
+    expect(await mapFirst({ bannerImage })).not.toHaveProperty("banner_image");
+  });
+
+  it("asks AniList for the banner", async () => {
+    await mapFirst();
+
+    expect(sentQuery()).toMatch(/\bbannerImage\b/);
+  });
 });
 
 describe("the mal_id constraint", () => {

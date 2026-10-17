@@ -119,6 +119,11 @@ export interface JikanAnime {
   aired?: JikanAiredDates;
   /** Present on the by-id endpoints; optional elsewhere. */
   trailer?: JikanTrailer;
+  /**
+   * Wide landscape key art. Not a MAL field — only AniList-served records
+   * carry it (its `bannerImage`); Jikan records never do.
+   */
+  banner_image?: string | null;
   /** Present on the `/full` endpoint: prequels, sequels, side stories, etc. */
   relations?: JikanRelationGroup[];
   /** OP/ED credits as display strings, e.g. `1: "Song" by Artist (eps 1–12)`. */

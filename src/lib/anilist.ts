@@ -8,6 +8,7 @@ import type {
   JikanMangaSearchResponse,
   JikanMangaType,
   JikanSearchResponse,
+  JikanTrailer,
 } from "@/lib/jikan";
 import type {
   FormatValue,
@@ -474,6 +475,10 @@ interface AnilistMedia {
   } | null;
   genres: string[] | null;
   studios: { nodes: { name: string }[] } | null;
+  /** Promo video; `site` is "youtube" or "dailymotion". */
+  trailer?: { id: string | null; site: string | null } | null;
+  /** Wide header art (~1900×400), one size only; null for about a third of titles. */
+  bannerImage?: string | null;
 }
 
 interface AnilistPage {
@@ -519,6 +524,21 @@ function stripHtml(html: string | null): string | null {
   );
 }
 
+/**
+ * AniList's `{ id, site }` trailer → Jikan's `{ youtube_id, url, embed_url }`,
+ * which is what the home banner's muted preview and the detail page read.
+ * YouTube only: those players embed YouTube, so a Dailymotion trailer is
+ * reported as none rather than as a link nothing can play.
+ */
+function toJikanTrailer(t: AnilistMedia["trailer"]): JikanTrailer | null {
+  if (!t?.id || t.site?.toLowerCase() !== "youtube") return null;
+  return {
+    youtube_id: t.id,
+    url: `https://www.youtube.com/watch?v=${t.id}`,
+    embed_url: `https://www.youtube.com/embed/${t.id}`,
+  };
+}
+
 function toJikanShape(m: AnilistMedia): JikanAnime {
   const poster =
     m.coverImage?.extraLarge ?? m.coverImage?.large ?? m.coverImage?.medium ?? null;
@@ -527,6 +547,7 @@ function toJikanShape(m: AnilistMedia): JikanAnime {
     small_image_url: m.coverImage?.medium ?? poster,
     large_image_url: poster,
   };
+  const trailer = toJikanTrailer(m.trailer);
   return {
     mal_id: m.idMal!,
     title: m.title.romaji ?? m.title.english ?? `AniList #${m.id}`,
@@ -555,6 +576,10 @@ function toJikanShape(m: AnilistMedia): JikanAnime {
       name: s.name,
       url: "",
     })),
+    ...(trailer ? { trailer } : {}),
+    // Absent rather than null when missing, like `trailer`: a field MAL never
+    // sends shouldn't appear on AniList records just to say "none".
+    ...(m.bannerImage ? { banner_image: m.bannerImage } : {}),
   };
 }
 
@@ -655,6 +680,13 @@ export type AnilistSort =
   | "START_DATE_DESC"
   | "TRENDING_DESC";
 
+/**
+ * AniList caps a query's complexity at 500. Measured (Oct 2026, from its own
+ * "should be 500 but got N" error on oversized aliased queries): a `Page` of
+ * these fields scores 30 (29 before `bannerImage`), and `perPage` doesn't
+ * multiply it — so a page of 50 with its `pageInfo` costs ~36, with room to
+ * spare.
+ */
 const MEDIA_FIELDS = `
   id
   idMal
@@ -672,6 +704,8 @@ const MEDIA_FIELDS = `
   coverImage { extraLarge large medium }
   genres
   studios(isMain: true) { nodes { name } }
+  trailer { id site }
+  bannerImage
 `;
 
 /** One app page = one AniList page of 50 (matches the ≤50/page app contract). */

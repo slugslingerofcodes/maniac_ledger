@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { addToLibraryAction } from "@/app/actions/library";
 import { upsertProgress } from "@/app/actions/progress";
+import { track } from "@/lib/analytics";
 import { toJikanAnime, type BrowseItem, type LibraryEntry } from "@/lib/browse-item";
 
 export type { LibraryEntry };
@@ -58,7 +59,8 @@ const LIBRARY_QUERY_KEY = ["user-library"] as const;
  * "+ Library" and "Mark watching" for a card or the banner, both optimistic:
  * the label flips the moment the button is pressed, the existing server actions
  * follow (`addToLibraryAction`, then `upsertProgress` for the status), and a
- * failure rolls the label back and says what went wrong.
+ * failure rolls the label back and says what went wrong. Every caller is on
+ * the home page, so an add is tracked with `source: "home"`.
  */
 export function useLibraryActions(item: BrowseItem, initial: LibraryEntry | null) {
   const entry = useLibraryEntry(item.malId, initial);
@@ -77,6 +79,7 @@ export function useLibraryActions(item: BrowseItem, initial: LibraryEntry | null
         return;
       }
       setLibraryEntry(item.malId, { animeId: res.animeId, status: "plan_to_watch" });
+      track("anime_added", { malId: item.malId, title: item.title, source: "home" });
       toast.success(
         res.alreadyAdded
           ? `“${name}” is already in your library.`
@@ -100,6 +103,7 @@ export function useLibraryActions(item: BrowseItem, initial: LibraryEntry | null
           return;
         }
         animeId = res.animeId;
+        track("anime_added", { malId: item.malId, title: item.title, source: "home" });
       }
       const updated = await upsertProgress(animeId, { status: "watching" });
       if (!updated.ok) {

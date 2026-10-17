@@ -1,29 +1,44 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
 
 import {
-  ShojiArt,
-  motifForPath,
-  type ShojiMotif,
-} from "@/components/shoji-motifs";
+  DOOR_MS,
+  SHATTER_MS,
+  STUCK_MS,
+  WORLD_OPEN_MS,
+} from "@/components/doors/timing";
+import { motifForPath, type ShojiMotif } from "@/components/shoji-motifs";
 import { supportsWebGL } from "@/lib/webgl";
-
-/** One panel sweep. Kept short — this sits in front of every navigation. */
-const DOOR_MS = 280;
-/** Poster doors part slower — the reveal of the world is the moment. */
-const WORLD_OPEN_MS = 480;
-/** The WebGL shatter needs longer than a slide to land its acceleration. */
-const SHATTER_MS = 850;
-/** If a push never commits (slow RSC, aborted nav), part the doors anyway. */
-const STUCK_MS = 6000;
 
 type ShatterComponent = React.ComponentType<{
   src: string;
   durationMs: number;
 }>;
+
+type PanelsComponent = React.ComponentType<{
+  shut: boolean;
+  posterSrc: string | null;
+  motif: ShojiMotif;
+}>;
+
+/*
+ * prefers-reduced-motion, read as external state. This used framer-motion's
+ * `useReducedMotion`, which was the only reason the root layout — and so the
+ * first-load JS of every route, auth pages included — carried framer-motion.
+ */
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+function subscribeMotion(onChange: () => void) {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia(REDUCED_MOTION);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+const reducedMotionSnapshot = () =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(REDUCED_MOTION).matches;
+const serverReducedMotion = () => false;
 
 /** Detail routes whose doors carry the clicked poster — "entering the world". */
 const WORLD_PATHS = ["/anime/", "/manga/"];
@@ -43,12 +58,27 @@ type Phase = "idle" | "closing" | "opening";
  * Navigations we don't initiate (the server-action redirect after signing in)
  * simply arrive at a new pathname, so they play the "open" half on landing.
  * Skipped entirely under reduced motion.
+ *
+ * The panels themselves (`doors/DoorPanels`, framer-motion) are fetched on
+ * idle after hydration rather than shipped in the root layout's first load.
+ * Until they arrive — in practice only a click within the first idle moment
+ * of a cold load — a link simply navigates without doors; nothing waits on
+ * the chunk.
  */
 export function ShojiDoors() {
   const router = useRouter();
   const pathname = usePathname();
-  const reduce = useReducedMotion();
+  const reduce = useSyncExternalStore(
+    subscribeMotion,
+    reducedMotionSnapshot,
+    serverReducedMotion,
+  );
   const [phase, setPhase] = useState<Phase>("idle");
+  // The panels chunk, held in state so its arrival re-renders a door that is
+  // already mid-cycle; the ref is what the click handler reads synchronously.
+  const [Panels, setPanels] = useState<PanelsComponent | null>(null);
+  const panelsReady = useRef(false);
+  const panelsRequested = useRef(false);
   // When the click came from a poster card heading into a detail page, the
   // doorway is painted with that poster instead of the sumi-e motif — the
   // doors shut on the card's art and part to reveal the world inside it.
@@ -80,6 +110,29 @@ export function ShojiDoors() {
   useEffect(() => {
     if (reduce) return;
 
+    /** Pull in the panels. Whoever asks first pays; repeats are free. */
+    function loadPanels() {
+      if (panelsRequested.current) return;
+      panelsRequested.current = true;
+      import("@/components/doors/DoorPanels")
+        .then((m) => {
+          panelsReady.current = true;
+          setPanels(() => m.DoorPanels);
+        })
+        .catch(() => {
+          // Offline or chunk 404: links keep working, just without doors.
+          // Allow a later hover/click to try again.
+          panelsRequested.current = false;
+        });
+    }
+
+    // Off the critical path, but early: the first idle moment after
+    // hydration, well before a typical first click.
+    const idle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback(loadPanels, { timeout: 2000 })
+        : window.setTimeout(loadPanels, 1);
+
     /**
      * Pull in the shatter chunk. Deliberately NOT loaded up front: it carries
      * three.js, and most navigations here are plain links that never use it.
@@ -95,15 +148,44 @@ export function ShojiDoors() {
         });
     }
 
-    // Hovering a poster link starts the download, so the very first click
-    // already has it. Touch has no hover and simply gets it one nav later.
-    function onPointerOver(event: PointerEvent) {
-      if (shatterRequested.current) return;
-      const anchor = (event.target as HTMLElement | null)?.closest?.("a");
-      if (!anchor?.getAttribute("href") || !anchor.querySelector("img")) return;
+    /** Same-origin destination for an anchor, or null if we shouldn't touch it. */
+    // `?.closest?.()` can yield undefined as well as null, so accept both.
+    function internalHref(
+      anchor: HTMLAnchorElement | null | undefined,
+    ): string | null {
+      if (!anchor?.getAttribute("href")) return null;
+      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return null;
       const url = new URL(anchor.href, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      if (WORLD_PATHS.some((p) => url.pathname.startsWith(p))) loadShatter();
+      if (url.origin !== window.location.origin) return null;
+      if (url.pathname === window.location.pathname) return null;
+      return url.pathname + url.search;
+    }
+
+    // Hovering a poster link starts the shatter download, so the very first
+    // click already has it. Touch has no hover and simply gets it one nav later.
+    //
+    // It now also warms the *route*. Prefetching on intent matters far more
+    // here than in a stock Next app: the doors below hold every navigation for
+    // DOOR_MS before `router.push` is even called, so without this the sequence
+    // is 280ms of animation and only *then* a round trip. Warming on hover puts
+    // the payload in flight before the click, and the animation becomes the
+    // cover for work already done rather than latency added in front of it.
+    function onPointerOver(event: PointerEvent) {
+      const anchor = (event.target as HTMLElement | null)?.closest?.("a");
+      const href = internalHref(anchor);
+      if (href) {
+        loadPanels();
+        // Next dedupes repeat prefetches of the same href, so pointer noise
+        // over a grid costs nothing after the first pass.
+        try {
+          router.prefetch(href);
+        } catch {
+          /* prefetch is best-effort; never let it break a hover */
+        }
+      }
+      if (shatterRequested.current) return;
+      if (!anchor?.querySelector("img") || !href) return;
+      if (WORLD_PATHS.some((p) => href.startsWith(p))) loadShatter();
     }
 
     function onClick(event: MouseEvent) {
@@ -130,6 +212,14 @@ export function ShojiDoors() {
       if (url.origin !== window.location.origin) return;
       if (url.pathname === window.location.pathname) return;
 
+      // No panels yet (a click inside the first idle moment of a cold load):
+      // let the link navigate on its own rather than hold it behind doors
+      // that can't be drawn.
+      if (!panelsReady.current) {
+        loadPanels();
+        return;
+      }
+
       // Only preventDefault — never stopPropagation. Next's <Link> bails when
       // `defaultPrevented` is set, so this claims the navigation while other
       // click handlers (closing a drawer, etc.) still get to run.
@@ -146,6 +236,17 @@ export function ShojiDoors() {
       // Last chance to fetch it — if it lands before the doors finish closing
       // this navigation shatters, otherwise it slides and the next one does.
       if (poster) loadShatter();
+      // Start the route fetch NOW rather than in DOOR_MS. `router.push` can't
+      // be called yet (it would commit the new page behind open doors), but
+      // prefetch has no visual effect, so the payload downloads *during* the
+      // close instead of after it. On a touch device, where there was no hover
+      // to warm anything, this is the whole difference between the doors
+      // hiding the wait and the doors preceding it.
+      try {
+        router.prefetch(pendingHref.current);
+      } catch {
+        /* best-effort — the push below is what actually navigates */
+      }
       setPhase("closing");
     }
 
@@ -155,10 +256,15 @@ export function ShojiDoors() {
     document.addEventListener("click", onClick, true);
     document.addEventListener("pointerover", onPointerOver, true);
     return () => {
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idle);
+      } else {
+        window.clearTimeout(idle);
+      }
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("pointerover", onPointerOver, true);
     };
-  }, [reduce]);
+  }, [reduce, router]);
 
   // Doors are shutting → push once they've met.
   //
@@ -212,85 +318,10 @@ export function ShojiDoors() {
     return <Shatter src={posterSrc!} durationMs={SHATTER_MS} />;
   }
 
-  const shut = phase === "closing";
-  // The close always snaps to the click; only the poster reveal lingers.
-  const transition = {
-    duration: (shut || !posterSrc ? DOOR_MS : WORLD_OPEN_MS) / 1000,
-    ease: "easeInOut" as const,
-  };
+  // Parting doors on a landing that beat the panels chunk: nothing to draw.
+  if (!Panels) return null;
 
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 z-[60] flex overflow-hidden"
-    >
-      <motion.div
-        initial={{ x: shut ? "-101%" : "0%" }}
-        animate={{ x: shut ? "0%" : "-101%" }}
-        transition={transition}
-        className="shoji-panel relative h-full w-1/2 overflow-hidden border-r-2 border-[oklch(0.32_0.03_60)]"
-      >
-        {posterSrc ? (
-          <WorldArt src={posterSrc} side="left" />
-        ) : (
-          <ShojiArt motif={motif} side="left" />
-        )}
-      </motion.div>
-      <motion.div
-        initial={{ x: shut ? "101%" : "0%" }}
-        animate={{ x: shut ? "0%" : "101%" }}
-        transition={transition}
-        className="shoji-panel relative h-full w-1/2 overflow-hidden border-l-2 border-[oklch(0.32_0.03_60)]"
-      >
-        {posterSrc ? (
-          <WorldArt src={posterSrc} side="right" />
-        ) : (
-          <ShojiArt motif={motif} side="right" />
-        )}
-      </motion.div>
-      {/* Light spills out of the parting doors of a poster world. */}
-      {posterSrc && !shut ? (
-        <motion.div
-          initial={{ opacity: 0.85 }}
-          animate={{ opacity: 0 }}
-          transition={{ duration: WORLD_OPEN_MS / 1000, ease: "easeOut" }}
-          className="absolute inset-y-0 left-1/2 w-48 -translate-x-1/2"
-          style={{
-            background:
-              "radial-gradient(60% 50% at 50% 50%, rgb(255 255 255 / 0.55), transparent 70%)",
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The clicked poster painted across the full doorway: each panel is half the
- * viewport, so an inner layer twice the panel's width carries the whole image
- * and the two halves join at the seam — the same trick the sumi-e motifs use.
- * A faint kumiko lattice and edge vignette keep it reading as a shōji door
- * rather than a bare image.
- */
-function WorldArt({ src, side }: { src: string; side: "left" | "right" }) {
-  return (
-    <div aria-hidden className="absolute inset-0">
-      <div
-        style={{ backgroundImage: `url(${src})` }}
-        className={
-          "absolute inset-y-0 w-[200%] bg-cover bg-center " +
-          (side === "left" ? "left-0" : "right-0")
-        }
-      />
-      <div className="shoji-lattice absolute inset-0 opacity-35" />
-      <div
-        className={
-          "absolute inset-y-0 w-28 " +
-          (side === "left"
-            ? "left-0 bg-gradient-to-r from-black/45 to-transparent"
-            : "right-0 bg-gradient-to-l from-black/45 to-transparent")
-        }
-      />
-    </div>
+    <Panels shut={phase === "closing"} posterSrc={posterSrc} motif={motif} />
   );
 }

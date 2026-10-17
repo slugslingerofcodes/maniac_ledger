@@ -61,6 +61,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Browse surfaces: the featured banner's ink and gold leaf (see below). */
+  --color-banner: var(--banner);
+  --color-banner-foreground: var(--banner-foreground);
+  --color-gold: var(--gold);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -70,73 +74,105 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ---------------------------------------------------------------------------
+   Palette — washi paper, indigo, gold leaf.
+
+   Every neutral used to be chroma 0 (shadcn's stock grayscale) with a violet
+   primary bolted on, which left posters as the only color on screen and the
+   chrome reading as unauthored. The neutrals now carry a few points of chroma
+   at a single warm hue (~82°, unbleached paper), so surfaces, borders and
+   muted type all belong to one family.
+
+   The accents come from the same world the decoration already lives in —
+   shōji panels, the kumiko lattice, the gold vortex: indigo (ai) for the
+   primary, gold leaf for highlights, vermilion (shu) for destructive. Chroma
+   stays low on anything that spans large areas and is spent on small elements.
+--------------------------------------------------------------------------- */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.53 0.22 285);
-  --primary-foreground: oklch(0.985 0.005 285);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.53 0.18 285);
-  --chart-1: oklch(0.55 0.2 285);
-  --chart-2: oklch(0.6 0.14 215);
-  --chart-3: oklch(0.6 0.15 160);
-  --chart-4: oklch(0.7 0.15 85);
-  --chart-5: oklch(0.6 0.19 15);
+  --background: oklch(0.985 0.008 85);
+  --foreground: oklch(0.19 0.012 75);
+  --card: oklch(0.995 0.004 85);
+  --card-foreground: oklch(0.19 0.012 75);
+  --popover: oklch(0.995 0.004 85);
+  --popover-foreground: oklch(0.19 0.012 75);
+  --primary: oklch(0.44 0.13 265);
+  --primary-foreground: oklch(0.985 0.008 85);
+  --secondary: oklch(0.955 0.011 85);
+  --secondary-foreground: oklch(0.26 0.012 75);
+  --muted: oklch(0.955 0.011 85);
+  --muted-foreground: oklch(0.52 0.015 78);
+  --accent: oklch(0.945 0.015 85);
+  --accent-foreground: oklch(0.26 0.012 75);
+  --destructive: oklch(0.55 0.19 30);
+  --border: oklch(0.9 0.012 82);
+  --input: oklch(0.9 0.012 82);
+  --ring: oklch(0.44 0.11 265);
+  --chart-1: oklch(0.5 0.14 265);
+  --chart-2: oklch(0.72 0.13 80);
+  --chart-3: oklch(0.58 0.17 32);
+  --chart-4: oklch(0.6 0.09 155);
+  --chart-5: oklch(0.5 0.12 330);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.53 0.22 285);
-  --sidebar-primary-foreground: oklch(0.985 0.005 285);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.97 0.01 85);
+  --sidebar-foreground: oklch(0.19 0.012 75);
+  --sidebar-primary: oklch(0.44 0.13 265);
+  --sidebar-primary-foreground: oklch(0.985 0.008 85);
+  --sidebar-accent: oklch(0.945 0.015 85);
+  --sidebar-accent-foreground: oklch(0.26 0.012 75);
+  --sidebar-border: oklch(0.9 0.012 82);
+  --sidebar-ring: oklch(0.44 0.11 265);
+  /* Sumi ink: the featured banner and lifted-card panels stay dark in both
+     themes — key art reads like a screen, and paper type sits on it. Warm,
+     never black, so it belongs to the same family as the neutrals. */
+  --banner: oklch(0.2 0.016 70);
+  --banner-foreground: oklch(0.97 0.008 85);
+  /* Gold leaf. Deeper on paper for contrast; ink surfaces raise it again. */
+  --gold: oklch(0.62 0.13 72);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.64 0.21 285);
-  --primary-foreground: oklch(0.985 0.005 285);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.64 0.17 285);
-  --chart-1: oklch(0.7 0.17 285);
-  --chart-2: oklch(0.75 0.12 215);
-  --chart-3: oklch(0.72 0.14 160);
-  --chart-4: oklch(0.8 0.13 85);
-  --chart-5: oklch(0.7 0.16 15);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.64 0.21 285);
-  --sidebar-primary-foreground: oklch(0.985 0.005 285);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.16 0.012 75);
+  --foreground: oklch(0.96 0.008 85);
+  --card: oklch(0.215 0.014 75);
+  --card-foreground: oklch(0.96 0.008 85);
+  --popover: oklch(0.215 0.014 75);
+  --popover-foreground: oklch(0.96 0.008 85);
+  --primary: oklch(0.56 0.16 265);
+  --primary-foreground: oklch(0.98 0.01 265);
+  --secondary: oklch(0.275 0.014 75);
+  --secondary-foreground: oklch(0.96 0.008 85);
+  --muted: oklch(0.275 0.014 75);
+  --muted-foreground: oklch(0.72 0.013 80);
+  --accent: oklch(0.29 0.016 75);
+  --accent-foreground: oklch(0.96 0.008 85);
+  --destructive: oklch(0.68 0.18 30);
+  /* Warm-tinted hairlines rather than flat white at 10% — a pure-white border
+     over a warm surface reads blue and breaks the paper cast. */
+  --border: oklch(0.88 0.03 85 / 13%);
+  --input: oklch(0.88 0.03 85 / 17%);
+  --ring: oklch(0.62 0.14 265);
+  --chart-1: oklch(0.68 0.15 265);
+  --chart-2: oklch(0.82 0.13 80);
+  --chart-3: oklch(0.7 0.16 32);
+  --chart-4: oklch(0.72 0.09 155);
+  --chart-5: oklch(0.66 0.13 330);
+  --sidebar: oklch(0.215 0.014 75);
+  --sidebar-foreground: oklch(0.96 0.008 85);
+  --sidebar-primary: oklch(0.56 0.16 265);
+  --sidebar-primary-foreground: oklch(0.98 0.01 265);
+  --sidebar-accent: oklch(0.29 0.016 75);
+  --sidebar-accent-foreground: oklch(0.96 0.008 85);
+  --sidebar-border: oklch(0.88 0.03 85 / 13%);
+  --sidebar-ring: oklch(0.62 0.14 265);
+  --banner: oklch(0.13 0.012 75);
+  --banner-foreground: oklch(0.97 0.008 85);
+  --gold: oklch(0.82 0.13 82);
+}
+
+/* On ink, gold leaf is always the bright one, whatever the page theme. */
+.bg-banner,
+.browse-card-panel {
+  --gold: oklch(0.82 0.13 82);
 }
 
 @layer base {
@@ -223,40 +259,99 @@
   animation: aurora-3 27s ease-in-out infinite;
 }
 
-/* Frosted translucent surface; background wins over bg-card (unlayered). */
+/* Frosted translucent surface; background wins over bg-card (unlayered).
+   Write only the standard `backdrop-filter`: the CSS optimizer adds the
+   -webkit- prefix itself. A hand-written prefixed copy *after* it was merged
+   into the prefixed form alone, which Chrome no longer reads — so the header
+   rendered with no blur over 6% frost, and scrolled content showed through. */
 .glass {
-  background-color: oklch(1 0 0 / 5%);
+  background-color: oklch(0.92 0.02 85 / 6%);
   backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow:
-    0 16px 56px -20px oklch(0 0 0 / 75%),
-    inset 0 1px 0 0 oklch(1 0 0 / 9%);
+    0 16px 56px -20px oklch(0.1 0.01 75 / 75%),
+    inset 0 1px 0 0 oklch(0.92 0.02 85 / 10%);
 }
-/* 5% white frost vanishes on white pages; light mode needs a real surface. */
+/* 6% frost vanishes on light pages; light mode needs a real surface. */
 html:not(.dark) .glass {
-  background-color: oklch(1 0 0 / 65%);
+  background-color: oklch(0.99 0.008 85 / 68%);
 }
 
-/* High-fashion gradient text for premium headings. */
+/* Gradient type for hero headings — paper → gold leaf → indigo, the same
+   three notes as the palette, so it reads as brand rather than as chrome. */
 .text-gradient {
   background-image: linear-gradient(
     115deg,
-    oklch(0.95 0.03 260),
-    oklch(0.72 0.17 280) 45%,
-    oklch(0.78 0.13 215)
+    oklch(0.94 0.035 88),
+    oklch(0.82 0.13 82) 42%,
+    oklch(0.7 0.13 265)
   );
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
 }
-/* The pastel stops above wash out on white; darken them in light mode. */
+/* Those stops wash out on paper; darken them in light mode. */
 html:not(.dark) .text-gradient {
   background-image: linear-gradient(
     115deg,
-    oklch(0.35 0.09 260),
-    oklch(0.45 0.2 285) 45%,
-    oklch(0.48 0.13 215)
+    oklch(0.46 0.09 82),
+    oklch(0.58 0.13 72) 42%,
+    oklch(0.4 0.14 265)
   );
+}
+
+/* ---------------------------------------------------------------------------
+   Watch status accents.
+
+   Each status publishes a single `--status-accent` in the palette's family
+   (gold leaf, indigo, paper, clay, vermilion) rather than reaching for a raw
+   Tailwind hue. Anything that needs to show status — the badge tint, the card's
+   colored edge — derives from that one value, so a status reads the same
+   everywhere and light/dark each get a tone that survives its own background.
+--------------------------------------------------------------------------- */
+.status-watching {
+  --status-accent: oklch(0.62 0.12 72);
+}
+.status-completed {
+  --status-accent: oklch(0.44 0.13 265);
+}
+.status-plan_to_watch {
+  --status-accent: oklch(0.5 0.02 82);
+}
+.status-on_hold {
+  --status-accent: oklch(0.53 0.1 50);
+}
+.status-dropped {
+  --status-accent: oklch(0.55 0.18 30);
+}
+.dark .status-watching {
+  --status-accent: oklch(0.82 0.13 82);
+}
+.dark .status-completed {
+  --status-accent: oklch(0.68 0.15 265);
+}
+.dark .status-plan_to_watch {
+  --status-accent: oklch(0.75 0.02 85);
+}
+.dark .status-on_hold {
+  --status-accent: oklch(0.74 0.09 55);
+}
+.dark .status-dropped {
+  --status-accent: oklch(0.7 0.16 32);
+}
+
+/* Badge skin built from whichever accent is in scope. */
+.status-tint {
+  background-color: color-mix(in oklab, var(--status-accent) 16%, transparent);
+  border-color: color-mix(in oklab, var(--status-accent) 32%, transparent);
+  color: var(--status-accent);
+}
+
+/* The same accent as a solid edge down the left of a poster card. Sits above
+   the artwork, so it needs its own contrast against a bright poster: a hairline
+   of the card surface separates the two. */
+.status-edge {
+  background-color: var(--status-accent);
+  box-shadow: 1px 0 0 0 oklch(0.1 0.01 75 / 35%);
 }
 
 /* Editorial ghost type: outlined transparent numerals behind ranked rows. */
@@ -268,10 +363,59 @@ html:not(.dark) .text-gradient {
   -webkit-text-stroke-color: oklch(0.85 0.14 85 / 45%);
 }
 
-/* Faint seigaiha (wave) texture for section surfaces; opacity baked in. */
+/* ---------------------------------------------------------------------------
+   Blue leather.
+
+   Generated rather than shipped: a photographic leather swatch large enough to
+   fill a 4K viewport is a few hundred KB and still tiles visibly, while this is
+   a few hundred bytes and is resolution-independent — the grain stays crisp on
+   a phone and on a 5K display alike.
+
+   Four layers, coarsest last:
+     1. fine grain      — high-frequency fractal noise, the pored surface
+     2. hide mottling   — low-frequency noise, the broad tonal variation
+     3. sheen           — an off-centre highlight, so it reads as a lit surface
+     4. base            — the dye itself, deepening toward the edges
+
+   `feTurbulence` is doing the work in 1 and 2. Both are greyscale (saturate 0)
+   and composited at low opacity, so the hue comes entirely from the base and
+   retinting the leather is a one-line change.
+--------------------------------------------------------------------------- */
+.bg-leather-blue {
+  background-color: oklch(0.32 0.075 258);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23g)' opacity='0.42'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='500' height='500'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.035' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='500' height='500' filter='url(%23m)' opacity='0.5'/%3E%3C/svg%3E"),
+    radial-gradient(
+      95% 70% at 32% 18%,
+      oklch(0.58 0.09 250 / 0.5),
+      transparent 62%
+    ),
+    radial-gradient(
+      130% 120% at 50% 50%,
+      oklch(0.38 0.085 258),
+      oklch(0.2 0.055 262) 78%
+    );
+  /* Overlay lets the grain darken and lighten the dye instead of greying it;
+     soft-light keeps the broad mottling from crushing the midtones. */
+  background-blend-mode: overlay, soft-light, screen, normal;
+  background-size:
+    220px 220px,
+    500px 500px,
+    100% 100%,
+    100% 100%;
+}
+
+/* Faint seigaiha (wave) texture for section surfaces; opacity baked in.
+   The strokes are white, so on the light theme's paper background the pattern
+   was simply invisible — the washi motif only ever existed in dark mode. The
+   light variant below paints the same waves in warm ink instead. */
 .pattern-seigaiha {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='40' viewBox='0 0 80 40'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.07'%3E%3Ccircle cx='0' cy='40' r='36'/%3E%3Ccircle cx='0' cy='40' r='28'/%3E%3Ccircle cx='0' cy='40' r='20'/%3E%3Ccircle cx='0' cy='40' r='12'/%3E%3Ccircle cx='80' cy='40' r='36'/%3E%3Ccircle cx='80' cy='40' r='28'/%3E%3Ccircle cx='80' cy='40' r='20'/%3E%3Ccircle cx='80' cy='40' r='12'/%3E%3Ccircle cx='40' cy='60' r='36'/%3E%3Ccircle cx='40' cy='60' r='28'/%3E%3Ccircle cx='40' cy='60' r='20'/%3E%3Ccircle cx='40' cy='60' r='12'/%3E%3C/g%3E%3C/svg%3E");
   background-size: 80px 40px;
+}
+html:not(.dark) .pattern-seigaiha {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='40' viewBox='0 0 80 40'%3E%3Cg fill='none' stroke='%23473b2a' stroke-opacity='0.11'%3E%3Ccircle cx='0' cy='40' r='36'/%3E%3Ccircle cx='0' cy='40' r='28'/%3E%3Ccircle cx='0' cy='40' r='20'/%3E%3Ccircle cx='0' cy='40' r='12'/%3E%3Ccircle cx='80' cy='40' r='36'/%3E%3Ccircle cx='80' cy='40' r='28'/%3E%3Ccircle cx='80' cy='40' r='20'/%3E%3Ccircle cx='80' cy='40' r='12'/%3E%3Ccircle cx='40' cy='60' r='36'/%3E%3Ccircle cx='40' cy='60' r='28'/%3E%3Ccircle cx='40' cy='60' r='20'/%3E%3Ccircle cx='40' cy='60' r='12'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* Infinite poster marquee: track holds the list twice, loops at -50%. */
@@ -689,11 +833,17 @@ html:not(.dark) .text-gradient {
   box-shadow: inset 0 0 8px rgba(212, 175, 55, 0.12);
   pointer-events: none;
 }
+/* The wordmark rides the same Didot the rest of the brand type uses. It used
+   to load Playfair Display purely for this one element — a second high-contrast
+   serif doing the identical job, for two words in the header. */
 .brand-word {
-  font-family: var(--font-playfair), "Playfair Display", Georgia, serif;
-  font-weight: 900;
+  font-family: var(--font-didot);
+  /* GFS Didot ships weight 400 only — asking for 900 here made the browser
+     synthesize a fake bold, which smears a didone's whole point (the thin/thick
+     contrast). Presence comes from tracking instead. */
+  font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.5px;
+  letter-spacing: 1.6px;
   color: transparent;
   background: linear-gradient(
     100deg,
@@ -716,6 +866,179 @@ html:not(.dark) .text-gradient {
 @media (prefers-reduced-motion: reduce) {
   .brand-word,
   .brand-mono {
+    animation: none;
+  }
+}
+/* ---------------------------------------------------------------------------
+   Browse rows (home page).
+
+   Rows are full-bleed so cards can peek in from the edges, but the first card
+   must still line up with the page container (max-w-6xl, px-4 / sm:px-6).
+   `--gutter` is that offset, and it holds `100%` *unresolved*: custom
+   properties inherit as tokens, so the percentage resolves wherever the
+   variable is used — against the row's width for padding, the banner's for the
+   key art's `right`.
+--------------------------------------------------------------------------- */
+.browse-scope {
+  --gutter: 1rem;
+}
+@media (min-width: 40rem) {
+  .browse-scope {
+    --gutter: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
+  }
+}
+.row-gutter {
+  padding-inline: var(--gutter, 1rem);
+  scroll-padding-inline: var(--gutter, 1rem);
+}
+.row-paddle {
+  width: max(3rem, var(--gutter, 1rem));
+}
+
+/* Featured banner height: tall enough to be the page's first screen on a
+   phone (the poster is the banner there), capped so the first row peeks
+   above the fold on a laptop. */
+.banner-height {
+  height: clamp(34rem, 84svh, 42rem);
+}
+@media (min-width: 48rem) {
+  .banner-height {
+    height: clamp(30rem, 76vh, 46rem);
+  }
+}
+/* Skeleton blocks on ink: paper at low alpha instead of the paper accent. */
+.bg-banner .skeleton-shimmer {
+  background-color: color-mix(in oklab, var(--banner-foreground) 9%, transparent);
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in oklab, var(--banner-foreground) 8%, transparent) 50%,
+    transparent 70%
+  );
+}
+
+/* Banner progress segment. Its `animationend` advances the carousel, so
+   pausing the animation is how the carousel pauses (see HeroCarousel). */
+@keyframes banner-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.banner-progress {
+  animation-name: banner-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* Top 10 rank: an outlined Didot numeral behind each poster; the top three
+   are struck in gold leaf. */
+.top10-numeral {
+  color: transparent;
+  -webkit-text-stroke: 2px color-mix(in oklab, var(--foreground) 30%, transparent);
+}
+.top10-numeral-gold {
+  -webkit-text-stroke-color: var(--gold);
+}
+
+/* ---------------------------------------------------------------------------
+   Expanding cards.
+
+   On hover (fine pointers) or keyboard focus, a card lifts in place: only the
+   inner `.browse-card-lift` scales — a transform, so the slot keeps its size
+   and no neighbour moves — while the details panel fades in over the poster.
+   Transform and opacity only.
+
+   - Hover waits ~280ms before lifting, so sweeping the mouse across a row
+     doesn't pop every card it passes; leaving is immediate.
+   - Keyboard uses :focus-visible (via :has) rather than :focus-within, so a
+     mouse click on a quick action doesn't leave the card stuck open.
+   - `--lift-origin` (set from JS) makes edge cards grow inward, so the row's
+     overflow clip never cuts them.
+   - The panel is `visibility: hidden` until shown, which also keeps its
+     buttons out of the tab order while they can't be seen.
+   - Reduced motion: nothing scales; the panel still appears.
+--------------------------------------------------------------------------- */
+.browse-card {
+  z-index: 0;
+}
+.browse-card-lift {
+  transform-origin: var(--lift-origin, center) center;
+  transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.browse-card-lift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow:
+    0 22px 44px -14px oklch(0.1 0.01 75 / 70%),
+    0 0 0 1px color-mix(in oklab, var(--gold) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+.browse-card-panel {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 200ms ease,
+    visibility 0s linear 200ms;
+}
+
+.browse-card:has(:focus-visible) {
+  z-index: 20;
+}
+.browse-card:has(:focus-visible) .browse-card-panel {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 200ms ease,
+    visibility 0s;
+}
+.browse-card:has(:focus-visible) .browse-card-lift::after {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .browse-card:hover {
+    z-index: 20;
+  }
+  .browse-card:hover .browse-card-panel {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 200ms ease 280ms,
+      visibility 0s linear 280ms;
+  }
+  .browse-card:hover .browse-card-lift::after {
+    opacity: 1;
+    transition-delay: 280ms;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .browse-card:has(:focus-visible) .browse-card-lift {
+    transform: scale(1.12);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .browse-card:hover .browse-card-lift {
+      transform: scale(1.16);
+      transition-delay: 280ms;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browse-card-lift,
+  .browse-card-lift::after,
+  .browse-card-panel {
+    transition: none !important;
+  }
+  .banner-progress {
     animation: none;
   }
 }

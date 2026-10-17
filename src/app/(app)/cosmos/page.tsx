@@ -1,7 +1,9 @@
+import { cache, Suspense } from "react";
 import Link from "next/link";
 
 import { CosmosStage } from "@/components/cosmos/CosmosStage";
 import type { CosmosItem } from "@/components/cosmos/PosterCosmos";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getCosmosPool } from "@/lib/cosmos-pool";
 import { requireUser } from "@/lib/supabase/auth";
 
@@ -13,20 +15,29 @@ export const metadata = {
 // The pool is reshuffled per visit, so this must never be cached as a page.
 export const dynamic = "force-dynamic";
 
-export default async function CosmosPage() {
-  // Defence in depth: the proxy already redirects signed-out visitors, but a
-  // middleware bypass (Next has shipped advisories for exactly that) would
-  // otherwise leave this page rendering. The server guard is the real gate.
-  await requireUser();
+/**
+ * The pool, once per request: the subtitle and the stage both need it, and an
+ * unshared second call would draw a *different* random wall.
+ */
+const getItems = cache(async (): Promise<CosmosItem[]> => {
   const pool = await getCosmosPool();
-  const items: CosmosItem[] = pool.map((entry) => ({
+  return pool.map((entry) => ({
     key: String(entry.malId),
     href: `/anime/mal/${entry.malId}`,
     title: entry.title,
     posterUrl: entry.posterUrl,
     score: entry.score,
   }));
+});
 
+export default async function CosmosPage() {
+  // Defence in depth: the proxy already redirects signed-out visitors, but a
+  // middleware bypass (Next has shipped advisories for exactly that) would
+  // otherwise leave this page rendering. The server guard is the real gate.
+  await requireUser();
+
+  // The black field and the header paint at once; the poster pool (a few
+  // upstream pages, AniList first) streams into the stage when it lands.
   return (
     // `overflow-hidden` + `overscroll-none`: the mosaic is a fixed, edge-to-edge
     // canvas, so there is nothing to scroll to — any horizontal movement is
@@ -47,9 +58,9 @@ export default async function CosmosPage() {
             Cosmos
           </h1>
           <p className="mt-0.5 max-w-sm text-xs text-white/40">
-            {items.length > 0
-              ? "Move to magnify · click a poster to open it"
-              : "A wall of anime, edge to edge"}
+            <Suspense fallback="A wall of anime, edge to edge">
+              <Subtitle />
+            </Suspense>
           </p>
         </div>
         <Link
@@ -63,8 +74,35 @@ export default async function CosmosPage() {
       {/* min-h keeps the absolutely-positioned canvas from collapsing to zero
           on short viewports, where flex-1 alone resolves to no height. */}
       <div className="relative min-h-[70vh] flex-1 overflow-hidden">
-        <CosmosStage items={items} />
+        <Suspense fallback={<MosaicSkeleton />}>
+          <Stage />
+        </Suspense>
       </div>
+    </div>
+  );
+}
+
+async function Subtitle() {
+  const items = await getItems();
+  return items.length > 0
+    ? "Move to magnify · click a poster to open it"
+    : "A wall of anime, edge to edge";
+}
+
+async function Stage() {
+  return <CosmosStage items={await getItems()} />;
+}
+
+/** Dim tiles packed edge to edge, like the real mosaic (and loading.tsx). */
+function MosaicSkeleton() {
+  return (
+    <div className="absolute inset-0 grid grid-cols-4 content-start gap-1 p-1 sm:grid-cols-6 lg:grid-cols-8">
+      {Array.from({ length: 32 }).map((_, i) => (
+        <Skeleton
+          key={i}
+          className="aspect-[2/3] w-full rounded-sm bg-white/[0.06]"
+        />
+      ))}
     </div>
   );
 }

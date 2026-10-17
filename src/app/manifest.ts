@@ -18,8 +18,11 @@ export default function manifest(): MetadataRoute.Manifest {
     // anime dashboard every time.
     start_url: "/choose",
     display: "standalone",
+    // Shortcut URLs must be same-origin and inside the manifest scope, so the
+    // anime side's news shortcut can't point at animecorner.me the way the nav
+    // now does — it opens the Community hub, which is one tap from it.
     shortcuts: [
-      { name: "Anime Times", url: "/news" },
+      { name: "Community", url: "/community" },
       { name: "Manga Times", url: "/manga/news" },
       { name: "My Library", url: "/library" },
     ],

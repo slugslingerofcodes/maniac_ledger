@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  motion,
+  m,
   useAnimationControls,
   useReducedMotion,
 } from "framer-motion";
@@ -282,13 +282,13 @@ export function ScheduleList({ items }: { items: ScheduleItem[] }) {
           aria-hidden
           className="pointer-events-none absolute inset-0 z-20 flex"
         >
-          <motion.div
+          <m.div
             initial={{ x: "-101%" }}
             animate={leftDoor}
             transition={doorTransition}
             className="shoji-panel h-full w-1/2 border-r-2 border-[oklch(0.32_0.03_60)]"
           />
-          <motion.div
+          <m.div
             initial={{ x: "101%" }}
             animate={rightDoor}
             transition={doorTransition}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ShojiDoors drives navigation itself (capture-phase click → router.push).
@@ -20,7 +20,7 @@ afterEach(() => {
 
 beforeEach(() => {
   push.mockClear();
-  // framer-motion's useReducedMotion needs matchMedia; report motion-safe.
+  // The reduced-motion check reads matchMedia; report motion-safe.
   window.matchMedia = vi.fn(() => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -54,13 +54,27 @@ function addAnchor({ href, withImg }: { href: string; withImg: boolean }) {
   return a;
 }
 
+/**
+ * Mount the doors and let their panels chunk arrive. The panels (framer-motion)
+ * load on idle after hydration rather than with the root layout, so a test
+ * that clicks must first give that idle load — a 1ms timeout under jsdom,
+ * which has no requestIdleCallback — time to land.
+ */
+async function renderDoors() {
+  render(<ShojiDoors />);
+  await act(async () => {
+    await import("@/components/doors/DoorPanels");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+}
+
 function posterPanel() {
   return document.querySelector('[style*="poster-1.jpg"]');
 }
 
 describe("ShojiDoors — poster world doors", () => {
-  it("paints the doorway with the clicked poster on anime detail navigations", () => {
-    render(<ShojiDoors />);
+  it("paints the doorway with the clicked poster on anime detail navigations", async () => {
+    await renderDoors();
     const a = addAnchor({ href: "/anime/abc-123", withImg: true });
 
     fireEvent.click(a);
@@ -69,8 +83,8 @@ describe("ShojiDoors — poster world doors", () => {
     expect(posterPanel()).not.toBeNull();
   });
 
-  it("keeps the sumi-e motif for poster-less navigations", () => {
-    render(<ShojiDoors />);
+  it("keeps the sumi-e motif for poster-less navigations", async () => {
+    await renderDoors();
     const a = addAnchor({ href: "/profile", withImg: false });
 
     fireEvent.click(a);
@@ -79,8 +93,8 @@ describe("ShojiDoors — poster world doors", () => {
     expect(posterPanel()).toBeNull();
   });
 
-  it("keeps the motif when a poster click heads somewhere other than a detail page", () => {
-    render(<ShojiDoors />);
+  it("keeps the motif when a poster click heads somewhere other than a detail page", async () => {
+    await renderDoors();
     const a = addAnchor({ href: "/lists/42", withImg: true });
 
     fireEvent.click(a);
@@ -97,10 +111,10 @@ describe("ShojiDoors — poster world doors", () => {
  * failed chunk fetch would turn every poster link in the app into a dead one.
  */
 describe("ShojiDoors — navigation never waits on WebGL", () => {
-  it("pushes on its own timer even when the shatter never loads", () => {
+  it("pushes on its own timer even when the shatter never loads", async () => {
+    await renderDoors();
     vi.useFakeTimers();
     try {
-      render(<ShojiDoors />);
       const a = addAnchor({ href: "/anime/abc-123", withImg: true });
 
       fireEvent.click(a);
@@ -116,8 +130,8 @@ describe("ShojiDoors — navigation never waits on WebGL", () => {
     }
   });
 
-  it("falls back to the sliding panels when the shatter is unavailable", () => {
-    render(<ShojiDoors />);
+  it("falls back to the sliding panels when the shatter is unavailable", async () => {
+    await renderDoors();
     const a = addAnchor({ href: "/anime/abc-123", withImg: true });
 
     fireEvent.click(a);
@@ -125,5 +139,23 @@ describe("ShojiDoors — navigation never waits on WebGL", () => {
     // Panels present and painted with the poster — the pre-WebGL behaviour.
     expect(document.querySelectorAll(".shoji-panel").length).toBe(2);
     expect(posterPanel()).not.toBeNull();
+  });
+});
+
+/**
+ * The panels are fetched on idle, so a click can in principle beat them (the
+ * first idle moment of a cold load). Holding that click behind doors that
+ * can't be drawn would be a dead link for DOOR_MS with nothing on screen, so
+ * it must fall through to the link's own navigation instead.
+ */
+describe("ShojiDoors — before the panels arrive", () => {
+  it("lets a click navigate natively instead of holding it", () => {
+    render(<ShojiDoors />);
+    const a = addAnchor({ href: "/anime/abc-123", withImg: true });
+
+    const notCancelled = fireEvent.click(a);
+
+    expect(notCancelled).toBe(true); // no preventDefault: the link navigates
+    expect(document.querySelectorAll(".shoji-panel").length).toBe(0);
   });
 });

@@ -18,7 +18,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to self-host and optimize its type: Plus Jakarta Sans (body/UI), Sora (headings), Geist Mono (data), and GFS Didot (the brand wordmark).
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to self-host and optimize its type: Plus Jakarta Sans (body/UI), Shippori Mincho (headings), Geist Mono (data), and GFS Didot (the brand wordmark). One family per role — no two faces share a job.
 
 ## Learn More
 

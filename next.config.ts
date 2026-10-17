@@ -42,6 +42,16 @@ const STATIC_ASSET_CACHE = [
   },
 ];
 
+/*
+ * Function region: pinned to `icn1` (Seoul) in vercel.json, which can't carry
+ * this comment. The Supabase project is in ap-northeast-2 (Seoul), and a page
+ * here makes several *sequential* Supabase round trips (session, row,
+ * progress…). From Vercel's default `iad1` each one crosses the Pacific
+ * (~150–200 ms); from `icn1` it stays in-region (single-digit ms). The cost:
+ * uncached Jikan/AniList fetches start farther from those US/EU hosts — but
+ * those are cached (process + the Supabase-backed `http_cache`, now
+ * in-region too) and streamed behind Suspense, so they no longer gate a page.
+ */
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
@@ -69,15 +79,24 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    // Serve posters straight from their source CDN (MAL/AniList/Supabase)
-    // instead of proxying every one through Next/Vercel Image Optimization.
-    // Those CDNs already return appropriately sized, cached images, and the
-    // optimizer has a monthly quota — once exhausted it 402s and EVERY poster
-    // breaks site-wide. `unoptimized` emits plain <img> at the source URL, so
-    // posters can't be taken down by an optimization quota.
-    unoptimized: true,
-    // Still declared so a future re-enable of optimization keeps working, and
-    // to document that poster hosts vary (catalog contributions).
+    // Posters are served straight from their source CDN (MAL/AniList/Supabase),
+    // never through Next/Vercel Image Optimization: that optimizer has a monthly
+    // quota, and once it ran out it 402'd and EVERY poster on the site broke at
+    // once. A *custom loader* keeps that door shut — Next emits no
+    // `/_next/image` request and proxies no bytes, so there is no quota to
+    // exhaust — while restoring the one thing `unoptimized: true` gave up:
+    // a real `srcSet`.
+    //
+    // `unoptimized` emitted a bare <img src> with a single fixed rendition, so
+    // every poster looked soft on a 2× screen. The loader picks the CDN's own
+    // rendition for whatever width the browser asks for, so one <Image> now
+    // advertises medium at 1× and large at 2×. See `src/lib/image-loader.ts`.
+    loader: "custom",
+    loaderFile: "./src/lib/image-loader.ts",
+    // Ignored while a custom loader is configured (remote hosts are fetched by
+    // the browser, not by us), but kept to document that poster hosts vary —
+    // catalog rows are contributed by users — and so removing the loader
+    // doesn't silently break every remote image.
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },
 };

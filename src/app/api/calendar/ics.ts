@@ -120,9 +120,26 @@ function nextOccurrenceJst(
  * component is the whole zone) and the calendar app converts to local time.
  * Shows with an unparseable slot are skipped; for a repeated `malId` the first
  * emitted event wins, keeping UIDs unique.
+ *
+ * `refreshHours` is for the subscription feed only: it adds RFC 7986's
+ * REFRESH-INTERVAL plus X-PUBLISHED-TTL, the older name Outlook and Apple
+ * read. Clients treat both as a hint. The one-time download leaves it out — it
+ * has no URL to refresh from.
  */
-export function buildAiringCalendar(shows: AiringShow[], now: Date): string {
+export function buildAiringCalendar(
+  shows: AiringShow[],
+  now: Date,
+  options: { refreshHours?: number } = {},
+): string {
   const dtstamp = `${formatUtcFields(now)}Z`;
+
+  const refresh =
+    options.refreshHours != null
+      ? [
+          `REFRESH-INTERVAL;VALUE=DURATION:PT${options.refreshHours}H`,
+          `X-PUBLISHED-TTL:PT${options.refreshHours}H`,
+        ]
+      : [];
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -132,6 +149,7 @@ export function buildAiringCalendar(shows: AiringShow[], now: Date): string {
     "METHOD:PUBLISH",
     "X-WR-CALNAME:anime_maniacs — Watching",
     "X-WR-TIMEZONE:Asia/Tokyo",
+    ...refresh,
     "BEGIN:VTIMEZONE",
     "TZID:Asia/Tokyo",
     "BEGIN:STANDARD",

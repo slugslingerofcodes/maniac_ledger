@@ -71,7 +71,10 @@ export function getPaletteRecentsSnapshot(): PaletteRecent[] {
   return cache;
 }
 
-export const getPaletteRecentsServerSnapshot = (): PaletteRecent[] => [];
+// The server snapshot needs the same stability: `() => []` hands React a new
+// array on every call, which it reports as a would-be infinite loop.
+const NO_RECENTS: PaletteRecent[] = [];
+export const getPaletteRecentsServerSnapshot = (): PaletteRecent[] => NO_RECENTS;
 
 export function subscribeToPaletteRecents(onChange: () => void) {
   window.addEventListener(RECENTS_CHANGE_EVENT, onChange);

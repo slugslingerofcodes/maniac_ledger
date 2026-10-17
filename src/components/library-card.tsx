@@ -1,6 +1,7 @@
 import Image from "next/image";
 
 import { MorphLink } from "@/components/MorphLink";
+import { PosterFallback } from "@/components/poster-fallback";
 import { ScoreRing } from "@/components/ScoreRing";
 import { Tilt3D } from "@/components/Tilt3D";
 import { Badge } from "@/components/ui/badge";
@@ -49,22 +50,22 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
       </div>
     ) : null}
     <Tilt3D>
-    <Card className="gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40">
+    <Card className={cn(status.tokenClassName, "gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40")}>
       <div data-morph className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
+        {/* Raw URL, not a pre-shrunk one: the loader picks the rendition per
+            srcSet candidate, so this is crisp at 2× as well. */}
         {item.posterUrl ? (
           <Image
-            src={posterUrl(item.posterUrl, "card")!}
+            src={item.posterUrl}
             alt={item.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            No image
-          </div>
+          <PosterFallback title={item.title} />
         )}
-        <Badge className={cn("absolute left-2 top-2 border", status.className)}>
+        <Badge className={cn("absolute left-2 top-2 z-10 border", status.className)}>
           {status.label}
         </Badge>
         {/* Hover reveal: progress at a glance without leaving the grid. */}
@@ -77,7 +78,7 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
           {hasTotal ? (
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">
               <div
-                className="h-full rounded-full bg-primary"
+                className="h-full rounded-full bg-[var(--status-accent)]"
                 style={{ width: `${percent}%` }}
               />
             </div>

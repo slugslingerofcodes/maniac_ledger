@@ -9,12 +9,16 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Clapperboard, Clock, CornerDownLeft, Search } from "lucide-react";
+import { BookOpen, Clapperboard, Clock, CornerDownLeft, Search } from "lucide-react";
 
 import { NAV_ITEMS } from "@/lib/nav-items";
 import { cn } from "@/lib/utils";
-import { useDebounce } from "@/hooks/use-debounce";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
+import {
+  usePaletteSearch,
+  type PaletteAnime,
+  type PaletteManga,
+} from "@/hooks/use-palette-search";
 import {
   COMMAND_PALETTE_OPEN_EVENT,
   getPaletteRecentsServerSnapshot,
@@ -22,7 +26,6 @@ import {
   pushPaletteRecent,
   subscribeToPaletteRecents,
 } from "@/lib/command-palette";
-import type { JikanAnime } from "@/lib/jikan";
 import { posterUrl } from "@/lib/poster";
 
 /**
@@ -32,36 +35,66 @@ import { posterUrl } from "@/lib/poster";
  * discoverable at all.
  *
  * One flat result list: matching pages first (instant, local), then anime
- * matches from /api/anime/search (debounced, ≥2 chars, public path). Arrow
+ * and manga matches from `usePaletteSearch` — library hits on the keystroke,
+ * then cached / catalog / live results as each lands (debounced, ≥2 chars,
+ * anime and manga fetched independently so a slow or dead upstream on one
+ * side never holds back the other). Arrow
  * keys move, Enter goes, Escape leaves. Hand-rolled rather than base-ui's
  * Dialog because the whole surface is one input + one listbox — the ARIA
  * combobox wiring below is smaller than restyling a dialog to behave.
  */
 
-type PageResult = { kind: "page"; label: string; href: string };
-type AnimeResult = {
-  kind: "anime";
-  malId: number;
-  title: string;
-  posterUrl: string | null;
-  year: number | null;
+type PageResult = {
+  kind: "page";
+  label: string;
+  href: string;
+  /** Off-site: opened in a new tab rather than pushed onto the router. */
+  external?: boolean;
 };
-type Result = PageResult | AnimeResult;
+type AnimeResult = PaletteAnime;
+type MangaResult = PaletteManga;
+type Result = PageResult | AnimeResult | MangaResult;
 
-/** Everywhere the palette can take you directly (nav + a few unlisted). */
-const PAGES: PageResult[] = [
+/** Where a result opens. Keyed off the shape rather than stored per result. */
+function resultHref(r: AnimeResult | MangaResult): string {
+  if (r.kind === "anime") return `/anime/mal/${r.malId}`;
+  return r.malId != null ? `/manga/${r.malId}` : `/manga/md/${r.mangadexId}`;
+}
+
+/**
+ * Everywhere the palette can take you directly (nav + a few unlisted).
+ *
+ * Deduped by href because "Home" is both hardcoded here and present in
+ * `NAV_ITEMS`: the list rendered it twice and React warned about the duplicate
+ * `/` key on every empty-query open.
+ */
+const PAGES: PageResult[] = dedupeByHref([
   { kind: "page", label: "Home", href: "/" },
-  ...NAV_ITEMS.map((i) => ({ kind: "page" as const, label: i.label, href: i.href })),
+  ...NAV_ITEMS.map((i) => ({
+    kind: "page" as const,
+    label: i.label,
+    href: i.href,
+    external: i.external,
+  })),
   { kind: "page", label: "Profile", href: "/profile" },
   { kind: "page", label: "Reminders", href: "/notifications" },
   { kind: "page", label: "Announcements", href: "/announcements" },
-];
+]);
+
+function dedupeByHref(pages: PageResult[]): PageResult[] {
+  const seen = new Set<string>();
+  return pages.filter((p) => !seen.has(p.href) && seen.add(p.href));
+}
 
 export function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [animeResults, setAnimeResults] = useState<AnimeResult[]>([]);
+  const {
+    anime: animeResults,
+    manga: mangaResults,
+    searching,
+  } = usePaletteSearch(open, query);
   const [activeIndex, setActiveIndex] = useState(0);
   // localStorage is the source of truth for recents — subscribe to it rather
   // than mirroring it into state (same pattern as `useRecentSearches`).
@@ -71,7 +104,6 @@ export function CommandPalette() {
     getPaletteRecentsServerSnapshot,
   );
   const inputRef = useRef<HTMLInputElement>(null);
-  const debouncedQuery = useDebounce(query, 300);
   const panelRef = useFocusTrap<HTMLDivElement>(open);
 
   // Global shortcut. ⌘K on mac, Ctrl+K elsewhere; "/" is left alone (search
@@ -97,36 +129,8 @@ export function CommandPalette() {
   const close = useCallback(() => {
     setOpen(false);
     setQuery("");
-    setAnimeResults([]);
     setActiveIndex(0);
   }, []);
-
-  // Anime search rides the same public API as the search page.
-  useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (!open || q.length < 2) return;
-    const controller = new AbortController();
-    fetch(`/api/anime/search?q=${encodeURIComponent(q)}`, {
-      signal: controller.signal,
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((body) => {
-        const list = ((body.results ?? []) as JikanAnime[]).slice(0, 6).map(
-          (a): AnimeResult => ({
-            kind: "anime",
-            malId: a.mal_id,
-            title: a.title_english ?? a.title,
-            posterUrl: a.images?.jpg?.image_url ?? null,
-            year: a.year,
-          }),
-        );
-        setAnimeResults(list);
-      })
-      .catch(() => {
-        /* aborted or upstream down — the pages section still works */
-      });
-    return () => controller.abort();
-  }, [debouncedQuery, open]);
 
   if (!open) {
     return null;
@@ -142,10 +146,11 @@ export function CommandPalette() {
   const pageMatches = q
     ? PAGES.filter((p) => p.label.toLowerCase().includes(q))
     : [...recentPages, ...PAGES.filter((p) => !recentHrefs.has(p.href))];
-  const showAnime = q.length >= 2;
+  const showTitles = q.length >= 2;
   const results: Result[] = [
     ...pageMatches,
-    ...(showAnime ? animeResults : []),
+    ...(showTitles ? animeResults : []),
+    ...(showTitles ? mangaResults : []),
   ];
   const active = Math.min(activeIndex, Math.max(0, results.length - 1));
   const recentCount = recentPages.length;
@@ -154,9 +159,19 @@ export function CommandPalette() {
     close();
     if (result.kind === "page") {
       pushPaletteRecent({ label: result.label, href: result.href });
+      // The href test is not redundant with the flag: recents are replayed from
+      // storage as bare {label, href} pairs, so a previously-used off-site link
+      // arrives here with `external` undefined.
+      if (result.external || /^https?:\/\//i.test(result.href)) {
+        // `router.push` on an absolute URL leaves the palette closed and the
+        // page unchanged — the App Router has no route to match. Open the tab
+        // explicitly instead, and never without `noopener`.
+        window.open(result.href, "_blank", "noopener,noreferrer");
+        return;
+      }
       router.push(result.href);
     } else {
-      router.push(`/anime/mal/${result.malId}`);
+      router.push(resultHref(result));
     }
   }
 
@@ -206,7 +221,7 @@ export function CommandPalette() {
               setActiveIndex(0);
             }}
             onKeyDown={onInputKeyDown}
-            placeholder="Jump to a page or search anime…"
+            placeholder="Jump to a page or search anime and manga…"
             aria-label="Command palette search"
             role="combobox"
             aria-expanded="true"
@@ -223,23 +238,31 @@ export function CommandPalette() {
           id="palette-results"
           role="listbox"
           aria-label="Results"
+          aria-busy={searching}
           className="max-h-80 overflow-y-auto p-1.5"
         >
           {results.length === 0 ? (
             <li className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {showAnime ? "Nothing matches." : "Type to search…"}
+              {!showTitles
+                ? "Type to search…"
+                : searching
+                  ? "Searching…"
+                  : "Nothing matches."}
             </li>
           ) : (
             results.map((r, i) => (
-              <li key={r.kind === "page" ? r.href : `mal-${r.malId}`}>
+              <li key={r.kind === "page" ? r.href : `${r.kind}-${resultHref(r)}`}>
                 {/* Section labels, rendered inline so the flat listbox and its
                     arrow-key indexing stay untouched. */}
                 {recentCount > 0 && i === 0 ? <GroupLabel>Recent</GroupLabel> : null}
                 {recentCount > 0 && i === recentCount ? (
                   <GroupLabel>All pages</GroupLabel>
                 ) : null}
-                {showAnime && r.kind === "anime" && results[i - 1]?.kind === "page" ? (
+                {showTitles && r.kind === "anime" && results[i - 1]?.kind === "page" ? (
                   <GroupLabel>Anime</GroupLabel>
+                ) : null}
+                {showTitles && r.kind === "manga" && results[i - 1]?.kind !== "manga" ? (
+                  <GroupLabel>Manga</GroupLabel>
                 ) : null}
                 <button
                   id={`palette-opt-${i}`}
@@ -273,8 +296,13 @@ export function CommandPalette() {
                         ) : null}
                       </span>
                       <span className="line-clamp-1 flex-1">{r.title}</span>
-                      {r.year != null ? (
+                      {r.kind === "anime" && r.inLibrary ? (
+                        <span className="text-xs opacity-50">In library</span>
+                      ) : r.kind === "anime" && r.year != null ? (
                         <span className="text-xs opacity-50">{r.year}</span>
+                      ) : null}
+                      {r.kind === "manga" ? (
+                        <BookOpen className="size-3.5 shrink-0 opacity-50" aria-hidden />
                       ) : null}
                     </>
                   )}

@@ -1,8 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { loadGsap } from "@/lib/gsap-loader";
+
+/**
+ * GSAP is fetched on first use (lib/gsap-loader), so the reveal is set up a
+ * tick after mount. Wait for that, or these assert on the pre-GSAP render —
+ * which is plainly visible, and would make the reduced-motion test pass for
+ * the wrong reason.
+ */
+async function settle() {
+  await act(async () => {
+    await loadGsap();
+  });
+}
 
 /**
  * Motion-safe half of the ScrollReveal pair. framer-motion caches the
@@ -40,12 +53,14 @@ beforeEach(() => {
 });
 
 describe("ScrollReveal (motion allowed)", () => {
-  it("starts hidden, waiting for the viewport to reveal it", () => {
+  it("starts hidden, waiting for the viewport to reveal it", async () => {
     const { getByText } = render(
       <ScrollReveal>
         <p>synopsis</p>
       </ScrollReveal>,
     );
+
+    await settle();
 
     // If the hidden initial state disappears, the slide transition has
     // silently stopped happening.

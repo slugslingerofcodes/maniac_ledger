@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 
 import { UpcomingCard } from "@/components/anime/UpcomingCard";
@@ -6,6 +7,8 @@ import { getAnilistUpcoming } from "@/lib/anilist";
 import { getUpcomingSeasons, type JikanAnime, type JikanSeason } from "@/lib/jikan";
 import { requireUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+
+import { UpcomingGroupsSkeleton } from "./upcoming-skeleton";
 
 export const metadata: Metadata = {
   title: "Upcoming · anime_maniacs",
@@ -65,44 +68,62 @@ function groupBySeason(anime: JikanAnime[]): SeasonGroup[] {
 
 /* -------------------------------------------------------------------------- */
 
+/** MAL (Jikan) primary; AniList fallback so the tab survives MAL outages. */
+async function loadUpcoming(): Promise<{
+  upcoming: JikanAnime[];
+  source: "mal" | "anilist";
+} | null> {
+  try {
+    return { upcoming: await getUpcomingSeasons(2), source: "mal" };
+  } catch {
+    try {
+      return { upcoming: await getAnilistUpcoming(2), source: "anilist" };
+    } catch {
+      return null;
+    }
+  }
+}
+
 export default async function UpcomingPage() {
   // Protected route: redirects to /login when there is no session.
   await requireUser();
 
-  // MAL (Jikan) primary; AniList fallback so the tab survives MAL outages.
-  let upcoming: JikanAnime[];
-  let source: "mal" | "anilist" = "mal";
-  try {
-    upcoming = await getUpcomingSeasons(2);
-  } catch {
-    try {
-      upcoming = await getAnilistUpcoming(2);
-      source = "anilist";
-    } catch {
-      return (
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-          <Header />
-          <p className="mt-6 text-sm text-destructive">
-            Couldn&apos;t load upcoming anime right now. Please try again later.
-          </p>
-        </main>
-      );
-    }
-  }
-
-  // Which of these the user already has a reminder for (RLS-scoped to them).
-  const supabase = await createClient();
-  const { data: reminders } = await supabase
-    .from("notifications")
-    .select("mal_id");
-  const notifyingIds = new Set((reminders ?? []).map((r) => r.mal_id));
-
-  const groups = groupBySeason(upcoming);
-
+  // The header paints at once; only the season groups wait on the upstream
+  // list (1–3s when Jikan is slow, a timeout when it's down).
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
       <Header />
+      <Suspense fallback={<UpcomingGroupsSkeleton />}>
+        <UpcomingGroups />
+      </Suspense>
+    </main>
+  );
+}
 
+async function UpcomingGroups() {
+  const supabase = await createClient();
+  // Which of these the user already has a reminder for (RLS-scoped to them).
+  // Independent of the upstream list, so it goes out alongside it instead of
+  // queueing behind it.
+  const [result, { data: reminders }] = await Promise.all([
+    loadUpcoming(),
+    supabase.from("notifications").select("mal_id"),
+  ]);
+
+  if (!result) {
+    return (
+      <p className="mt-6 text-sm text-destructive">
+        Couldn&apos;t load upcoming anime right now. Please try again later.
+      </p>
+    );
+  }
+
+  const { upcoming, source } = result;
+  const notifyingIds = new Set((reminders ?? []).map((r) => r.mal_id));
+  const groups = groupBySeason(upcoming);
+
+  return (
+    <>
       <div className="mt-4">
         <SourceNotice source={source} anilistLabel="Upcoming via AniList" />
       </div>
@@ -148,7 +169,7 @@ export default async function UpcomingPage() {
           ))}
         </div>
       )}
-    </main>
+    </>
   );
 }
 

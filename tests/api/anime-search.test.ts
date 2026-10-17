@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { animeFixture, paginationFixture } from "../helpers/fixtures";
 
@@ -420,5 +420,180 @@ describe("per-IP rate limiting", () => {
     await getAs("203.0.113.9");
 
     expect(searchAnimeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("hedging a slow Jikan", () => {
+  /** Jikan that never answers inside the test — the slow-upstream case. */
+  const hang = () => new Promise<never>(() => {});
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("races AniList after 1.2s on the type-ahead path, and takes its answer", async () => {
+    searchAnimeMock.mockImplementation(hang);
+    searchAnilistMock.mockResolvedValue(anilistPage(["Frieren"]));
+
+    const res = get("q=frieren&limit=6");
+    await vi.advanceTimersByTimeAsync(1_199);
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    const body = await (await res).json();
+    expect(body.source).toBe("anilist");
+    expect(body.results[0].title).toBe("Frieren");
+  });
+
+  it("gives the search page longer (2.5s) before hedging", async () => {
+    searchAnimeMock.mockImplementation(hang);
+    searchAnilistMock.mockResolvedValue(anilistPage(["Frieren"]));
+
+    const res = get("q=frieren");
+    await vi.advanceTimersByTimeAsync(2_499);
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect((await (await res).json()).source).toBe("anilist");
+  });
+
+  it("never touches AniList when Jikan answers in time — no doubled load", async () => {
+    searchAnimeMock.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r(jikanPage(["Frieren"])), 900)),
+    );
+
+    const res = get("q=frieren&limit=6");
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect((await (await res).json()).source).toBe("mal");
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+  });
+
+  it("hands AniList the request's signal, so a departed caller can leave its queue", async () => {
+    searchAnimeMock.mockImplementation(hang);
+    searchAnilistMock.mockResolvedValue(anilistPage(["Frieren"]));
+
+    const res = get("q=frieren&limit=6");
+    await vi.advanceTimersByTimeAsync(1_200);
+    await res;
+
+    expect(searchAnilistMock.mock.calls[0][2]?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("type-ahead path (limit)", () => {
+  it("makes one Jikan request sized to the limit — no page-2 stitch", async () => {
+    searchAnimeMock.mockResolvedValue(
+      jikanPage(["A", "B", "C", "D", "E", "F"], { has_next_page: true, last_visible_page: 9 }),
+    );
+
+    const body = await (await get("q=naruto&limit=6")).json();
+
+    expect(searchAnimeMock).toHaveBeenCalledTimes(1);
+    expect(searchAnimeMock.mock.calls[0][1]).toBe(1);
+    expect(searchAnimeMock.mock.calls[0][3]).toMatchObject({ limit: 6 });
+    expect(body.results).toHaveLength(6);
+  });
+
+  it("sizes the AniList fallback to the limit too", async () => {
+    searchAnimeMock.mockRejectedValue(new JikanError(504, "down"));
+    searchAnilistMock.mockResolvedValue(anilistPage(["Naruto"]));
+
+    await get("q=naruto&limit=6");
+
+    expect(searchAnilistMock.mock.calls[0][0]).toMatchObject({ perPage: 6 });
+  });
+
+  it("caps catalog extras at the limit", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["A", "B", "C", "D", "E"]));
+    searchCatalogMock.mockResolvedValue([
+      animeFixture({ mal_id: 1, title: "Cat 1" }),
+      animeFixture({ mal_id: 2, title: "Cat 2" }),
+    ]);
+
+    const body = await (await get("q=naruto&limit=6")).json();
+
+    expect(body.results.map((r: { title: string }) => r.title)).toEqual([
+      "A", "B", "C", "D", "E", "Cat 1",
+    ]);
+  });
+
+  it("rejects a limit above Jikan's page cap", async () => {
+    expect((await get("q=naruto&limit=26")).status).toBe(400);
+  });
+});
+
+describe("catalog lookup runs alongside the live engines", () => {
+  it("starts before Jikan has answered", async () => {
+    type JikanPage = Awaited<ReturnType<typeof searchAnime>>;
+    let answerJikan!: (v: JikanPage) => void;
+    searchAnimeMock.mockImplementation(
+      () => new Promise<JikanPage>((r) => (answerJikan = r)),
+    );
+
+    const res = get("q=naruto");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(searchCatalogMock).toHaveBeenCalledTimes(1);
+
+    answerJikan(jikanPage(["Naruto"]));
+    expect((await res).status).toBe(200);
+    // Started once, reused by the merge — not queried twice.
+    expect(searchCatalogMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("is reused, not re-queried, by the all-engines-down fallback", async () => {
+    searchAnimeMock.mockRejectedValue(new JikanError(504, "down"));
+    searchAnilistMock.mockRejectedValue(new AnilistError(500, "down"));
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+
+    const body = await (await get("q=naruto")).json();
+
+    expect(body.source).toBe("catalog");
+    expect(searchCatalogMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("engine=catalog (the palette's instant first paint)", () => {
+  it("answers from the catalog alone, without touching either live engine", async () => {
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+
+    const res = await get("q=naru&engine=catalog&limit=6");
+    const body = await res.json();
+
+    expect(body).toMatchObject({ source: "catalog", results: [{ title: "Naruto" }] });
+    expect(body.degraded).toBeUndefined();
+    expect(searchAnimeMock).not.toHaveBeenCalled();
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+    expect(searchCatalogMock).toHaveBeenCalledWith("naru", [], 6);
+  });
+
+  it("is never shared at the edge — it's read under the caller's session", async () => {
+    const res = await get("q=naru&engine=catalog");
+
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=60");
+  });
+
+  it("refuses filters the catalog can't apply rather than ignoring them", async () => {
+    expect((await get("q=naru&engine=catalog&year=2020")).status).toBe(400);
+    expect((await get("q=naru&engine=catalog&season=fall")).status).toBe(400);
+    expect(searchCatalogMock).not.toHaveBeenCalled();
+  });
+
+  it("has its own rate-limit bucket, so the palette's pair doesn't halve the budget", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+    const as = (query: string) =>
+      GET(
+        new NextRequest(`https://app.test/api/anime/search?${query}`, {
+          headers: { "x-forwarded-for": "203.0.113.50" },
+        }),
+      );
+
+    for (let i = 0; i < 60; i++) await as("q=naruto");
+
+    expect((await as("q=naruto")).status).toBe(429);
+    expect((await as("q=naruto&engine=catalog")).status).toBe(200);
   });
 });

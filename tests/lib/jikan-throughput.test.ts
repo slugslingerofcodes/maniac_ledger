@@ -42,6 +42,12 @@ function stubFetch(starts?: number[]) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Pin the clock rather than inheriting the real epoch. The limiter reserves
+  // slots off `Date.now()`, and the assertions below are differences against a
+  // `t0` captured moments earlier — anchoring both at 0 keeps those numbers
+  // small and identical on every run, instead of depending on where in a
+  // millisecond the suite happened to start.
+  vi.setSystemTime(0);
   // Module-level limiter state must not leak between tests (see CLAUDE.md).
   vi.resetModules();
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Link2, Share2, X } from "lucide-react";
+import { Heart, Link2, Share2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Tooltip } from "@/components/ui/tooltip";
@@ -69,9 +69,9 @@ export function ShareBanner() {
     <div className="flex items-center gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
       <span
         aria-hidden
-        className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/15 text-lg"
+        className="grid size-10 shrink-0 place-items-center rounded-full bg-gold/15 text-gold"
       >
-        💜
+        <Heart className="size-4 fill-current" />
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">Love the site?</p>

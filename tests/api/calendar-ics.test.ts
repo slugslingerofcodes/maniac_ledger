@@ -422,3 +422,26 @@ describe("buildAiringCalendar — next JST occurrence", () => {
     });
   });
 });
+
+describe("buildAiringCalendar — refresh hints for the subscription feed", () => {
+  // The one-time download and the live feed share this builder. Only the feed
+  // should tell a calendar app to come back: a downloaded file that claims a
+  // refresh interval invites clients to look for a source URL it doesn't have.
+  it("emits no refresh hints by default, so the download is unchanged", () => {
+    const lines = contentLines(buildAiringCalendar([show()], WED_NOON_JST));
+
+    expect(lines.some((l) => l.startsWith("REFRESH-INTERVAL"))).toBe(false);
+    expect(lines.some((l) => l.startsWith("X-PUBLISHED-TTL"))).toBe(false);
+  });
+
+  it("emits RFC 7986 REFRESH-INTERVAL and the X-PUBLISHED-TTL alias once each, in the calendar header", () => {
+    const lines = contentLines(buildAiringCalendar([show()], WED_NOON_JST, { refreshHours: 6 }));
+
+    expect(lines.filter((l) => l === "REFRESH-INTERVAL;VALUE=DURATION:PT6H")).toHaveLength(1);
+    expect(lines.filter((l) => l === "X-PUBLISHED-TTL:PT6H")).toHaveLength(1);
+    // Calendar properties, so before the first component.
+    const firstComponent = lines.indexOf("BEGIN:VTIMEZONE");
+    expect(lines.indexOf("REFRESH-INTERVAL;VALUE=DURATION:PT6H")).toBeLessThan(firstComponent);
+    expect(lines.indexOf("X-PUBLISHED-TTL:PT6H")).toBeLessThan(firstComponent);
+  });
+});

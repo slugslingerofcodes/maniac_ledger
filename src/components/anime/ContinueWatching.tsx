@@ -1,124 +1,125 @@
-import Image from "next/image";
-import Link from "next/link";
-
 import { AdvanceEpisodeButton } from "@/components/anime/AdvanceEpisodeButton";
-import { getUser } from "@/lib/supabase/auth";
-import { createClient } from "@/lib/supabase/server";
-import { posterUrl } from "@/lib/poster";
+import { BrowseRow } from "@/components/browse/BrowseRow";
+import {
+  ExpandingCard,
+  LANDSCAPE_CARD_SIZES,
+  LANDSCAPE_CARD_WIDTH,
+} from "@/components/browse/ExpandingCard";
+import { getLibrarySnapshot } from "@/lib/library-snapshot";
+
+const LIMIT = 12;
 
 /**
- * "Watch History" row for the home page: the user's in-progress anime as large
- * landscape thumbnails (poster art center-cropped to 16:9 with an overlay),
- * most-recently-watched first. Renders nothing when signed out or when there's
- * nothing in progress. RLS scopes `user_progress` to the current user.
+ * "Continue watching" — the first row on the home page: the viewer's
+ * in-progress anime as landscape cards (poster art cropped to 16:9, held toward
+ * the top where faces usually are), most recently watched first. Each card
+ * says which episode is next, how many are left, and carries a progress bar
+ * and the one-tap "+1". Renders nothing when there's nothing in progress.
+ *
+ * Reads the shared library snapshot (one query for every personal row) rather
+ * than its own `user_progress` query.
  */
 export async function ContinueWatching() {
-  const user = await getUser();
-  if (!user) return null;
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("user_progress")
-    .select(
-      "episodes_watched, last_watched_at, anime:anime_id (id, title, poster_url, total_episodes)",
+  const library = await getLibrarySnapshot();
+  const rows = library
+    .filter((r) => r.status === "watching")
+    .sort(
+      (a, b) =>
+        (Date.parse(b.lastWatchedAt ?? "") || 0) - (Date.parse(a.lastWatchedAt ?? "") || 0) ||
+        (Date.parse(b.updatedAt ?? "") || 0) - (Date.parse(a.updatedAt ?? "") || 0),
     )
-    // Required: a public profile's progress is readable too (migration 0015),
-    // so without this the rail mixes in strangers' rows.
-    .eq("user_id", user.id)
-    .eq("status", "watching")
-    .order("last_watched_at", { ascending: false, nullsFirst: false })
-    .limit(8);
+    .slice(0, LIMIT);
 
-  if (error || !data || data.length === 0) return null;
+  if (rows.length === 0) return null;
 
   return (
-    <section className="mb-10">
-      <p className="text-sm text-muted-foreground">Your Watchlist</p>
-      <h2 className="text-gradient mb-4 text-2xl font-bold tracking-tight">
-        Watch History
-      </h2>
-      <div className="scrollbar-subtle flex gap-4 overflow-x-auto pb-2">
-        {data.map((row) => {
-          const { anime } = row;
-          const total = anime.total_episodes;
-          const hasTotal = total != null && total > 0;
-          // Next unwatched episode = one past the watched counter, clamped to the
-          // finale. Drives the #ep-{number} anchor on the detail page.
-          const nextEp = hasTotal
-            ? Math.min(row.episodes_watched + 1, total!)
-            : row.episodes_watched + 1;
-          const percent = hasTotal
-            ? Math.min(100, Math.round((row.episodes_watched / total!) * 100))
-            : 0;
+    <BrowseRow title="Continue watching" href="/library" className="pt-6">
+      {rows.map((row, i) => {
+        const total = row.totalEpisodes;
+        const hasTotal = total != null && total > 0;
+        // Next unwatched episode = one past the counter, clamped to the finale.
+        // Drives the #ep-{number} anchor on the detail page.
+        const nextEp = hasTotal
+          ? Math.min(row.episodesWatched + 1, total!)
+          : row.episodesWatched + 1;
+        const percent = hasTotal
+          ? Math.min(100, Math.round((row.episodesWatched / total!) * 100))
+          : 0;
+        const left = hasTotal ? total! - row.episodesWatched : null;
 
-          return (
-            // The +1 button is a sibling of the link, not a child: an
-            // interactive control nested in an anchor swallows taps.
-            <div key={anime.id} className="group relative w-72 shrink-0 sm:w-80">
-            <Link
-              href={`/anime/${anime.id}#ep-${nextEp}`}
-              className="block"
-            >
-              <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10 transition-shadow group-hover:ring-2 group-hover:ring-primary/40">
-                {anime.poster_url ? (
-                  <Image
-                    src={posterUrl(anime.poster_url, "card")!}
-                    alt={anime.title}
-                    fill
-                    sizes="320px"
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                    No image
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-3">
-                  <h3
-                    className="line-clamp-1 text-sm font-semibold text-white"
-                    title={anime.title}
-                  >
-                    {anime.title}
+        return (
+          <ExpandingCard
+            key={row.animeId}
+            href={`/anime/${row.animeId}#ep-${nextEp}`}
+            title={row.titleEnglish ?? row.title}
+            label={`${row.titleEnglish ?? row.title}, episode ${nextEp}`}
+            posterUrl={row.posterUrl}
+            aspect="landscape"
+            widthClassName={LANDSCAPE_CARD_WIDTH}
+            sizes={LANDSCAPE_CARD_SIZES}
+            objectPosition="center 22%"
+            eager={i < 3}
+            overlay={
+              <>
+                <div
+                  aria-hidden
+                  className="absolute inset-0 bg-gradient-to-t from-banner/90 via-banner/25 to-transparent"
+                />
+                <div className="absolute inset-x-0 bottom-0 p-3 text-banner-foreground">
+                  <h3 className="truncate text-sm font-semibold">
+                    {row.titleEnglish ?? row.title}
                   </h3>
-                  <p className="mt-0.5 text-xs text-zinc-300">
-                    Episode {nextEp}
-                    {hasTotal ? ` of ${total}` : ""}
-                    {/* The decision-relevant number: how much is left, not
-                        just where you are. */}
-                    {hasTotal && total! - row.episodes_watched > 0 ? (
-                      <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium text-white">
-                        {total! - row.episodes_watched} left
+                  <p className="mt-0.5 flex items-center gap-2 text-xs text-banner-foreground/75">
+                    <span>
+                      Episode {nextEp}
+                      {hasTotal ? ` of ${total}` : ""}
+                    </span>
+                    {/* The decision-relevant number: how much is left. */}
+                    {left != null && left > 0 ? (
+                      <span className="rounded-full bg-banner-foreground/15 px-2 py-0.5 text-[11px] font-medium text-banner-foreground">
+                        {left} left
                       </span>
+                    ) : null}
+                    {!hasTotal ? (
+                      <span className="text-[11px] text-banner-foreground/60">ongoing</span>
                     ) : null}
                   </p>
                   {hasTotal ? (
-                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/25">
+                    <div
+                      role="progressbar"
+                      aria-label="Progress"
+                      aria-valuemin={0}
+                      aria-valuemax={total!}
+                      aria-valuenow={row.episodesWatched}
+                      className="status-watching mt-2 h-1 overflow-hidden rounded-full bg-banner-foreground/20"
+                    >
                       <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${percent}%` }}
+                        className="h-full origin-left rounded-full bg-[var(--status-accent)]"
+                        style={{ transform: `scaleX(${percent / 100})` }}
                       />
                     </div>
                   ) : null}
                 </div>
-              </div>
-            </Link>
-            {/* One tap to advance, straight from the rail. Always visible on
-                touch; on desktop it fades in with the card hover. */}
-            <AdvanceEpisodeButton
-              animeId={anime.id}
-              title={anime.title}
-              episodesWatched={row.episodes_watched}
-              totalEpisodes={total}
-              status="watching"
-              variant="full"
-              source="rail"
-              className="absolute right-3 top-3 z-10 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:focus-visible:opacity-100"
-            />
-            </div>
-          );
-        })}
-      </div>
-    </section>
+              </>
+            }
+            controls={
+              // One tap to advance, straight from the row. Always visible on
+              // touch; on desktop it fades in with the card hover.
+              <AdvanceEpisodeButton
+                animeId={row.animeId}
+                title={row.titleEnglish ?? row.title}
+                episodesWatched={row.episodesWatched}
+                totalEpisodes={total}
+                status="watching"
+                variant="full"
+                source="rail"
+                className="absolute right-2.5 top-2.5 z-10 pointer-fine:opacity-0 pointer-fine:transition-opacity pointer-fine:group-hover/cw:opacity-100 pointer-fine:focus-visible:opacity-100"
+              />
+            }
+            className="group/cw"
+          />
+        );
+      })}
+    </BrowseRow>
   );
 }

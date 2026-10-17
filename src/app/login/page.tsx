@@ -32,6 +32,7 @@ export default async function LoginPage(props: {
               alt="Anime Maniac"
               fill
               priority
+              unoptimized
               sizes="384px"
               className="object-cover"
             />
@@ -43,13 +44,16 @@ export default async function LoginPage(props: {
         <CardContent className="flex flex-col gap-4">
           <form className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Username</Label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
+                id="identifier"
+                name="identifier"
+                // Deliberately `text`, not `email`: the browser's email
+                // validation would reject a perfectly good username before the
+                // form ever posts.
+                type="text"
+                placeholder="your_username"
+                autoComplete="username"
                 required
               />
             </div>

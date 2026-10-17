@@ -109,6 +109,10 @@ export function BackgroundCard() {
                       <ImagePlus className="size-6" aria-hidden />
                     </span>
                   )
+                ) : option.value === "leather" ? (
+                  // The real surface, not a swatch approximating it — the tile
+                  // renders the same generated texture the backdrop does.
+                  <div className="bg-leather-blue size-full" />
                 ) : option.value === "eyeclock" ? (
                   // The real poster, cropped toward the eye the clock sits in.
                   <div
@@ -119,7 +123,7 @@ export function BackgroundCard() {
                     }}
                   />
                 ) : (
-                  // Default: a static swatch of the vortex's night-void palette.
+                  // Scenes: a static swatch of the vortex's night-void palette.
                   <div className="size-full bg-[radial-gradient(circle_at_50%_40%,oklch(0.35_0.09_290/60%),oklch(0.15_0.02_280)_70%)]" />
                 )}
                 {selected ? (

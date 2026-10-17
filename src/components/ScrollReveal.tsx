@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
-import { MOTION_CONDITIONS, ensureScrollTrigger, gsap } from "@/lib/gsap";
+import { withGsap } from "@/lib/gsap-loader";
 
 const OFFSETS = {
   up: { x: 0, y: 40 },
@@ -49,40 +49,44 @@ export function ScrollReveal({
     const el = ref.current;
     if (!el) return;
 
-    ensureScrollTrigger();
+    // GSAP is fetched on first use (see gsap-loader); until it lands the
+    // section is simply shown, as it is under reduced motion.
+    return withGsap(({ gsap, ensureScrollTrigger, MOTION_CONDITIONS }) => {
+      ensureScrollTrigger();
 
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_CONDITIONS, (ctx) => {
-      // Reduced motion: return before the tween is created, so no `from`
-      // values are ever written and the content renders plainly visible.
-      if (ctx.conditions?.reduce) return;
+      const mm = gsap.matchMedia();
+      mm.add(MOTION_CONDITIONS, (ctx) => {
+        // Reduced motion: return before the tween is created, so no `from`
+        // values are ever written and the content renders plainly visible.
+        if (ctx.conditions?.reduce) return;
 
-      const { x, y } = OFFSETS[direction];
-      gsap.fromTo(
-        el,
-        { opacity: 0, x, y },
-        {
-          opacity: 1,
-          x: 0,
-          y: 0,
-          duration: 0.6,
-          delay,
-          ease: "power2.out",
-          scrollTrigger: {
-            trigger: el,
-            // `amount` is a fraction of the section; express it as the point in
-            // the viewport its top must cross, so a 0.15 threshold still fires
-            // for a section three screens tall.
-            start: `top ${Math.round(100 - amount * 100)}%`,
-            // enter / leave / enterBack / leaveBack — reverses on the way out,
-            // matching the old `viewport.once: false` behaviour.
-            toggleActions: "play reverse play reverse",
+        const { x, y } = OFFSETS[direction];
+        gsap.fromTo(
+          el,
+          { opacity: 0, x, y },
+          {
+            opacity: 1,
+            x: 0,
+            y: 0,
+            duration: 0.6,
+            delay,
+            ease: "power2.out",
+            scrollTrigger: {
+              trigger: el,
+              // `amount` is a fraction of the section; express it as the point in
+              // the viewport its top must cross, so a 0.15 threshold still fires
+              // for a section three screens tall.
+              start: `top ${Math.round(100 - amount * 100)}%`,
+              // enter / leave / enterBack / leaveBack — reverses on the way out,
+              // matching the old `viewport.once: false` behaviour.
+              toggleActions: "play reverse play reverse",
+            },
           },
-        },
-      );
-    });
+        );
+      });
 
-    return () => mm.revert();
+      return () => mm.revert();
+    });
   }, [direction, amount, delay]);
 
   return (

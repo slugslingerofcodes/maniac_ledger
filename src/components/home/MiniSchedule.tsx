@@ -1,25 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { BrowseRow } from "@/components/browse/BrowseRow";
+import { RowTabs } from "@/components/home/DiscoveryTabs";
+import { PosterFallback } from "@/components/poster-fallback";
 
 /** One JST day tab with its time-sorted releases (built server-side). */
 export type ScheduleDay = {
   /** Short weekday label, e.g. "Thu". */
   label: string;
-  /** Date line under the label, e.g. "Jul 9". */
+  /** Date line, e.g. "Jul 9". */
   sub: string;
   isToday: boolean;
-  rows: { malId: number; time: string; title: string }[];
+  rows: { malId: number; time: string; title: string; posterUrl: string | null }[];
 };
 
 /**
- * "Estimated Airing Schedule" panel: yesterday / today / tomorrow (JST) tabs
- * with the day's releases in broadcast order. Defaults to today; links out to
- * the full /schedule page.
+ * Airing schedule row: yesterday / today / tomorrow (JST) in the header, the
+ * chosen day's releases in broadcast order as time cards. Defaults to today;
+ * the title links to the full /schedule page.
  */
 export function MiniSchedule({ days }: { days: ScheduleDay[] }) {
   const todayIndex = Math.max(
@@ -31,65 +33,61 @@ export function MiniSchedule({ days }: { days: ScheduleDay[] }) {
 
   if (!day) return null;
 
+  const tabs = days.map((d, i) => ({
+    key: String(i),
+    label: d.isToday ? "Today" : d.label,
+  }));
+
   return (
-    <section className="rounded-xl bg-card/70 p-3 ring-1 ring-foreground/10">
-      <h2 className="flex items-center gap-1 px-1 pb-2 text-sm font-bold uppercase tracking-wide">
-        <ChevronRight className="size-4 text-primary" aria-hidden />
-        Estimated Airing Schedule
-      </h2>
-
-      <div className="flex items-end justify-center gap-4 border-b border-border/60 pb-2">
-        {days.map((d, i) => (
-          <button
-            key={d.label}
-            type="button"
-            onClick={() => setIndex(i)}
-            aria-pressed={index === i}
-            className={cn(
-              "flex flex-col items-center px-2 py-1 font-didot leading-none transition-colors",
-              index === i
-                ? "text-2xl font-bold text-foreground"
-                : "text-lg text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {d.label}
-            <span className="mt-1 font-sans text-[10px] font-medium tracking-wide text-muted-foreground">
-              {d.sub}
-            </span>
-          </button>
-        ))}
-      </div>
-
+    <BrowseRow
+      title="Airing schedule"
+      eyebrow={`${day.label}, ${day.sub} · Japan time (JST)`}
+      href="/schedule"
+      className="pt-4"
+      resetKey={String(index)}
+      actions={
+        <RowTabs
+          tabs={tabs}
+          value={String(index)}
+          onChange={(k) => setIndex(Number(k))}
+          label="Schedule day"
+        />
+      }
+    >
       {day.rows.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          Nothing scheduled this day.
-        </p>
+        <p className="py-8 text-sm text-muted-foreground">Nothing scheduled this day.</p>
       ) : (
-        <ul className="divide-y divide-border/60">
-          {day.rows.map((row) => (
-            <li key={`${row.malId}-${row.time}`}>
-              <Link
-                href={`/anime/mal/${row.malId}`}
-                className="group flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/60"
-              >
-                <span className="w-12 shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+        day.rows.map((row) => (
+          <div
+            key={`${row.malId}-${row.time}`}
+            data-row-item=""
+            role="listitem"
+            className="w-56 shrink-0 snap-start sm:w-64"
+          >
+            <Link
+              href={`/anime/mal/${row.malId}`}
+              data-row-focus=""
+              className="group flex h-20 items-center gap-3 rounded-lg bg-card p-2 pr-3 ring-1 ring-foreground/10 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="relative aspect-[2/3] h-full shrink-0 overflow-hidden rounded-md bg-muted">
+                {row.posterUrl ? (
+                  <Image src={row.posterUrl} alt="" fill sizes="44px" className="object-cover" />
+                ) : (
+                  <PosterFallback title={row.title} />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="font-mono text-sm font-semibold tabular-nums text-primary">
                   {row.time}
-                </span>
-                <span className="line-clamp-1 flex-1 text-sm font-medium group-hover:text-primary">
+                </p>
+                <p className="line-clamp-2 text-[13px] font-medium leading-snug group-hover:text-primary">
                   {row.title}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                </p>
+              </div>
+            </Link>
+          </div>
+        ))
       )}
-
-      <Link
-        href="/schedule"
-        className="mt-2 block rounded-lg py-2 text-center text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        View more
-      </Link>
-    </section>
+    </BrowseRow>
   );
 }

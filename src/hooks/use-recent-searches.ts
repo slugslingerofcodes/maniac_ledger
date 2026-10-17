@@ -39,7 +39,10 @@ function getSnapshot(): string[] {
   return cache;
 }
 
-const getServerSnapshot = (): string[] => [];
+// The server snapshot needs the same stability: `() => []` hands React a new
+// array on every call, which it reports as a would-be infinite loop.
+const NO_SEARCHES: string[] = [];
+const getServerSnapshot = (): string[] => NO_SEARCHES;
 
 function subscribe(onChange: () => void) {
   window.addEventListener(CHANGE_EVENT, onChange);

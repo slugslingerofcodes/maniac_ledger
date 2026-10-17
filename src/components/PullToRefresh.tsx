@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { ArrowDown, Loader2 } from "lucide-react";
 
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
@@ -49,12 +49,12 @@ export function PullToRefresh({
         </div>
       </div>
 
-      <motion.div
+      <m.div
         animate={{ y: refreshing ? threshold * 0.5 : pull }}
         transition={{ type: "spring", stiffness: 400, damping: 40 }}
       >
         {children}
-      </motion.div>
+      </m.div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { posterUrl } from "@/lib/poster";
+import { posterUrl, posterUrlForWidth } from "@/lib/poster";
 
 /**
  * Poster rendition rewriting.
@@ -96,5 +96,42 @@ describe("posterUrl — safety", () => {
     // like `cool.jpg` would have its final letter eaten.
     const odd = "https://cdn.myanimelist.net/images/anime/1540/cool.jpg";
     expect(posterUrl(odd, "card")).toBe(odd);
+  });
+});
+
+/**
+ * The width-keyed ladder behind the `next/image` loader.
+ *
+ * This is the whole reason a poster can be crisp on a retina screen: the loader
+ * is called once per srcSet candidate, so the mapping from a requested width to
+ * a rendition *is* the srcSet. Worth guarding directly, because the rendered
+ * srcSet can't be asserted in the component tests — vitest doesn't read
+ * `next.config.ts`, so `next/image` falls back to the default loader there and
+ * emits `/_next/image` URLs that never occur in a real build.
+ */
+describe("posterUrlForWidth", () => {
+  it("climbs the ladder as the requested width grows", () => {
+    // A single <Image> asks for several widths; small cells get the thumbnail,
+    // and a 2x grid cell (~640) must reach the large rendition or the whole
+    // exercise buys nothing.
+    expect(posterUrlForWidth(MAL_LARGE, 96)).toBe(MAL_THUMB);
+    expect(posterUrlForWidth(MAL_LARGE, 256)).toBe(MAL_MEDIUM);
+    expect(posterUrlForWidth(MAL_LARGE, 640)).toBe(MAL_LARGE);
+    expect(posterUrlForWidth(MAL_LARGE, 3840)).toBe(MAL_LARGE);
+  });
+
+  it("still never rewrites upwards", () => {
+    // The larger rendition may simply not exist, so a wide request against a
+    // thumbnail must stay a thumbnail rather than invent a 404.
+    expect(posterUrlForWidth(MAL_THUMB, 3840)).toBe(MAL_THUMB);
+    expect(posterUrlForWidth(MAL_MEDIUM, 1920)).toBe(MAL_MEDIUM);
+  });
+
+  it("passes unknown hosts and absent posters through", () => {
+    const supabase =
+      "https://pmxozhuvqfufhlgwjpem.supabase.co/storage/v1/object/public/avatars/x.png";
+    expect(posterUrlForWidth(supabase, 640)).toBe(supabase);
+    expect(posterUrlForWidth("/am-monogram.webp", 96)).toBe("/am-monogram.webp");
+    expect(posterUrlForWidth(null, 640)).toBeNull();
   });
 });

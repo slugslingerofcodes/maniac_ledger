@@ -9,9 +9,11 @@
  *
  * Both CDNs already publish smaller renditions, so this is a URL rewrite rather
  * than an image pipeline — which matters, because Next/Vercel image
- * optimization is deliberately off (`images.unoptimized`): its monthly quota
- * once ran out and 402'd every poster on the site at once. Nothing here goes
- * near that.
+ * optimization is deliberately not used: its monthly quota once ran out and
+ * 402'd every poster on the site at once. Nothing here goes near that. These
+ * rewrites are also what the custom `next/image` loader calls
+ * (`src/lib/image-loader.ts`), which is how posters get a real `srcSet` without
+ * a byte ever passing through the optimizer.
  *
  * Measured, same poster, both CDNs:
  *
@@ -120,4 +122,30 @@ export function posterUrl(
   if (anilist) return `${anilist[1]}${ANILIST_SEGMENT[wanted]}${anilist[3]}`;
 
   return url;
+}
+
+/**
+ * Rendition for a concrete pixel width — the `posterUrl` above, but driven by
+ * what the browser actually needs rather than by a named use.
+ *
+ * This is what makes retina posters possible. Picking one rendition per *use*
+ * means a grid cell gets MAL's 225×318 medium whether it's rendered at 120 CSS
+ * px on a phone or 240 CSS px on a 2× desktop — and in the second case that's a
+ * visibly soft poster. A width-keyed ladder lets a single `<Image>` advertise
+ * medium at 1× and large at 2× in one srcSet and let the browser choose.
+ *
+ * The thresholds are set by where the renditions actually stop being enough:
+ * MAL's thumbnail is 42px wide (AniList's small is 100px), the mediums are
+ * ~225–230px, and the larges are ~424–460px, which is the top of the ladder —
+ * so anything above the medium band asks for large and gets whatever the CDN
+ * has. `posterUrl`'s two guarantees still hold: unknown hosts pass through
+ * untouched, and it never rewrites upwards.
+ */
+export function posterUrlForWidth(
+  url: string | null | undefined,
+  width: number,
+): string | null {
+  if (!url) return null;
+  const use: PosterUse = width <= 128 ? "blur" : width <= 320 ? "card" : "full";
+  return posterUrl(url, use);
 }

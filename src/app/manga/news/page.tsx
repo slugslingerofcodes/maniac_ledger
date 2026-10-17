@@ -1,8 +1,11 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 
 import { getMangaHotPosts, type RedditPost } from "@/lib/reddit";
 import { requireUser } from "@/lib/supabase/auth";
+
+import { NewsBodySkeleton } from "./news-skeleton";
 
 export const metadata: Metadata = {
   title: "Manga Times · manga_maniacs",
@@ -38,18 +41,28 @@ export default async function MangaNewsPage() {
   // Protected route: redirects to /login when there is no session.
   await requireUser();
 
+  // The masthead is ours and prints at once; only the stories wait on Reddit,
+  // which rate-limits and can take seconds when it does.
+  return (
+    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 font-serif sm:px-6">
+      <Masthead />
+      <Suspense fallback={<NewsBodySkeleton />}>
+        <FrontPage />
+      </Suspense>
+    </main>
+  );
+}
+
+async function FrontPage() {
   let posts: RedditPost[];
   try {
     posts = await getMangaHotPosts(30);
   } catch {
     return (
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
-        <Masthead />
-        <p className="mt-8 text-center font-serif text-sm text-destructive">
-          The presses jammed — couldn&apos;t load community news. Please try
-          again later.
-        </p>
-      </main>
+      <p className="mt-8 text-center font-serif text-sm text-destructive">
+        The presses jammed — couldn&apos;t load community news. Please try
+        again later.
+      </p>
     );
   }
 
@@ -59,9 +72,7 @@ export default async function MangaNewsPage() {
   const rest = posts.filter((p) => p !== lead);
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 font-serif sm:px-6">
-      <Masthead />
-
+    <>
       {posts.length === 0 ? (
         <p className="mt-8 text-center text-sm text-muted-foreground">
           Nothing on the wire right now.
@@ -141,7 +152,7 @@ export default async function MangaNewsPage() {
           </p>
         </>
       )}
-    </main>
+    </>
   );
 }
 
@@ -162,6 +173,7 @@ function Masthead() {
           aria-hidden
           width={64}
           height={64}
+          unoptimized
           className="size-12 shrink-0 sm:size-16"
         />
         <span className="font-didot text-5xl font-bold tracking-tight sm:text-7xl">

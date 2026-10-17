@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { CheckIcon, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +31,7 @@ import {
 } from "@/components/anime/QuickLookSheet";
 import { AnimeCardSkeleton } from "@/components/anime-card-skeleton";
 import { LibraryCard } from "@/components/library-card";
+import { LibraryStats } from "@/components/library/LibraryStats";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SlimeIllustration } from "@/components/SlimeIllustration";
 import { TitleLanguageToggle } from "@/components/TitleLanguageToggle";
@@ -77,57 +86,100 @@ function sortItems<T extends { title: string; score: number | null; genres: stri
 
 const SORT_VALUES = SORT_OPTIONS.map((o) => o.value) as readonly string[];
 
+/** How long typing must pause before the search text is written to the URL. */
+const URL_SYNC_MS = 200;
+
+/**
+ * Rewrites the current URL's query string in place with the native History
+ * API. Next 16 patches `history.replaceState` to update `useSearchParams` —
+ * with no navigation, no RSC request and no re-render of the server page.
+ * Built from `window.location` rather than a `searchParams` snapshot so that
+ * back-to-back calls compose instead of clobbering each other.
+ */
+function replaceUrlParams(mutate: (params: URLSearchParams) => void) {
+  const url = new URL(window.location.href);
+  mutate(url.searchParams);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const queryClient = useQueryClient();
   const reduce = useReducedMotion();
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [titleLang] = useTitleLanguage();
 
   /*
-   * Genre, sort and the in-library search live in the URL rather than in
+   * Genre, sort and the in-library search live in the URL rather than only in
    * component state. They used to reset on every navigation — open a title
    * from a filtered grid, press back, and you were staring at the unfiltered
    * library again — and a filtered view couldn't be bookmarked or sent to
-   * anyone. `replace` (not `push`) keeps one history entry per *page*, so Back
-   * still leaves the library instead of unwinding each chip tap.
+   * anyone. Replacing (not pushing) keeps one history entry per *page*, so
+   * Back still leaves the library instead of unwinding each chip tap.
+   *
+   * The URL is written with `history.replaceState`, not `router.replace`. The
+   * latter is an App Router navigation: every keystroke in the search box was
+   * a server round trip (proxy → auth → re-render of this page, which also
+   * awaits a Jikan call), and because the input's value *was* the URL, each
+   * character appeared only once that trip came back. The grid filters the
+   * cached list client-side; nothing about filtering needs the server.
    */
   const genre = searchParams.get("genre");
   const rawSort = searchParams.get("sort");
   const sort: SortValue = (
     rawSort && SORT_VALUES.includes(rawSort) ? rawSort : "recent"
   ) as SortValue;
-  const query = searchParams.get("q") ?? "";
 
-  const setParam = useCallback(
-    (key: string, value: string | null) => {
-      const next = new URLSearchParams(searchParams.toString());
-      if (value === null || value === "") next.delete(key);
-      else next.set(key, value);
-      const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
+  /*
+   * The search text is local state, so the input updates synchronously; the
+   * URL follows once typing pauses. `written` is the last q this component
+   * put in the URL (or found there). When the URL's q changes to anything
+   * else, someone else changed it — a status tab pushes a fresh URL without
+   * it — and the box follows. Our own writes arrive back as no-ops.
+   */
+  const urlQuery = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  const [written, setWritten] = useState(urlQuery);
+  const [seenUrlQuery, setSeenUrlQuery] = useState(urlQuery);
+  if (urlQuery !== seenUrlQuery) {
+    setSeenUrlQuery(urlQuery);
+    if (urlQuery !== written) {
+      setWritten(urlQuery);
+      setQuery(urlQuery);
+    }
+  }
+
+  useEffect(() => {
+    if (query === written) return;
+    const id = setTimeout(() => {
+      setWritten(query);
+      replaceUrlParams((p) => (query ? p.set("q", query) : p.delete("q")));
+    }, URL_SYNC_MS);
+    return () => clearTimeout(id);
+  }, [query, written]);
+
+  // Filtering a large library on every keystroke is the one cost left; let
+  // React keep the input responsive and catch the grid up between keys.
+  const deferredQuery = useDeferredValue(query);
 
   const setGenre = useCallback(
-    (g: string | null) => setParam("genre", g),
-    [setParam],
+    (g: string | null) =>
+      replaceUrlParams((p) => (g ? p.set("genre", g) : p.delete("genre"))),
+    [],
   );
   const setSort = useCallback(
-    (s: SortValue) => setParam("sort", s === "recent" ? null : s),
-    [setParam],
+    (s: SortValue) =>
+      replaceUrlParams((p) => (s === "recent" ? p.delete("sort") : p.set("sort", s))),
+    [],
   );
-  const setQuery = useCallback((q: string) => setParam("q", q), [setParam]);
 
   const filtersActive = genre !== null || query.trim() !== "" || sort !== "recent";
   const clearFilters = useCallback(() => {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const key of ["genre", "sort", "q"]) next.delete(key);
-    const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+    setQuery("");
+    setWritten("");
+    replaceUrlParams((p) => {
+      for (const key of ["genre", "sort", "q"]) p.delete(key);
+    });
+  }, []);
   // Quick-look target: status/score edits without leaving the grid.
   const [quickLook, setQuickLook] = useState<QuickLookItem | null>(null);
   // Bulk-edit mode: card clicks toggle selection instead of navigating.
@@ -137,14 +189,16 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const [bulkPending, startBulk] = useTransition();
   const [, startRemove] = useTransition();
 
-  function toggleSelected(id: string) {
+  // Stable callbacks (here and `removeItem`) so the memoized card grid below
+  // skips the re-render a keystroke in the search box would otherwise cost.
+  const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   function exitSelectMode() {
     setSelectMode(false);
@@ -157,7 +211,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
    * re-creates the row with the same status/episodes/score (per-episode check
    * marks are gone by then; the episode counter is what's restorable).
    */
-  function removeItem(item: LibraryEntryItem) {
+  const removeItem = useCallback((item: LibraryEntryItem) => {
     const prev = queryClient.getQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY);
     // Optimistically drop it from the cached list (the grid animates it out).
     queryClient.setQueryData<LibraryEntryItem[]>(LIBRARY_QUERY_KEY, (old) =>
@@ -190,7 +244,7 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
         toast.error(res.error);
       }
     });
-  }
+  }, [queryClient]);
 
   function applyBulk() {
     const ids = [...selected];
@@ -227,21 +281,12 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
   const onRefresh = () =>
     queryClient.invalidateQueries({ queryKey: LIBRARY_QUERY_KEY });
 
-  let content;
-  if (isPending) {
-    content = <GridSkeleton />;
-  } else if (isError && !data) {
-    // Errored (e.g. offline) AND no persisted cache to fall back on.
-    content = (
-      <p className="text-sm text-destructive">
-        Couldn&apos;t load your library. Please try again.
-      </p>
-    );
-  } else {
-    // Swap in the preferred display title BEFORE sorting so "Title A–Z"
-    // follows what the user actually sees.
-    const q = query.trim().toLowerCase();
-    const items = sortItems(
+  // Swap in the preferred display title BEFORE sorting so "Title A–Z"
+  // follows what the user actually sees. Keyed on the *deferred* query, so a
+  // keystroke re-renders only the input until React has a moment to spare.
+  const items = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return sortItems(
       (data ?? [])
         .filter(
           (i) =>
@@ -257,6 +302,21 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
         })),
       sort,
     );
+  }, [data, filter, genre, deferredQuery, titleLang, sort]);
+  // Keyed on the deferred query, like `items`, so stats and cards agree.
+  const showStats = deferredQuery.trim() !== "" || genre !== null || filter !== "all";
+
+  let content;
+  if (isPending) {
+    content = <GridSkeleton />;
+  } else if (isError && !data) {
+    // Errored (e.g. offline) AND no persisted cache to fall back on.
+    content = (
+      <p className="text-sm text-destructive">
+        Couldn&apos;t load your library. Please try again.
+      </p>
+    );
+  } else {
     content = (
       <>
         {/* Search within your own library (client-side over the cached list). */}
@@ -289,7 +349,9 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           ) : (
             <span />
           )}
-          <div className="ml-auto flex items-center gap-3">
+          {/* flex-wrap: on a phone this group (clear / select / language /
+              sort) is wider than the screen, and must wrap, not overflow. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
           {filtersActive ? (
             <button
               type="button"
@@ -329,6 +391,13 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
           </label>
           </div>
         </div>
+        {/* Numbers for what the search / filter matched — not for sort alone,
+            which reorders the whole library. Fed the same deferred list the
+            grid renders, so both update in one render with no extra work.
+            Skipped when nothing matched: the empty state says it better. */}
+        {showStats && items.length > 0 ? (
+          <LibraryStats items={items} libraryTotal={data?.length ?? 0} className="mb-4" />
+        ) : null}
         {items.length === 0 ? (
           filtersActive ? (
             // A dead end used to be a sentence with no way out — the filter
@@ -350,98 +419,15 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
             <EmptyState isAll={filter === "all"} />
           )
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {/* Staggered entrance on load; popLayout pops leavers out of flow
-                on filter changes and layout glides survivors on sort. */}
-            <AnimatePresence mode="popLayout">
-              {items.map((item, i) => (
-                <motion.div
-                  key={item.id}
-                  layout={reduce ? false : "position"}
-                  initial={reduce ? false : { opacity: 0, y: 12 }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                    transition: {
-                      delay: reduce ? 0 : Math.min(i * 0.04, 0.4),
-                      duration: 0.3,
-                      ease: "easeOut",
-                    },
-                  }}
-                  exit={
-                    reduce
-                      ? { opacity: 0, transition: { duration: 0.1 } }
-                      : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
-                  }
-                >
-                  <div className="group/lib relative">
-                    <LibraryCard item={item} />
-                    {selectMode ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleSelected(item.id)}
-                        aria-pressed={selected.has(item.id)}
-                        aria-label={`Select ${item.title}`}
-                        className={cn(
-                          "absolute inset-0 z-10 rounded-lg transition",
-                          selected.has(item.id)
-                            ? "bg-primary/20 ring-2 ring-primary"
-                            : "bg-background/10 hover:bg-background/20",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "absolute left-2 top-2 grid size-6 place-items-center rounded-full border-2",
-                            selected.has(item.id)
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-foreground/40 bg-background/70",
-                          )}
-                        >
-                          {selected.has(item.id) ? (
-                            <CheckIcon className="size-4" />
-                          ) : null}
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="absolute right-2 top-2 z-10 flex gap-1.5 focus-within:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100">
-                        {/* The core action, one tap from the grid. Hidden by
-                            AdvanceEpisodeButton itself once the entry is
-                            finished, so completed titles keep a clean corner. */}
-                        <AdvanceEpisodeButton
-                          animeId={item.id}
-                          title={item.title}
-                          episodesWatched={item.episodesWatched}
-                          totalEpisodes={item.totalEpisodes}
-                          status={item.status}
-                          source="grid"
-                        />
-                        <Tooltip label="Quick look">
-                          <button
-                            type="button"
-                            onClick={() => setQuickLook(item)}
-                            aria-label={`Quick look at ${item.title}`}
-                            className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-muted hover:text-foreground"
-                          >
-                            <Pencil className="size-4" aria-hidden />
-                          </button>
-                        </Tooltip>
-                        <Tooltip label="Remove from library">
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item)}
-                            aria-label={`Remove ${item.title} from library`}
-                            className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white"
-                          >
-                            <Trash2 className="size-4" aria-hidden />
-                          </button>
-                        </Tooltip>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+          <LibraryCardGrid
+            items={items}
+            reduce={Boolean(reduce)}
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelected={toggleSelected}
+            onQuickLook={setQuickLook}
+            onRemove={removeItem}
+          />
         )}
 
         {/* Floating bulk-action bar */}
@@ -490,6 +476,124 @@ export function LibraryGridClient({ filter }: { filter: "all" | WatchStatus }) {
 
   return <PullToRefresh onRefresh={onRefresh}>{content}</PullToRefresh>;
 }
+
+/**
+ * The cards themselves, memoized: typing in the search box re-renders the
+ * page shell on every keystroke, but this — dozens of animated cards — only
+ * when the (deferred) filtered list or the selection actually changes.
+ */
+const LibraryCardGrid = memo(function LibraryCardGrid({
+  items,
+  reduce,
+  selectMode,
+  selected,
+  onToggleSelected,
+  onQuickLook,
+  onRemove,
+}: {
+  items: LibraryEntryItem[];
+  reduce: boolean;
+  selectMode: boolean;
+  selected: Set<string>;
+  onToggleSelected: (id: string) => void;
+  onQuickLook: (item: QuickLookItem) => void;
+  onRemove: (item: LibraryEntryItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Staggered entrance on load; popLayout pops leavers out of flow
+          on filter changes and layout glides survivors on sort. */}
+      <AnimatePresence mode="popLayout">
+        {items.map((item, i) => (
+          <m.div
+            key={item.id}
+            layout={reduce ? false : "position"}
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              transition: {
+                delay: reduce ? 0 : Math.min(i * 0.04, 0.4),
+                duration: 0.3,
+                ease: "easeOut",
+              },
+            }}
+            exit={
+              reduce
+                ? { opacity: 0, transition: { duration: 0.1 } }
+                : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
+            }
+          >
+            <div className="group/lib relative">
+              <LibraryCard item={item} />
+              {selectMode ? (
+                <button
+                  type="button"
+                  onClick={() => onToggleSelected(item.id)}
+                  aria-pressed={selected.has(item.id)}
+                  aria-label={`Select ${item.title}`}
+                  className={cn(
+                    "absolute inset-0 z-10 rounded-lg transition",
+                    selected.has(item.id)
+                      ? "bg-primary/20 ring-2 ring-primary"
+                      : "bg-background/10 hover:bg-background/20",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute left-2 top-2 grid size-6 place-items-center rounded-full border-2",
+                      selected.has(item.id)
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-foreground/40 bg-background/70",
+                    )}
+                  >
+                    {selected.has(item.id) ? (
+                      <CheckIcon className="size-4" />
+                    ) : null}
+                  </span>
+                </button>
+              ) : (
+                <div className="absolute right-2 top-2 z-10 flex gap-1.5 focus-within:opacity-100 md:opacity-0 md:group-hover/lib:opacity-100">
+                  {/* The core action, one tap from the grid. Hidden by
+                      AdvanceEpisodeButton itself once the entry is
+                      finished, so completed titles keep a clean corner. */}
+                  <AdvanceEpisodeButton
+                    animeId={item.id}
+                    title={item.title}
+                    episodesWatched={item.episodesWatched}
+                    totalEpisodes={item.totalEpisodes}
+                    status={item.status}
+                    source="grid"
+                  />
+                  <Tooltip label="Quick look">
+                    <button
+                      type="button"
+                      onClick={() => onQuickLook(item)}
+                      aria-label={`Quick look at ${item.title}`}
+                      className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-muted hover:text-foreground"
+                    >
+                      <Pencil className="size-4" aria-hidden />
+                    </button>
+                  </Tooltip>
+                  <Tooltip label="Remove from library">
+                    <button
+                      type="button"
+                      onClick={() => onRemove(item)}
+                      aria-label={`Remove ${item.title} from library`}
+                      className="grid size-8 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-destructive hover:text-white"
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+            </div>
+          </m.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+});
 
 function GenreChip({
   label,

@@ -171,11 +171,6 @@ async function fetchSubreddit(subreddit: string): Promise<RedditPost[]> {
   return posts;
 }
 
-/** Hot posts from r/anime — the anime side's newsstand. */
-export async function getAnimeHotPosts(limit = 30): Promise<RedditPost[]> {
-  return getSubredditHotPosts("anime", limit);
-}
-
 /**
  * Hot posts for the manga side: r/manga as the spine, topped up with
  * r/LightNovels so light and web novels — which the manga side also tracks —

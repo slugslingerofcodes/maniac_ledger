@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils";
  * - `overlay`: replace the default scrim (e.g. a stronger flat darken when the
  *   backdrop sits behind dense content).
  *
- * Uses next/image (`fill`), but note `images.unoptimized` is on (next.config.ts),
- * so the source is served as-is — pass an already right-sized WebP.
+ * Uses next/image (`fill`). The app's custom loader (next.config.ts) only
+ * rewrites known poster CDNs, so a local file like this is served exactly as
+ * given — pass an already right-sized WebP.
  */
 export function ImageBackdrop({
   src,
@@ -36,11 +37,17 @@ export function ImageBackdrop({
         className,
       )}
     >
+      {/* `unoptimized` because these are local files with exactly one
+          rendition: the custom loader can only rewrite known poster CDNs, so
+          it hands every requested width the same URL, and Next warns about a
+          loader that ignores width. Saying so here is both accurate and how
+          the warning is meant to be answered. */}
       <Image
         src={src}
         alt=""
         fill
         priority
+        unoptimized
         sizes="100vw"
         className="ken-burns object-cover"
       />

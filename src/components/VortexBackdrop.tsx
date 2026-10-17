@@ -16,14 +16,18 @@ export function VortexBackdrop() {
       {/* Warm-dark void (fallback base). */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,oklch(0.2_0.04_78),oklch(0.12_0.02_60)_58%,oklch(0.08_0.01_50))]" />
 
-      {/* Drifting bokeh — shows through if the artwork is missing. */}
+      {/* Drifting bokeh — shows through if the artwork is missing.
+          Cyan and green used to sit here against a warm gold void and a gold
+          mandala, which read as three unrelated palettes stacked. All three
+          blobs are now indigo/gold/clay: the same family as the base gradient
+          and the artwork on top of them. */}
       <div
         className="aurora-blob aurora-blob-1 left-[8%] top-[18%] size-[42vmin]"
-        style={{ backgroundColor: "oklch(0.6 0.13 195 / 0.45)" }}
+        style={{ backgroundColor: "oklch(0.5 0.14 265 / 0.45)" }}
       />
       <div
         className="aurora-blob aurora-blob-2 right-[6%] top-[24%] size-[38vmin]"
-        style={{ backgroundColor: "oklch(0.62 0.16 145 / 0.4)" }}
+        style={{ backgroundColor: "oklch(0.55 0.11 45 / 0.4)" }}
       />
       <div
         className="aurora-blob aurora-blob-3 bottom-[8%] left-[38%] size-[46vmin]"

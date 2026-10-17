@@ -205,7 +205,8 @@ describe("populating the shared cache", () => {
   });
 
   it("does not consult or populate the shared cache for /random", async () => {
-    // A "random" served from cache isn't random.
+    // A "random" served from cache isn't random. (The host's breaker verdict
+    // is still read — that is about Jikan, not about this response.)
     fetchMock.mockResolvedValue(jsonResponse({ data: searchPayload().data[0] }));
     const { getRandomAnime } = await coldStart();
 
@@ -213,7 +214,8 @@ describe("populating the shared cache", () => {
     await drainQueue();
     await call;
 
-    expect(sharedGetMock).not.toHaveBeenCalled();
+    const keys = sharedGetMock.mock.calls.map(([key]) => key);
+    expect(keys.filter((key) => key !== "jikan:breaker")).toEqual([]);
     expect(sharedSetMock).not.toHaveBeenCalled();
   });
 });

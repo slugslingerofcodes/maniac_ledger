@@ -25,6 +25,8 @@
  * Client components import only `type`s from here.
  */
 
+import { after } from "next/server";
+
 import { sharedCacheGet, sharedCacheSet } from "@/lib/http-cache";
 
 const JIKAN_BASE_URL = "https://api.jikan.moe/v4";
@@ -218,6 +220,8 @@ export class JikanUnavailableError extends JikanError {
  *    response closes the breaker. Letting a real caller *be* the probe would
  *    hand one page render a full timeout every cool-down period of a
  *    sustained outage. A failed probe doubles the cool-down, up to a cap.
+ *
+ * The state is per instance, so it is also shared; see "Sharing the verdict".
  */
 const BREAKER_FAILURE_THRESHOLD = 3;
 const BREAKER_BASE_COOLDOWN_MS = 30_000;
@@ -228,22 +232,40 @@ let consecutiveTransportFailures = 0;
 let breakerOpenUntil = 0;
 let breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS;
 let probeInFlight = false;
+/** When the open breaker's verdict was reached, here or on another instance. */
+let breakerOpenedAt = 0;
+/** When this instance last got any HTTP response from Jikan. 0 = never. */
+let lastResponseAt = 0;
 
 function openBreaker(reason: string) {
-  breakerOpenUntil = Date.now() + breakerCooldownMs;
+  const now = Date.now();
+  breakerOpenUntil = now + breakerCooldownMs;
+  breakerOpenedAt = now;
   console.warn(
     `[jikan] circuit open for ${breakerCooldownMs / 1000}s — host unreachable (${reason})`,
   );
+  publishVerdict({
+    state: "open",
+    at: now,
+    openUntil: breakerOpenUntil,
+    cooldownMs: breakerCooldownMs,
+  });
+}
+
+/** Resets to closed. True if the breaker was open. */
+function closeBreaker(): boolean {
+  consecutiveTransportFailures = 0;
+  breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS;
+  if (breakerOpenUntil === 0) return false;
+  breakerOpenUntil = 0;
+  console.warn("[jikan] circuit closed — host reachable again");
+  return true;
 }
 
 /** Any HTTP response: the host is reachable, whatever the status. */
 function recordResponse() {
-  consecutiveTransportFailures = 0;
-  breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS;
-  if (breakerOpenUntil !== 0) {
-    breakerOpenUntil = 0;
-    console.warn("[jikan] circuit closed — host reachable again");
-  }
+  lastResponseAt = Date.now();
+  if (closeBreaker()) publishVerdict({ state: "closed", at: lastResponseAt });
 }
 
 function recordTransportFailure(err: unknown) {
@@ -268,7 +290,7 @@ function breakerRejects(path: string): boolean {
 
 function probe(path: string) {
   probeInFlight = true;
-  void rateLimited(() =>
+  const attempt = rateLimited(() =>
     fetch(`${JIKAN_BASE_URL}${path}`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -286,6 +308,167 @@ function probe(path: string) {
     .finally(() => {
       probeInFlight = false;
     });
+  // Nobody awaits a probe, so without this it froze with the instance:
+  // measured in production, one probe's 8s timeout landed 4 minutes late.
+  keepAlive(attempt);
+}
+
+/**
+ * True when Jikan's last word on this instance was no response at all (or the
+ * breaker is open): the next call is more likely to hang than to be slow, so a
+ * hedge needn't wait its usual delay to find out. Any response clears it.
+ */
+export function jikanRecentlyUnreachable(): boolean {
+  return consecutiveTransportFailures > 0 || breakerOpenUntil !== 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sharing the verdict                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The breaker above is module state — one per serverless instance — and on
+ * Vercel that measured as two problems, not one:
+ *
+ *  - **Abandoned calls froze.** An instance is suspended once its last
+ *    response is out. A Jikan call the search hedge had given up on stopped
+ *    mid-timeout and only failed when a later request woke that instance, so
+ *    a typing burst that sent five doomed calls counted one failure, and the
+ *    breaker opened only after several separate visits.
+ *  - **Instances don't last.** Every deploy, scale-out and recycle starts with
+ *    a closed breaker, which then needs three fresh 8s timeouts to open.
+ *
+ * `keepAlive` fixes the first: live calls and probes are registered with
+ * `after()`, so the instance stays up until they settle. The verdict fixes the
+ * second: whenever this breaker opens or closes it writes "unreachable as of
+ * T, next probe at U" (or "reachable as of T") to the shared `http_cache`
+ * table, and every instance reads it before going to the network.
+ *
+ * The freshest evidence wins. An instance that has heard from Jikan since an
+ * "unreachable" verdict was written ignores it (and corrects the row); a
+ * "reachable" verdict only closes a breaker that opened before it. Adopting
+ * an "unreachable" verdict whose cool-down has lapsed just means the usual
+ * fail-fast plus one background probe.
+ *
+ * Every part fails soft. Without the service-role key or the table, or with a
+ * slow or broken Postgres, the breaker is exactly as local as it used to be.
+ */
+type Verdict =
+  | { state: "open"; at: number; openUntil: number; cooldownMs: number }
+  | { state: "closed"; at: number };
+
+/** Not a response path (those start with "/"), so it can't collide. */
+const VERDICT_KEY = "jikan:breaker";
+/**
+ * How long a verdict stands without being re-confirmed. Far longer than the
+ * cool-down on purpose: a failed probe rewrites it every few minutes while an
+ * outage lasts, and the costs are lopsided. A stale "unreachable" costs a
+ * fresh instance one fast failure and a background probe; a missing one costs
+ * every search the hedge delay until three timeouts pile up again.
+ */
+const VERDICT_TTL_SECONDS = 60 * 60;
+/** An instance re-reads the verdict at most this often. */
+const VERDICT_REFRESH_MS = 5_000;
+/** And a live call waits at most this long on that read. */
+const VERDICT_WAIT_MS = 250;
+
+let verdictReadAt = -Infinity;
+let verdictRead: Promise<void> | undefined;
+
+/**
+ * Keep the instance alive until `work` settles, via `after()`. Outside a
+ * request scope (tests, scripts, a build) `after` throws — and there is no
+ * instance to freeze, so there is nothing to do.
+ */
+function keepAlive(work: Promise<unknown>) {
+  try {
+    after(work.then(noop, noop));
+  } catch {
+    /* no request scope */
+  }
+}
+
+function noop() {}
+
+function publishVerdict(verdict: Verdict) {
+  keepAlive(
+    Promise.resolve()
+      .then(() => sharedCacheSet(VERDICT_KEY, verdict, VERDICT_TTL_SECONDS))
+      .catch(noop),
+  );
+}
+
+/** The row is plain JSON another deploy may have written: trust nothing. */
+function parseVerdict(raw: unknown): Verdict | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const v = raw as Record<string, unknown>;
+  const isInstant = (n: unknown): n is number =>
+    typeof n === "number" && Number.isFinite(n) && n > 0;
+  if (!isInstant(v.at)) return undefined;
+  if (v.state === "closed") return { state: "closed", at: v.at };
+  if (v.state === "open" && isInstant(v.openUntil) && isInstant(v.cooldownMs)) {
+    return {
+      state: "open",
+      at: v.at,
+      openUntil: v.openUntil,
+      cooldownMs: Math.min(v.cooldownMs, BREAKER_MAX_COOLDOWN_MS),
+    };
+  }
+  return undefined;
+}
+
+function applyVerdict(raw: unknown) {
+  const verdict = parseVerdict(raw);
+  if (!verdict) return;
+
+  if (verdict.state === "closed") {
+    lastResponseAt = Math.max(lastResponseAt, verdict.at);
+    // Only an open breaker is overruled. A closed one's failure count is left
+    // alone: it may be newer than the verdict, which can be an hour old.
+    if (breakerOpenUntil !== 0 && verdict.at > breakerOpenedAt) closeBreaker();
+    return;
+  }
+
+  if (verdict.at <= lastResponseAt) {
+    // We've heard from Jikan since that was written: it's stale, so say so.
+    publishVerdict({ state: "closed", at: lastResponseAt });
+    return;
+  }
+  const wasClosed = breakerOpenUntil === 0;
+  if (!wasClosed && breakerOpenUntil >= verdict.openUntil) return;
+  if (wasClosed) {
+    console.warn("[jikan] circuit open — another instance found the host unreachable");
+  }
+  // Already open here? Keep our own, possibly newer, evidence of the outage.
+  breakerOpenedAt = wasClosed ? verdict.at : Math.max(breakerOpenedAt, verdict.at);
+  breakerOpenUntil = verdict.openUntil;
+  breakerCooldownMs = Math.max(breakerCooldownMs, verdict.cooldownMs);
+}
+
+/**
+ * Bring the breaker up to date with the shared verdict before a live call.
+ * Resolves once the read lands or its `VERDICT_WAIT_MS` budget is spent,
+ * whichever is first; a late read still applies, for the calls after.
+ */
+function syncVerdict(): Promise<void> {
+  if (Date.now() - verdictReadAt >= VERDICT_REFRESH_MS) {
+    verdictReadAt = Date.now();
+    const read: Promise<void> = Promise.resolve()
+      .then(() => sharedCacheGet<unknown>(VERDICT_KEY))
+      .then((hit) => {
+        if (hit) applyVerdict(hit.value);
+      })
+      .catch(noop)
+      .finally(() => {
+        if (verdictRead === read) verdictRead = undefined;
+      });
+    verdictRead = read;
+  }
+  // Callers share one read's budget, so a hung Postgres costs 250ms once per
+  // refresh rather than on every call.
+  const budget = verdictReadAt + VERDICT_WAIT_MS - Date.now();
+  if (!verdictRead || budget <= 0) return Promise.resolve();
+  return Promise.race([verdictRead, sleep(budget)]);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -359,9 +542,11 @@ async function jikanFetchLive<T>(
     if (cached !== undefined) return cached as T;
     throw new JikanUnavailableError(`Jikan unreachable (circuit open): ${path}`);
   };
+  // Another instance may already know the host is down (or back).
+  await syncVerdict();
   if (breakerRejects(path)) return failFast();
 
-  return rateLimited(async () => {
+  const live = rateLimited(async () => {
     if (breakerRejects(path)) return failFast();
     // Distinguishes "no response" (counts toward the breaker) from a response
     // we then failed to read, which proves the host is up.
@@ -414,6 +599,11 @@ async function jikanFetchLive<T>(
       throw err;
     }
   });
+  // A caller may stop waiting (the search hedge does, once AniList answers),
+  // and the instance would freeze this call mid-timeout. Keep it running, so
+  // the outcome is counted by the breaker — and cached — when it happens.
+  keepAlive(live);
+  return live;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -16,7 +16,10 @@
  * backup immediately regardless — that is just the ordinary fallback.
  *
  * Neither side is cancelled when the other wins. Both callers here sit on
- * caches, so a loser that finishes still warms the next request.
+ * caches, so a loser that finishes still warms the next request. On a
+ * serverless instance "finishes" needs help: nothing waits for the loser, so
+ * the instance may be suspended mid-call. `jikan.ts` keeps its calls alive
+ * with `after()` for exactly this reason.
  */
 
 export type Hedged<P, B> =

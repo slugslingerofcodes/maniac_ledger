@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check:schema": "node scripts/check-schema.mjs",
+    "e2e": "playwright test",
     "verify": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

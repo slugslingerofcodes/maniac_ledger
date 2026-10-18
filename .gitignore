@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# playwright (e2e/.auth holds signed-in browser state: session cookies)
+/e2e/.auth/
+/test-results/
+/playwright-report/
+/blob-report/
+
 # next.js
 /.next/
 /out/

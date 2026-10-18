@@ -45,3 +45,89 @@ jobs:
         # condition — the secrets context isn't available in step `if`.)
         if: ${{ env.NEXT_PUBLIC_SUPABASE_URL != 'https://placeholder.supabase.co' }}
         run: npm run check:schema
+
+  # The signed-in smoke test someone used to click through after every
+  # deploy, run by Playwright against this PR's Vercel preview. Specs in e2e/;
+  # setup, secrets and behaviour without them in DEPLOY.md (step 7).
+  e2e:
+    name: E2E (Vercel preview)
+    # PRs only — that's when there is a preview to test. Not from forks: they
+    # get no secrets, and Vercel doesn't deploy them without approval.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      deployments: read # find the preview
+      statuses: read # notice a failed Vercel build early
+    # Every run signs in as the same test account and writes to its library;
+    # two at once would add and remove each other's titles. Queue them. (A
+    # GitHub limit: only one run waits per group, so a third PR's run replaces
+    # a waiting one, which then shows as cancelled — re-run it.)
+    concurrency:
+      group: e2e-test-account
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Wait for the Vercel preview
+        id: preview
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/wait-for-vercel-preview.mjs --sha "${{ github.event.pull_request.head.sha }}" --project maniac-ledger
+
+      - name: Check what can run
+        id: gate
+        env:
+          PROTECTED: ${{ steps.preview.outputs.protected }}
+          HAS_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET != '' }}
+          HAS_ACCOUNT: ${{ secrets.E2E_EMAIL != '' && secrets.E2E_PASSWORD != '' }}
+          HAS_SUPABASE: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' }}
+        run: |
+          if [ "$PROTECTED" = "true" ] && [ "$HAS_BYPASS" != "true" ]; then
+            echo "::notice title=E2E skipped::The preview is behind Vercel Authentication and VERCEL_AUTOMATION_BYPASS_SECRET isn't set (DEPLOY.md, step 7)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$HAS_ACCOUNT" != "true" ]; then
+            echo "::notice title=Signed-in flows skipped::E2E_EMAIL / E2E_PASSWORD aren't set, so only the signed-out specs run (DEPLOY.md, step 7)."
+          elif [ "$HAS_SUPABASE" != "true" ]; then
+            echo "::notice title=Writing flows skipped::NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY aren't set, so the specs that write (and clean up) are skipped (DEPLOY.md, step 7)."
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install Chromium
+        if: steps.gate.outputs.run == 'true'
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Playwright
+        if: steps.gate.outputs.run == 'true'
+        env:
+          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npx playwright test
+
+      # Screenshots only. Traces and the HTML report would carry the test
+      # account's cookies, and artifacts on a public repo aren't masked the
+      # way logs are.
+      - name: Upload failure screenshots
+        if: failure() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: test-results/**/*.png
+          retention-days: 7
+          if-no-files-found: ignore

@@ -76,7 +76,7 @@ export function AnimeCard({ item }: { item: AnimeCardItem }) {
         >
           <div
             data-morph
-            className="relative aspect-[2/3] w-full overflow-hidden bg-muted"
+            className="foil relative aspect-[2/3] w-full overflow-hidden bg-muted"
           >
             {/* Raw URL, not a pre-shrunk one: the loader picks the rendition
                 per srcSet candidate, so this is crisp at 2× as well. */}

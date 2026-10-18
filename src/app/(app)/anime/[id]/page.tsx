@@ -301,26 +301,39 @@ export default async function AnimeDetailPage({
 
   return (
     <Shell>
-      {/* Hero — full-width backdrop (blurred poster) + dark gradient overlay */}
-      <section className="relative isolate overflow-hidden">
-        {/* The blurred backdrop drifts against the scroll (GSAP ScrollTrigger,
-            scrubbed) so the hero gains depth as you read past it. Parallax
-            transforms the wrapper; `ken-burns` transforms the image inside it,
-            so the two compose instead of fighting. */}
-        {anime.poster_url ? (
-          <Parallax className="absolute inset-0 -z-10" distance={120} scale={1.15}>
-            <Image
-              src={anime.poster_url}
-              alt=""
-              aria-hidden
-              fill
-              priority
-              sizes="100vw"
-              className="ken-burns scale-110 object-cover opacity-30 blur-2xl"
-            />
-          </Parallax>
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/40" />
+      {/* Hero — full-width backdrop (blurred poster) + dark gradient overlay.
+          Only the backdrop layer clips (it is scaled and parallaxed past its
+          box); the section itself must not, or the poster that hangs below the
+          hero (`sm:-mb-12`) gets its bottom edge cut off. */}
+      <section className="relative isolate">
+        {/* The mask fades the whole layer out at the bottom, so the hero melts
+            into whatever backdrop the page has behind it instead of ending in
+            a hard seam of solid background colour. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]"
+        >
+          {/* The blurred backdrop drifts against the scroll (GSAP ScrollTrigger,
+              scrubbed) so the hero gains depth as you read past it. Parallax
+              transforms the wrapper; `ken-burns` transforms the image inside it,
+              so the two compose instead of fighting. */}
+          {anime.poster_url ? (
+            <Parallax className="absolute inset-0" distance={120} scale={1.15}>
+              <Image
+                src={anime.poster_url}
+                alt=""
+                fill
+                priority
+                sizes="100vw"
+                className="ken-burns scale-110 object-cover opacity-50 saturate-[1.35] blur-2xl"
+              />
+            </Parallax>
+          ) : null}
+          {/* The poster's colour carries the top of the hero (like a title
+              card), then sinks into the page before the facts begin. */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/75 to-background/25" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_40%,var(--background)_100%)] opacity-60" />
+        </div>
 
         <div className="relative mx-auto w-full max-w-6xl px-4 pt-6 pb-8 sm:px-6">
           <Link
@@ -336,7 +349,7 @@ export default async function AnimeDetailPage({
                 with the same name (see posterTransitionName) animates into it
                 on navigation — MorphLink drives the transition and polls for
                 this element by its data-vtn. */}
-            <div className="w-40 shrink-0 sm:-mb-12 sm:w-52">
+            <div className="w-40 shrink-0 sm:-mb-12 sm:w-56 lg:w-60">
               {anime.poster_url ? (
                 // Click-to-zoom lightbox + 3D float/tilt; still the morph target.
                 <HeroPoster
@@ -372,8 +385,11 @@ export default async function AnimeDetailPage({
         </div>
       </section>
 
-      {/* Information grid — format, dates, author, day of airing, country, … */}
-      <div className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6">
+      {/* Information grid — format, dates, author, day of airing, country, …
+          sm:pt-12: the poster hangs 16px past the hero (its -mb-12 minus the
+          hero's pb-8), plus the usual 32px gap — so the hanging poster never
+          sits on top of this panel. */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12">
         <ScrollReveal>
           <Suspense
             fallback={<AnimeInfoGrid info={buildAnimeInfo(anime, season, null, null)} />}
@@ -611,11 +627,13 @@ function HeroDetails({
         ) : null}
       </div>
 
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+      {/* Same title setting as the home banner, so a show reads as the same
+          object whether you meet it there or here. */}
+      <h1 className="text-4xl font-bold leading-[1.02] tracking-tight sm:text-5xl lg:text-6xl">
         {anime.title}
       </h1>
       {anime.title_english && anime.title_english !== anime.title ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="-mt-1 font-didot text-lg italic text-foreground/65">
           {anime.title_english}
         </p>
       ) : null}

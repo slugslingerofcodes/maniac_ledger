@@ -29,14 +29,14 @@ export function HeroPoster({
           <div
             data-vtn={transitionName}
             style={{ viewTransitionName: transitionName }}
-            className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-xl ring-1 ring-foreground/10"
+            className="gold-frame relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted"
           >
             <Image
               src={src}
               alt={title}
               fill
               priority
-              sizes="(max-width: 640px) 160px, 208px"
+              sizes="(max-width: 640px) 160px, (max-width: 1024px) 224px, 240px"
               className="object-cover"
             />
           </div>

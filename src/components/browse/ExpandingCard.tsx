@@ -127,7 +127,7 @@ export function ExpandingCard({
         >
           <div
             className={cn(
-              "relative w-full overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/10",
+              "foil relative w-full overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/10",
               aspect === "poster" ? "aspect-[2/3]" : "aspect-video",
             )}
           >

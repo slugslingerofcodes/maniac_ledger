@@ -51,7 +51,7 @@ export function LibraryCard({ item }: { item: LibraryCardItem }) {
     ) : null}
     <Tilt3D>
     <Card className={cn(status.tokenClassName, "gap-0 overflow-hidden py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:ring-2 hover:ring-primary/40")}>
-      <div data-morph className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
+      <div data-morph className="foil relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {/* Raw URL, not a pre-shrunk one: the loader picks the rendition per
             srcSet candidate, so this is crisp at 2× as well. */}
         {item.posterUrl ? (

@@ -79,19 +79,22 @@ export function AnimeInfoGrid({ info }: { info: AnimeInfo }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Information</CardTitle>
+        <CardTitle className="font-didot text-xl font-semibold tracking-tight">
+          Information
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-1 gap-x-10 gap-y-2.5 sm:grid-cols-2">
+        {/* A spec sheet: quiet uppercase labels, the facts in full weight. */}
+        <dl className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
           {rows.map((row) => (
             <div
               key={row.label}
-              className="flex items-baseline justify-between gap-3 border-b border-border/40 pb-2 last:border-0"
+              className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5"
             >
-              <dt className="shrink-0 text-sm text-muted-foreground">
+              <dt className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {row.label}
               </dt>
-              <dd className="min-w-0 truncate text-right text-sm font-semibold text-foreground">
+              <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
                 {row.value}
               </dd>
             </div>

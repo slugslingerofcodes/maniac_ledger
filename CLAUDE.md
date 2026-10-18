@@ -18,6 +18,7 @@ npm run test          # Vitest (unit; tests/**) — the data-layer gate
 npm run test:watch    # Vitest in watch mode
 npm run test:coverage # coverage over src/lib, src/app/api, src/app/actions
 npm run verify        # lint + test + build — run this before calling a change done
+npm run e2e           # Playwright (e2e/**) against `npm run dev`, or E2E_BASE_URL — not part of verify
 
 npx shadcn@latest add <name>          # scaffold a shadcn/ui component into src/components/ui/
 vercel --prod                         # deploy (project is linked to Vercel; env vars live in the Vercel project)
@@ -38,6 +39,8 @@ Conventions worth keeping:
 - Its queue spaces calls 350ms apart with real `setTimeout` — drive **fake timers** forward (`vi.advanceTimersByTimeAsync`) or tests hang.
 - Supabase's query builder is fluent *and* thenable; `tests/helpers/supabase.ts` mocks it and records calls, so tests assert on the query that would have been sent (e.g. the `{Hentai}` exclusion).
 - **Verify a new test can fail.** These tests guard failure paths, so a test that passes for the wrong reason is the default outcome, not the exception — break the code deliberately, watch it go red, then revert.
+
+**End-to-end** is separate: Playwright, config in `playwright.config.ts`, specs in `e2e/`, run by the `e2e` CI job against each PR's Vercel preview (DEPLOY.md, step 7). The signed-in specs use a dedicated test account from `E2E_EMAIL`/`E2E_PASSWORD` and skip themselves when those are absent, so an agent without the credentials sees skips, not failures. Specs that write go through `e2e/test-account-db.ts`: purge their title before and after, and confirm persistence from the database rather than trusting an optimistic UI flip. Every variable the suite reads is in `e2e/env.ts`.
 
 ## Next.js 16 specifics (these differ from older Next and from training data)
 

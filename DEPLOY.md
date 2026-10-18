@@ -124,9 +124,102 @@ In the Vercel dashboard, enable **Web Analytics** and **Speed Insights** — the
 
 ## 6. Post-deploy smoke test (prod URL, signed in)
 
-- Library loads; search → add; episode toggle; `/upcoming` notify; `/recommendations` → Generate and the describe-it box (both need `XAI_API_KEY`; Generate also needs some completed/rated anime).
+The core signed-in flows — sign in, home rows, library search, search → add →
+remove, episode tick/untick, the poster lightbox, the ⌘K palette, 375px layout —
+are automated by the E2E job (step 7) on every PR's preview. What's left by hand:
+
+- `/upcoming` notify; `/recommendations` → Generate and the describe-it box (both need `XAI_API_KEY`; Generate also needs some completed/rated anime).
 - PWA: install prompt (manifest + icons + HTTPS), service worker registers (prod-only), offline `/library` shows cached data.
 - Analytics: trigger events (`anime_added`, etc.) and confirm they land in the Vercel Analytics dashboard.
+
+## 7. End-to-end tests (Playwright, on every PR's preview)
+
+`e2e/` holds Playwright specs for the flows above, kept apart from the Vitest
+suite in `tests/`. The **E2E (Vercel preview)** job in `.github/workflows/ci.yml`
+runs them on every pull request: it waits for the `maniac-ledger` preview of the
+PR's head commit (via the GitHub Deployment the Vercel app records — the same
+build its PR comment links to), then runs Playwright against that URL.
+
+| Spec | Flow | Needs |
+| --- | --- | --- |
+| `setup/auth.setup.ts` | sign in through the real form | account |
+| `public.spec.ts` | signed-out redirect, wrong-password message, `/login` at 375px | — |
+| `home.spec.ts` | banner + at least three rows filled with titles | account |
+| `palette.spec.ts` | Ctrl/⌘+K opens the palette, "naruto" returns titles | account |
+| `library.spec.ts` | search → **+ Add** Cowboy Bebop → library search shows the stats bar → remove it | account + Supabase |
+| `anime-detail.spec.ts` | poster lightbox paints above everything (the stacking-context regression); tick / untick episode 1 of Trigun | account (+ Supabase for episodes) |
+| `mobile-overflow.spec.ts` | no sideways scroll at 375px on `/`, `/library`, an anime page | account |
+
+### One-time setup (yours to do)
+
+1. **Create the test account.** Sign up on production (`/signup`) with an
+   address you control that is used for nothing else (a plus-address works),
+   confirm the email, and leave the profile **private** (the default) so its
+   test adds never show in anyone's feed. Don't reuse a real account: the suite
+   writes to this account's library on the live database.
+2. **Create a Vercel bypass secret.** Previews of `maniac-ledger` are behind
+   Vercel Authentication, which a headless browser can't pass. In Vercel →
+   `maniac-ledger` → Settings → Deployment Protection → **Protection Bypass for
+   Automation**, generate a secret.
+3. **Add GitHub repository secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   | --- | --- |
+   | `E2E_EMAIL` | the test account's email |
+   | `E2E_PASSWORD` | its password |
+   | `VERCEL_AUTOMATION_BYPASS_SECRET` | the secret from step 2 |
+   | `NEXT_PUBLIC_SUPABASE_URL` | same value as in Vercel |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same value as in Vercel |
+   | `E2E_USERNAME` *(optional)* | the account's username — sign in with it instead of the email, exercising the username lookup |
+
+   The two Supabase secrets are what the writing specs clean up with. They also
+   switch the `verify` job from its placeholder build to a real one and turn on
+   its schema-drift check, which was already written to wait for them.
+
+### Without the secrets, nothing goes red
+
+| Missing | Result |
+| --- | --- |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` (preview protected) | the job finds the preview, posts a notice, and runs nothing |
+| `E2E_EMAIL` / `E2E_PASSWORD` | only `public.spec.ts` runs; every signed-in spec is skipped |
+| the Supabase pair | the specs that write (`library`, the episode test) are skipped; the read-only ones run |
+
+Fork PRs skip the job entirely (no secrets, no unapproved Vercel deploy).
+
+### What the tests write, and how they clean up
+
+Only the test account's own rows, through its own session (anon key, never the
+service role), so RLS confines every write to that account:
+
+- `library.spec.ts` adds and removes **Cowboy Bebop** (MAL 1).
+- `anime-detail.spec.ts` ticks and unticks episode 1 of **Trigun** (MAL 6).
+
+Each of those files deletes its title's `user_progress` / `episode_progress`
+rows for the account **before** it runs (in case an earlier run died half-way)
+and **after** (however the tests ended). Shared catalog rows (`anime`,
+`episodes`) are left alone; the app writes those on any visit. Runs are queued
+behind one concurrency group, because two at once would add and remove each
+other's titles. Traces and HTML reports stay off in CI and only failure
+screenshots are uploaded: artifacts on a public repo aren't masked the way
+logs are, and traces carry the account's cookies.
+
+The lightbox test fails on any build that renders the overlay inside the
+detail hero instead of portalling it to `<body>`; that is the regression it
+exists to catch.
+
+### Running locally
+
+```bash
+npx playwright install chromium   # once
+npm run e2e                       # reuses `npm run dev` on :3000, or starts it
+```
+
+Put `E2E_EMAIL` / `E2E_PASSWORD` in `.env.local` (gitignored; the dev server
+reads the same file) to include the signed-in specs; without them they skip.
+To test a deployment instead of the dev server, set `E2E_BASE_URL`, plus
+`VERCEL_AUTOMATION_BYPASS_SECRET` for a protected preview. Every variable is
+listed in `e2e/env.ts`. Locally `api.jikan.moe` may be unreachable; the pages
+fall back to AniList and the catalog, which is what the specs see.
 
 ## Not yet wired (optional)
 

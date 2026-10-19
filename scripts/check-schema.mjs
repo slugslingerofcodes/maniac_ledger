@@ -80,6 +80,7 @@ export const UNPROBEABLE = [
   { migration: "0025", what: "unique constraint: manga.mangadex_id" },
   { migration: "0026", what: "pg_cron: hourly http_cache purge" },
   { migration: "0029", what: "EXECUTE revoked from anon/authenticated on SECURITY DEFINER trigger functions" },
+  { migration: "0032", what: "pg_cron: weekly digest points at the real project ref (no cron.job command contains __PROJECT_REF__)" },
 ];
 
 /**

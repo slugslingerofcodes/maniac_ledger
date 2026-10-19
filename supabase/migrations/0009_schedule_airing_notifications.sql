@@ -5,6 +5,18 @@
 -- the service-role key. Two ways to provide the key are shown below — prefer
 -- Vault so the secret isn't stored in plaintext in the cron job definition.
 
+-- Refuse to schedule a job that can never reach the function: cron.schedule
+-- overwrites a job of the same name, so running this unedited would break a
+-- working daily job (0019 was once run that way — see 0032). Find-and-replace
+-- rewrites this literal too, so the check only trips while the placeholder is
+-- still here.
+do $$
+begin
+  if '__PROJECT_REF__' like '\_\_%' then
+    raise exception 'Replace __PROJECT_REF__ with your project ref before running 0009.';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- 1. Extensions (enable once per project)
 -- ---------------------------------------------------------------------------

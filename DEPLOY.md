@@ -45,7 +45,7 @@ npm run check:schema     # anon key only, reads no rows; exit 1 on drift
 
 It probes every table/column the app depends on via PostgREST and names the
 migration behind anything missing. Objects it *can't* see — Realtime publications
-(`0006`), pg_cron schedules (`0009`, `0019`, `0026`), the avatars bucket (`0012`),
+(`0006`), pg_cron schedules (`0009`, `0019`/`0032`, `0026`), the avatars bucket (`0012`),
 bare constraints (`0025`), and function grants (`0029`) — are listed in its output
 as needing a manual check.
 
@@ -81,6 +81,7 @@ supabase link --project-ref <your-project-ref>
 supabase secrets set RESEND_API_KEY=re_xxx RESEND_FROM="anime_maniacs <alerts@yourdomain>"
 
 supabase functions deploy resolve-franchise
+supabase functions deploy weekly-digest
 supabase functions deploy send-airing-notifications
 ```
 
@@ -99,6 +100,40 @@ select net.http_post(
   body := '{}'::jsonb);
 select * from cron.job_run_details order by start_time desc limit 5;
 ```
+
+## 3a. Cron — weekly digest, Mondays 09:00 UTC (Supabase → SQL Editor)
+
+Needs the `weekly-digest` function deployed (step 2; it uses the same Resend
+secrets). Run `supabase/migrations/0019_weekly_digest_cron.sql` with
+`__PROJECT_REF__` replaced by the same ref as step 3. Every cron migration that
+takes a ref refuses to run while the placeholder is still in it.
+
+**If `0019` has already run, run `0032_fix_weekly_digest_cron.sql` instead** (ref
+replaced the same way). `0019` was once run unedited, so `weekly-digest-monday`
+POSTed to `https://__PROJECT_REF__.supabase.co` every Monday and never reached the
+function. `0032` unschedules and reschedules the job with the real URL and is safe
+to re-run. Confirm that no job still carries the placeholder:
+
+```sql
+select jobname from cron.job where command like '%\_\_PROJECT\_REF\_\_%';   -- expect no rows
+```
+
+**`cron.job_run_details` can't tell you the digest worked.** It records `succeeded`
+as soon as `net.http_post` has *queued* the request. That is how a job aimed at a
+host that doesn't exist looked healthy for months. The HTTP result lands in
+`net._http_response`, and pg_net prunes it after ~6h. So check it within a few
+hours of a Monday 09:00 UTC run:
+
+```sql
+select status_code, left(content::text, 300) from net._http_response order by created desc limit 5;
+```
+
+A healthy run returns `200 {"usersEmailed":…,"failures":[…]}`. A
+`401 {"error":"Unauthorized"}` means the Vault `service_role_key` isn't the exact
+string the function runtime has as `SUPABASE_SERVICE_ROLE_KEY`. The step 3 job
+reads the same secret, so it will be failing the same way. Don't smoke-test by
+calling the function by hand: it has no dry run and emails every user with a
+library.
 
 ## 4. Environment variables (Vercel → Settings → Environment Variables)
 

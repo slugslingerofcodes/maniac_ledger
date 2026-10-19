@@ -4,10 +4,11 @@ import type { JikanAnime } from "@/lib/jikan";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Outage fallbacks backed by our own `anime` catalog (which grows as users
- * browse). When MAL/Jikan is unreachable, search and the random roll fall back
- * to these so the features keep working with local data. RLS applies: the
- * catalog is readable by authenticated users, so callers need a session.
+ * Reads over our own `anime` catalog. It started as the outage fallback (and
+ * grew only as users browsed); since 0030 a scheduled sync keeps it stocked
+ * with every chart the UI shows, so search reads it *first* and the live
+ * engines enrich. RLS applies: the catalog is readable by authenticated users,
+ * so callers need a session.
  */
 
 type AnimeRow = Tables<"anime">;
@@ -20,14 +21,21 @@ const JIKAN_STATUS: Record<AnimeRow["status"], string> = {
   cancelled: "Discontinued",
 };
 
-/** Maps a catalog row onto the JikanAnime shape the search/random UIs render. */
-function toJikanShape(row: AnimeRow): JikanAnime {
+/**
+ * Maps a catalog row onto the JikanAnime shape every list UI renders.
+ *
+ * Synced rows (0030) carry what the UI used to need a live call for — the
+ * banner's trailer, landscape art and broadcast slot, synonyms for matching,
+ * members for the Top 10 — so those are emitted in Jikan's own fields when
+ * present, and absent (like on a sparse Jikan record) when not.
+ */
+export function catalogRowToJikan(row: AnimeRow): JikanAnime {
   const imageSet = {
     image_url: row.poster_url,
     small_image_url: row.poster_url,
     large_image_url: row.poster_url,
   };
-  return {
+  const anime: JikanAnime = {
     mal_id: row.mal_id!,
     title: row.title,
     title_english: row.title_english,
@@ -50,16 +58,73 @@ function toJikanShape(row: AnimeRow): JikanAnime {
       ? [{ mal_id: 0, type: "studio", name: row.studio, url: "" }]
       : [],
   };
+  // `?.length` rather than a truthiness check: rows from before 0030, or from a
+  // partial select, have no such column at all.
+  if (row.title_synonyms?.length) anime.title_synonyms = row.title_synonyms;
+  if (row.members != null) anime.members = row.members;
+  if (row.duration_mins != null) anime.duration = `${row.duration_mins} min per ep`;
+  if (row.banner_url) anime.banner_image = row.banner_url;
+  if (row.trailer_youtube_id) {
+    anime.trailer = {
+      youtube_id: row.trailer_youtube_id,
+      url: `https://www.youtube.com/watch?v=${row.trailer_youtube_id}`,
+      embed_url: `https://www.youtube-nocookie.com/embed/${row.trailer_youtube_id}`,
+    };
+  }
+  if (row.broadcast_day) {
+    anime.broadcast = {
+      day: row.broadcast_day,
+      time: row.broadcast_time ?? null,
+      timezone: "Asia/Tokyo",
+      string: null,
+    };
+  }
+  if (row.airing_start || row.airing_end) {
+    anime.aired = { from: row.airing_start, to: row.airing_end };
+  }
+  return anime;
 }
 
 /**
- * Title search over the local catalog (title + english title, best-scored
- * first). Genre ids are translated to names and AND-matched against the
- * row's `genres` array. Returns [] when nothing matches or RLS blocks reads.
+ * PostgREST's code for "no such function" — the RPCs arrive with migration
+ * 0030, and the app ships before or after it. Remembered per process for a
+ * while, so each search doesn't pay a round trip to learn it again.
+ */
+export const RPC_MISSING = "PGRST202";
+export const RPC_MISSING_RETRY_MS = 10 * 60_000;
+let searchRpcMissingUntil = 0;
+
+/** Forget a remembered missing RPC. Tests only. */
+export function __resetCatalogSearchMemo(): void {
+  searchRpcMissingUntil = 0;
+}
+
+/** Catalog rows → JikanAnime, deduped by mal_id (rows without one have no detail route). */
+export function catalogRowsToJikan(rows: AnimeRow[] | null | undefined): JikanAnime[] {
+  const seen = new Set<number>();
+  return (rows ?? [])
+    .filter((row) => {
+      if (row.mal_id == null || seen.has(row.mal_id)) return false;
+      seen.add(row.mal_id);
+      return true;
+    })
+    .map(catalogRowToJikan);
+}
+
+/**
+ * Title search over the local catalog. Genre ids are translated to names and
+ * AND-matched against the row's `genres` array. Returns [] when nothing
+ * matches or RLS blocks reads.
  *
- * Hentai-genre rows are excluded: titles added from the miscellaneous (adult)
- * tab live in the same shared catalog, and this function feeds SFW surfaces
- * (the public search API's catalog merge) — mirroring MAL's own `sfw=true`.
+ * Ranked by `search_anime_catalog` (0030): exact title, then prefix, word
+ * prefix, substring and finally a fuzzy (trigram) match, popularity within
+ * each — over titles, English titles *and* synonyms, so "aot" finds Attack on
+ * Titan. Until 0030 is applied the RPC doesn't exist, and this falls back to
+ * the older substring match ranked by score.
+ *
+ * Hentai-genre rows are excluded either way: titles added from the
+ * miscellaneous (adult) tab live in the same shared catalog, and this feeds SFW
+ * surfaces (the search API) — mirroring MAL's own `sfw=true`.
  */
 export async function searchCatalog(
   q: string,
@@ -74,6 +139,22 @@ export async function searchCatalog(
   if (!s && genreNames.length === 0) return [];
 
   const supabase = await createClient();
+
+  if (Date.now() >= searchRpcMissingUntil) {
+    // The RPC escapes wildcards itself, so it gets the query as typed.
+    const ranked = await supabase.rpc("search_anime_catalog", {
+      q: q.trim(),
+      genre_names: genreNames,
+      max_results: Math.min(limit, 50),
+    });
+    if (!ranked.error && Array.isArray(ranked.data)) {
+      return catalogRowsToJikan(ranked.data as unknown as AnimeRow[]);
+    }
+    if (ranked.error?.code === RPC_MISSING) {
+      searchRpcMissingUntil = Date.now() + RPC_MISSING_RETRY_MS;
+    }
+  }
+
   let query = supabase
     .from("anime")
     .select("*")
@@ -89,14 +170,7 @@ export async function searchCatalog(
   }
 
   const { data } = await query;
-  const seen = new Set<number>();
-  return (data ?? [])
-    .filter((row) => {
-      if (row.mal_id == null || seen.has(row.mal_id)) return false;
-      seen.add(row.mal_id);
-      return true;
-    })
-    .map(toJikanShape);
+  return catalogRowsToJikan(data);
 }
 
 /**
@@ -115,14 +189,7 @@ export async function browseCatalog(limit = 24): Promise<JikanAnime[]> {
     .order("score", { ascending: false, nullsFirst: false })
     .limit(limit);
 
-  const seen = new Set<number>();
-  return (data ?? [])
-    .filter((row) => {
-      if (row.mal_id == null || seen.has(row.mal_id)) return false;
-      seen.add(row.mal_id);
-      return true;
-    })
-    .map(toJikanShape);
+  return catalogRowsToJikan(data);
 }
 
 /** Misc-tab mode → the MAL genre names stored on catalog rows. */
@@ -159,14 +226,7 @@ export async function searchAdultCatalog(
   }
 
   const { data } = await query;
-  const seen = new Set<number>();
-  return (data ?? [])
-    .filter((row) => {
-      if (row.mal_id == null || seen.has(row.mal_id)) return false;
-      seen.add(row.mal_id);
-      return true;
-    })
-    .map(toJikanShape);
+  return catalogRowsToJikan(data);
 }
 
 /**
@@ -192,5 +252,5 @@ export async function randomCatalogAnime(): Promise<JikanAnime | null> {
     .range(offset, offset);
 
   const row = data?.[0];
-  return row ? toJikanShape(row) : null;
+  return row ? catalogRowToJikan(row) : null;
 }

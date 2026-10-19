@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { animeFixture, paginationFixture } from "../helpers/fixtures";
 
 /**
- * The Top 10 fallback chain: MAL (Jikan) → AniList → the local catalog.
+ * The Top 10 chain: the catalog-sync snapshot → MAL (Jikan) → AniList → the
+ * snapshot at any age → the catalog's best-scored rows.
  *
  * The chart shipped for months with no chain at all, and failed in the one way
  * nothing catches: MAL's degraded mode answers `200 {"data": []}` rather than
@@ -22,15 +23,22 @@ vi.mock("@/lib/anilist", async (importOriginal) => {
   return { ...actual, searchAnilist: vi.fn() };
 });
 vi.mock("@/lib/catalog-fallback", () => ({ browseCatalog: vi.fn() }));
+vi.mock("@/lib/catalog", () => ({
+  getCatalogList: vi.fn(),
+  getStaleCatalogList: vi.fn(),
+}));
 
 const { getTopTen } = await import("@/lib/jikan");
 const { searchAnilist } = await import("@/lib/anilist");
 const { browseCatalog } = await import("@/lib/catalog-fallback");
+const { getCatalogList, getStaleCatalogList } = await import("@/lib/catalog");
 const { getTopTenChart } = await import("@/lib/top-ten");
 
 const getTopTenMock = vi.mocked(getTopTen);
 const searchAnilistMock = vi.mocked(searchAnilist);
 const browseCatalogMock = vi.mocked(browseCatalog);
+const getCatalogListMock = vi.mocked(getCatalogList);
+const getStaleCatalogListMock = vi.mocked(getStaleCatalogList);
 
 /** `n` distinct titles, descending in members so ranking is observable. */
 function chart(prefix: string, n: number, base = 1000) {
@@ -52,9 +60,40 @@ beforeEach(() => {
   // Silence the chain's deliberate console noise; assertions cover behaviour.
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  // Default: no snapshot (the sync hasn't run), so the live chain is exercised.
+  getCatalogListMock.mockResolvedValue([]);
+  getStaleCatalogListMock.mockResolvedValue([]);
 });
 
 describe("getTopTenChart", () => {
+  it.each(["weekly", "monthly", "yearly"] as const)(
+    "serves the synced %s chart without asking MAL or AniList",
+    async (window) => {
+      getCatalogListMock.mockResolvedValue(chart("synced", 12, 4000));
+
+      const res = await getTopTenChart(window);
+
+      expect(getCatalogListMock).toHaveBeenCalledWith(`top10-${window}`, expect.any(Number));
+      expect(res).toHaveLength(10);
+      expect(res[0]!.title).toBe("synced 0");
+      expect(getTopTenMock).not.toHaveBeenCalled();
+      expect(searchAnilistMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("prefers an old snapshot of the window to the best-scored list", async () => {
+    getTopTenMock.mockRejectedValue(new Error("MAL down"));
+    searchAnilistMock.mockRejectedValue(new Error("AniList down"));
+    getStaleCatalogListMock.mockResolvedValue(chart("old chart", 10, 5000));
+    browseCatalogMock.mockResolvedValue(chart("best-scored", 10, 3000));
+
+    const res = await getTopTenChart("monthly");
+
+    expect(getStaleCatalogListMock).toHaveBeenCalledWith("top10-monthly", expect.any(Number));
+    expect(res[0]!.title).toBe("old chart 0");
+    expect(browseCatalogMock).not.toHaveBeenCalled();
+  });
+
   it("serves MAL when it answers, without touching the backups", async () => {
     getTopTenMock.mockResolvedValue(chart("mal", 10));
 

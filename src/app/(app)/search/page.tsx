@@ -59,6 +59,13 @@ import { posterUrl } from "@/lib/poster";
 
 type Status = "idle" | "loading" | "success" | "error";
 
+/**
+ * A `partial` answer (the catalog's, while live search was still out) is asked
+ * for again after this long, at most this many times.
+ */
+const PARTIAL_FOLLOW_UP_MS = 1_500;
+const PARTIAL_FOLLOW_UPS = 2;
+
 /** Best available poster for a Jikan record. */
 function posterOf(anime: JikanAnime): string | null {
   return (
@@ -160,40 +167,53 @@ function SearchPageInner() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus("loading");
+    let followUp: ReturnType<typeof setTimeout> | undefined;
 
-    fetch(`/api/anime/search?${params.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Search request failed");
-        const body = await res.json();
-        // Jikan can return the same mal_id more than once; dedupe so cards keep
-        // stable, unique React keys.
-        const seen = new Set<number>();
-        const unique = ((body.results ?? []) as JikanAnime[]).filter((a) => {
-          if (seen.has(a.mal_id)) return false;
-          seen.add(a.mal_id);
-          return true;
-        });
-        setResults(unique);
-        setPageInfo({
-          totalPages: body.totalPages ?? 1,
-          totalItems: body.totalItems ?? unique.length,
-          approxTotal: Boolean(body.approxTotal),
-        });
-        setSource(body.source ?? "mal");
-        setDegraded(Boolean(body.degraded));
-        setResolvedQuery(hasQuery ? q : "the selected filters");
-        setStatus("success");
-        // Remember queries that actually found something (never typos).
-        if (hasQuery && unique.length > 0) recordSearch(q);
+    // `attempt` > 0 is a quiet follow-up: the first answer came from the
+    // catalog alone (`partial`) while the live engines were still out, and
+    // asking again shortly picks up their results and pagination.
+    const run = (attempt: number) =>
+      fetch(`/api/anime/search?${params.toString()}`, {
+        signal: controller.signal,
       })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setStatus("error");
-      });
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Search request failed");
+          const body = await res.json();
+          if (body.partial && attempt < PARTIAL_FOLLOW_UPS) {
+            followUp = setTimeout(() => run(attempt + 1), PARTIAL_FOLLOW_UP_MS);
+          }
+          // Jikan can return the same mal_id more than once; dedupe so cards keep
+          // stable, unique React keys.
+          const seen = new Set<number>();
+          const unique = ((body.results ?? []) as JikanAnime[]).filter((a) => {
+            if (seen.has(a.mal_id)) return false;
+            seen.add(a.mal_id);
+            return true;
+          });
+          setResults(unique);
+          setPageInfo({
+            totalPages: body.totalPages ?? 1,
+            totalItems: body.totalItems ?? unique.length,
+            approxTotal: Boolean(body.approxTotal),
+          });
+          setSource(body.source ?? "mal");
+          setDegraded(Boolean(body.degraded));
+          setResolvedQuery(hasQuery ? q : "the selected filters");
+          setStatus("success");
+          // Remember queries that actually found something (never typos).
+          if (hasQuery && unique.length > 0) recordSearch(q);
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          // A failed follow-up leaves the catalog's answer on screen.
+          if (attempt === 0) setStatus("error");
+        });
+    void run(0);
 
-    return () => controller.abort();
+    return () => {
+      clearTimeout(followUp);
+      controller.abort();
+    };
   }, [debouncedQuery, filters, page, recordSearch]);
   /* eslint-enable react-hooks/set-state-in-effect */
 

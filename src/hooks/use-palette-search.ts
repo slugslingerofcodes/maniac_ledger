@@ -19,9 +19,11 @@ import type { JikanAnime, JikanManga } from "@/lib/jikan";
  *  2. **The previous answer, narrowed.** While a new query loads, the last
  *     results stay up, filtered to titles that still contain what's typed — so
  *     the list sharpens as you type rather than flashing empty.
- *  3. **The local catalog** (`engine=catalog`): one database query, painting
- *     known titles in a few hundred ms while the live engines are still out.
- *  4. **The live search** (`limit=6`): Jikan, hedged with AniList.
+ *  3. **The search** (`limit=6`), which answers from the local catalog first
+ *     (see the route): one database query, plus whatever the live engines
+ *     manage within a short grace window. If they didn't, the answer comes
+ *     back `partial`, and is asked for again a moment later — by then the
+ *     live search has landed in the server's caches and merges in.
  *
  * Every answer is cached per query for ten minutes, so backspacing and
  * retyping never refetches. Requests carry TanStack's abort signal, so a
@@ -58,6 +60,9 @@ const MANGA_ROWS = 4;
 /** Library hits lead the anime rows but never crowd out the live results. */
 const LIBRARY_ROWS = 3;
 const CACHE_MS = 10 * 60_000;
+/** When a `partial` answer is asked for again, and how many times at most. */
+const PARTIAL_REFETCH_MS = 1_500;
+const PARTIAL_REFETCHES = 2;
 
 /** The key `/library`'s grid caches the user's list under. */
 const LIBRARY_QUERY_KEY = ["user-library"] as const;
@@ -93,8 +98,10 @@ function toManga(m: JikanManga): PaletteManga {
   };
 }
 
-const animeUrl = (q: string, extra = "") =>
-  `/api/anime/search?q=${encodeURIComponent(q)}&limit=${ANIME_ROWS}${extra}`;
+const animeUrl = (q: string) =>
+  `/api/anime/search?q=${encodeURIComponent(q)}&limit=${ANIME_ROWS}`;
+
+type AnimeAnswer = { rows: PaletteAnime[]; partial: boolean };
 
 export function usePaletteSearch(open: boolean, query: string) {
   const queryClient = useQueryClient();
@@ -102,30 +109,22 @@ export function usePaletteSearch(open: boolean, query: string) {
   const debounced = useDebounce(typed, DEBOUNCE_MS);
   const enabled = open && debounced.length >= MIN_CHARS;
 
-  const live = useQuery<PaletteAnime[]>({
+  const search = useQuery<AnimeAnswer>({
     queryKey: ["palette", "anime", debounced],
     queryFn: ({ signal }) =>
-      getJson<{ results?: JikanAnime[] }>(animeUrl(debounced), signal).then(
-        (body) => (body.results ?? []).map(toAnime),
+      getJson<{ results?: JikanAnime[]; partial?: boolean }>(animeUrl(debounced), signal).then(
+        (body) => ({ rows: (body.results ?? []).map(toAnime), partial: Boolean(body.partial) }),
       ),
     enabled,
     staleTime: CACHE_MS,
     gcTime: CACHE_MS,
     placeholderData: keepPreviousData,
-  });
-
-  // Only worth a request while the live answer for this exact query is out.
-  const liveSettled = live.data !== undefined && !live.isPlaceholderData;
-  const catalog = useQuery<PaletteAnime[]>({
-    queryKey: ["palette", "anime-catalog", debounced],
-    queryFn: ({ signal }) =>
-      getJson<{ results?: JikanAnime[] }>(
-        animeUrl(debounced, "&engine=catalog"),
-        signal,
-      ).then((body) => (body.results ?? []).map(toAnime)),
-    enabled: enabled && !liveSettled,
-    staleTime: CACHE_MS,
-    gcTime: CACHE_MS,
+    // The catalog answered alone; the live engines are still filling the
+    // server's caches. Ask again shortly — a bounded number of times.
+    refetchInterval: (query) =>
+      query.state.data?.partial && query.state.dataUpdateCount <= PARTIAL_REFETCHES
+        ? PARTIAL_REFETCH_MS
+        : false,
   });
 
   const manga = useQuery<PaletteManga[]>({
@@ -172,11 +171,7 @@ export function usePaletteSearch(open: boolean, query: string) {
     });
   }
 
-  const remote = liveSettled
-    ? narrow(live.data, exact(false))
-    : catalog.data !== undefined
-      ? narrow(catalog.data, exact(false))
-      : narrow(live.data, false);
+  const remote = narrow(search.data?.rows, exact(search.isPlaceholderData));
 
   const seen = new Set<number>();
   const anime = [...libraryHits, ...remote]
@@ -186,6 +181,10 @@ export function usePaletteSearch(open: boolean, query: string) {
   return {
     anime,
     manga: narrow(manga.data, exact(manga.isPlaceholderData)).slice(0, MANGA_ROWS),
-    searching: enabled && (live.isFetching || manga.isFetching),
+    // A partial answer's follow-up is enrichment, not a wait: no spinner for it.
+    searching:
+      enabled &&
+      ((search.isFetching && (search.isPlaceholderData || search.data === undefined)) ||
+        manga.isFetching),
   };
 }

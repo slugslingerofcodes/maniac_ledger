@@ -43,6 +43,7 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   AiringStatus,
   Anime,
+  AnimeUpdate,
   ContentRating,
   WatchStatus,
 } from "@/types/anime";
@@ -114,6 +115,26 @@ function seasonLabel(season: string | null, year: number | null): string | null 
 }
 
 /**
+ * How recently the catalog-sync function must have refreshed a row for the
+ * page to paint its title details from the catalog alone. The sync runs every
+ * 6h; a row older than this (or one it has never touched — a user's obscure
+ * add) gets the live refresh as before.
+ */
+const CATALOG_FRESH_MS = 24 * 60 * 60 * 1000;
+
+function syncedRecently(anime: Anime): boolean {
+  if (!anime.synced_at) return false;
+  return Date.now() - new Date(anime.synced_at).getTime() < CATALOG_FRESH_MS;
+}
+
+/** The catalog's trailer as a no-cookie, no-autoplay embed (what MAL's would become). */
+function catalogTrailerEmbed(anime: Anime): string | null {
+  return anime.trailer_youtube_id
+    ? `https://www.youtube-nocookie.com/embed/${anime.trailer_youtube_id}`
+    : null;
+}
+
+/**
  * The catalog row. Memoized per request so `generateMetadata`, the page and
  * every streamed section below share one query instead of each sending their
  * own.
@@ -155,15 +176,17 @@ const getUpstream = cache(async (id: string): Promise<Upstream> => {
   const [{ data: row }, user] = await Promise.all([getAnimeRow(id), getUser()]);
   // The page has already 404'd on a missing row before anything awaits this.
   const anime: Anime = { ...row! };
+  // Seeded from what the catalog-sync function stored, so a dead upstream
+  // costs only what the catalog can't know (relations, themes, picks).
   const out: Upstream = {
     anime,
     genres: anime.genres ?? [],
-    trailerEmbedUrl: null,
+    trailerEmbedUrl: catalogTrailerEmbed(anime),
     related: [],
-    broadcastDay: null,
-    broadcastTime: null,
+    broadcastDay: anime.broadcast_day ?? null,
+    broadcastTime: anime.broadcast_time ?? null,
     similar: [],
-    synonyms: [],
+    synonyms: anime.title_synonyms ?? [],
     openings: [],
     endings: [],
     extraInfo: null,
@@ -184,18 +207,20 @@ const getUpstream = cache(async (id: string): Promise<Upstream> => {
   if (extrasRes.status !== "fulfilled") return out;
 
   const extras = extrasRes.value;
-  out.trailerEmbedUrl = extras.trailerEmbedUrl;
+  out.trailerEmbedUrl = extras.trailerEmbedUrl ?? out.trailerEmbedUrl;
   out.related = extras.related;
-  out.broadcastDay = extras.broadcastDay;
-  out.broadcastTime = extras.broadcastTime;
-  out.synonyms = extras.synonyms;
+  if (extras.broadcastDay) {
+    out.broadcastDay = extras.broadcastDay;
+    out.broadcastTime = extras.broadcastTime;
+  }
+  if (extras.synonyms.length > 0) out.synonyms = extras.synonyms;
   out.openings = extras.openings;
   out.endings = extras.endings;
 
   // Keep the cached catalog row current: episode totals, synopsis, status
   // and score drift on MAL while a show airs. The streamed sections render the
   // patched copy; the write-back keeps the row fresh for everyone else.
-  const patch: Partial<Anime> = {};
+  const patch: AnimeUpdate = {};
   if (
     extras.totalEpisodes != null &&
     extras.totalEpisodes !== anime.total_episodes
@@ -298,6 +323,20 @@ export default async function AnimeDetailPage({
     anime.year ??
     (anime.airing_start ? new Date(anime.airing_start).getFullYear() : null);
   const season = seasonLabel(anime.season, year);
+  // A row the sync refreshed today already says what MAL would: paint it as
+  // final instead of swapping in a live copy that adds nothing.
+  const fresh = syncedRecently(anime);
+  const catalogHero = (
+    <HeroDetails
+      anime={anime}
+      season={season}
+      genres={anime.genres ?? []}
+      synonyms={anime.title_synonyms ?? []}
+      broadcastDay={anime.broadcast_day ?? null}
+      broadcastTime={anime.broadcast_time ?? null}
+    />
+  );
+  const catalogTrailer = catalogTrailerEmbed(anime);
 
   return (
     <Shell>
@@ -351,23 +390,16 @@ export default async function AnimeDetailPage({
               )}
             </div>
 
-            {/* Title / score / studio / season. Painted from the catalog row
-                at once, then swapped for the MAL-refreshed copy (synonyms,
-                live status/score, the next-episode countdown) when it lands. */}
-            <Suspense
-              fallback={
-                <HeroDetails
-                  anime={anime}
-                  season={season}
-                  genres={anime.genres ?? []}
-                  synonyms={[]}
-                  broadcastDay={null}
-                  broadcastTime={null}
-                />
-              }
-            >
-              <LiveHeroDetails id={anime.id} season={season} />
-            </Suspense>
+            {/* Title / score / studio / season / next-episode countdown, from
+                the catalog row at once. A row the sync hasn't refreshed today
+                is then swapped for the MAL-refreshed copy when it lands. */}
+            {fresh ? (
+              catalogHero
+            ) : (
+              <Suspense fallback={catalogHero}>
+                <LiveHeroDetails id={anime.id} season={season} />
+              </Suspense>
+            )}
           </div>
         </div>
       </section>
@@ -376,7 +408,11 @@ export default async function AnimeDetailPage({
       <div className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6">
         <ScrollReveal>
           <Suspense
-            fallback={<AnimeInfoGrid info={buildAnimeInfo(anime, season, null, null)} />}
+            fallback={
+              <AnimeInfoGrid
+                info={buildAnimeInfo(anime, season, null, anime.broadcast_day ?? null)}
+              />
+            }
           >
             <LiveInfoGrid id={anime.id} season={season} />
           </Suspense>
@@ -394,9 +430,13 @@ export default async function AnimeDetailPage({
                 <CardTitle>Synopsis</CardTitle>
               </CardHeader>
               <CardContent>
-                <Suspense fallback={<SynopsisText synopsis={anime.synopsis} />}>
-                  <LiveSynopsis id={anime.id} />
-                </Suspense>
+                {fresh ? (
+                  <SynopsisText synopsis={anime.synopsis} />
+                ) : (
+                  <Suspense fallback={<SynopsisText synopsis={anime.synopsis} />}>
+                    <LiveSynopsis id={anime.id} />
+                  </Suspense>
+                )}
               </CardContent>
             </Card>
           </ScrollReveal>
@@ -435,11 +475,18 @@ export default async function AnimeDetailPage({
           </aside>
         </div>
 
-        {/* Trailer, theme songs, seasons & related, and similar picks — all
-            MAL-sourced, so streamed. Each hid itself when empty anyway, so
-            there is nothing to hold their place. */}
+        {/* The trailer the catalog already has needs no upstream call. */}
+        {catalogTrailer ? <TrailerSection title={anime.title} embedUrl={catalogTrailer} /> : null}
+
+        {/* Theme songs, seasons & related, similar picks (and the trailer,
+            when the catalog has none) — MAL-sourced, so streamed. Each hides
+            itself when empty, so there is nothing to hold their place. */}
         <Suspense fallback={null}>
-          <UpstreamSections id={anime.id} progressStatus={progress?.status ?? null} />
+          <UpstreamSections
+            id={anime.id}
+            progressStatus={progress?.status ?? null}
+            trailerShown={catalogTrailer != null}
+          />
         </Suspense>
 
         {/* Franchise watch order — release-ordered, with your progress. */}
@@ -548,10 +595,8 @@ function buildAnimeInfo(
   const endDate =
     fmtDateParts(extraInfo?.endDate ?? null) ??
     fmtDateString(anime.airing_end);
-  const durationText =
-    extraInfo?.durationMinutes != null
-      ? `${extraInfo.durationMinutes} min`
-      : null;
+  const durationMins = extraInfo?.durationMinutes ?? anime.duration_mins ?? null;
+  const durationText = durationMins != null ? `${durationMins} min` : null;
   const ratingText =
     extraInfo?.averageScore != null
       ? `${extraInfo.averageScore} / 100`
@@ -705,34 +750,44 @@ async function LiveSynopsis({ id }: { id: string }) {
   return <SynopsisText synopsis={up.anime.synopsis} />;
 }
 
+/** Embedded YouTube player. */
+function TrailerSection({ title, embedUrl }: { title: string; embedUrl: string }) {
+  return (
+    <ScrollReveal>
+    <section className="mt-8">
+      <h2 className="mb-3 text-base font-semibold">Trailer</h2>
+      <div className="aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
+        <iframe
+          src={embedUrl}
+          title={`${title} trailer`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          loading="lazy"
+          className="h-full w-full border-0"
+        />
+      </div>
+    </section>
+    </ScrollReveal>
+  );
+}
+
 async function UpstreamSections({
   id,
   progressStatus,
+  trailerShown,
 }: {
   id: string;
   progressStatus: WatchStatus | null;
+  /** The page already rendered the catalog's trailer. */
+  trailerShown: boolean;
 }) {
   const { anime, trailerEmbedUrl, openings, endings, related, similar } =
     await getUpstream(id);
   return (
     <>
-      {/* Trailer — embedded YouTube player, hidden when Jikan has none. */}
-      {trailerEmbedUrl ? (
-        <ScrollReveal>
-        <section className="mt-8">
-          <h2 className="mb-3 text-base font-semibold">Trailer</h2>
-          <div className="aspect-video w-full overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
-            <iframe
-              src={trailerEmbedUrl}
-              title={`${anime.title} trailer`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              className="h-full w-full border-0"
-            />
-          </div>
-        </section>
-        </ScrollReveal>
+      {/* Trailer, when the catalog had none and MAL does. */}
+      {!trailerShown && trailerEmbedUrl ? (
+        <TrailerSection title={anime.title} embedUrl={trailerEmbedUrl} />
       ) : null}
 
       {/* Theme songs — OP/ED credits from MAL; "Listen" opens the player. */}

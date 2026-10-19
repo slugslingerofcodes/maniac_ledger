@@ -1,11 +1,13 @@
 import { browseCatalog } from "@/lib/catalog-fallback";
+import { getCatalogList, getStaleCatalogList } from "@/lib/catalog";
 import { searchAnilist } from "@/lib/anilist";
 import { getTopTen, type JikanAnime, type TopWindow } from "@/lib/jikan";
 import { SEASONS, type Season } from "@/lib/search-filters";
 
 /**
- * The home page's Top 10 chart, with the same three-engine fallback the search
- * route has had all along: MAL (Jikan) → AniList → the local catalog.
+ * The home page's Top 10 chart: the catalog-sync snapshot first (one query,
+ * no upstream), then MAL (Jikan) → AniList → the catalog's older snapshot or
+ * best-scored rows. See `discovery.ts` for why the catalog leads.
  *
  * Why this module exists instead of a few more lines in `jikan.ts`: the chain
  * has to reach AniList and Supabase, and `jikan.ts` must not import either
@@ -80,7 +82,18 @@ async function fromAnilist(window: TopWindow): Promise<JikanAnime[]> {
  * three tiers are unreachable.
  */
 export async function getTopTenChart(window: TopWindow): Promise<JikanAnime[]> {
-  // Tier 1 — MAL, the primary catalog everywhere else in the app.
+  const key = `top10-${window}` as const;
+
+  // Tier 0 — the synced snapshot (already ranked by viewers; rank() is a no-op
+  // on it beyond the cut). Empty means none younger than 36h.
+  try {
+    const ranked = rank(await getCatalogList(key, FETCH_LIMIT));
+    if (ranked.length > 0) return ranked;
+  } catch (err) {
+    console.error(`[top-ten] catalog failed for ${window}:`, err);
+  }
+
+  // Tier 1 — MAL, the primary engine everywhere else in the app.
   try {
     const ranked = rank(await getTopTen(window));
     if (ranked.length > 0) return ranked;
@@ -98,11 +111,14 @@ export async function getTopTenChart(window: TopWindow): Promise<JikanAnime[]> {
     console.error(`[top-ten] AniList failed for ${window}:`, err);
   }
 
-  // Tier 3 — our own catalog. It can't express "this week" or "this season", so
-  // all three tabs collapse to the same best-scored list. That is deliberate:
-  // a real chart that is less precise beats three empty ones, and this only
-  // happens when both live engines are down at once.
+  // Tier 3 — our own catalog: an old snapshot of this exact window if there is
+  // one, else the best-scored list. That one can't express "this week" or
+  // "this season", so all three tabs collapse to it. Deliberate: a real chart
+  // that is less precise beats three empty ones, and this only happens when
+  // both live engines are down and the sync has never run.
   try {
+    const stale = rank(await getStaleCatalogList(key, FETCH_LIMIT));
+    if (stale.length > 0) return stale;
     return rank(await browseCatalog(FETCH_LIMIT));
   } catch (err) {
     console.error(`[top-ten] catalog fallback failed for ${window}:`, err);

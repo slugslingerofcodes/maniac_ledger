@@ -1,8 +1,7 @@
 import { AdvanceEpisodeButton } from "@/components/anime/AdvanceEpisodeButton";
 import { BrowseRow } from "@/components/browse/BrowseRow";
 import { CardCaption, ExpandingCard } from "@/components/browse/ExpandingCard";
-import { getAnilistAiringSchedule } from "@/lib/anilist";
-import { getSchedules } from "@/lib/jikan";
+import { getScheduleAnime } from "@/lib/discovery";
 import { nextBroadcastMs, todayInJst } from "@/lib/jst";
 import { getLibrarySnapshot } from "@/lib/library-snapshot";
 
@@ -18,8 +17,9 @@ function to12h(hhmm: string): string {
  * "Airing from your list": the viewer's *watching* anime that are still
  * ongoing — shows dropping a new episode today (JST) lead with a badge, the
  * rest follow in next-broadcast order. Broadcast slots come from the schedule
- * feed (MAL, AniList fallback); ongoing shows without a known slot trail as
- * TBA. Renders nothing when nothing you're watching is airing.
+ * (the catalog's synced snapshot, else MAL → AniList); ongoing shows without
+ * a known slot trail as TBA. Renders nothing when nothing you're watching is
+ * airing.
  */
 export async function WatchingAiring() {
   const library = await getLibrarySnapshot();
@@ -29,13 +29,10 @@ export async function WatchingAiring() {
   // Broadcast slots by mal_id (best-effort; without them, catalog status
   // still identifies ongoing shows — they just sort as TBA).
   const slots = new Map<number, { day: string | null; time: string | null }>();
-  try {
-    const schedule = await getSchedules(4).catch(() => getAnilistAiringSchedule());
-    for (const a of schedule) {
-      slots.set(a.mal_id, { day: a.broadcast?.day ?? null, time: a.broadcast?.time ?? null });
-    }
-  } catch {
-    /* both schedule sources down — fall back to catalog status only */
+  // Never throws; [] when every source is down, and catalog status alone
+  // then identifies the ongoing shows.
+  for (const a of await getScheduleAnime()) {
+    slots.set(a.mal_id, { day: a.broadcast?.day ?? null, time: a.broadcast?.time ?? null });
   }
 
   const today = todayInJst();

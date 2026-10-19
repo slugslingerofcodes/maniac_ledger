@@ -13,22 +13,23 @@ import { ShareBanner } from "@/components/home/ShareBanner";
 import { WatchingAiring } from "@/components/home/WatchingAiring";
 import { TrendingPosterMarquee } from "@/components/PosterMarquee";
 import { TopTenShowcase, type TopTenItem } from "@/components/TopTenShowcase";
-import { getAnilistAiringSchedule, searchAnilist } from "@/lib/anilist";
 import {
   posterOfJikan,
   toBrowseItem,
   trailerYoutubeId,
   uniqueByMalId,
-  type BrowseItem,
 } from "@/lib/browse-item";
 import {
+  getJustFinishedAnime,
   getNewestAnime,
   getPopularAnime,
+  getScheduleAnime,
   getTopAiringAnime,
+  getTopMoviesAnime,
   getTopRatedAnime,
   getUpcomingAnime,
 } from "@/lib/discovery";
-import { getJustFinished, getSchedules, getTopMovies, type TopWindow } from "@/lib/jikan";
+import type { TopWindow } from "@/lib/jikan";
 import { JST_DAYS, nowInJst, todayInJst } from "@/lib/jst";
 import { getLibraryIndex } from "@/lib/library-snapshot";
 import { getTopTenChart } from "@/lib/top-ten";
@@ -170,50 +171,31 @@ async function UpcomingRow() {
   );
 }
 
-/*
- * Best-effort rows: the fetch lives in try/catch, the JSX doesn't. React
- * renders lazily, so JSX built inside a try block escapes it before any render
- * error can fire (react-hooks/error-boundaries) — and a fetch failure is the
- * only failure these rows are meant to swallow.
- */
-
 async function JustFinishedRow() {
-  // Started now, awaited last: the library read runs alongside the fetch.
-  const libraryP = getLibraryIndex();
-  let items: BrowseItem[];
-  try {
-    const { data } = await getJustFinished(18);
-    items = uniqueByMalId(data.map(toBrowseItem));
-  } catch {
-    // MAL down → finished titles from AniList so the row still fills.
-    try {
-      const { data } = await searchAnilist({ status: "complete" }, 1);
-      items = uniqueByMalId(data.map(toBrowseItem)).slice(0, 18);
-    } catch {
-      return null;
-    }
-  }
-  const library = await libraryP;
-  return <DiscoverRow title="Just finished" eyebrow="Complete and ready to binge" items={items} library={library} />;
+  // Started together: the library read runs alongside the rail.
+  const [list, library] = await Promise.all([getJustFinishedAnime(18), getLibraryIndex()]);
+  if (list.length === 0) return null;
+  return (
+    <DiscoverRow
+      title="Just finished"
+      eyebrow="Complete and ready to binge"
+      items={uniqueByMalId(list.map(toBrowseItem))}
+      library={library}
+    />
+  );
 }
 
 async function TopMoviesRow() {
-  const libraryP = getLibraryIndex();
-  let items: BrowseItem[];
-  try {
-    const { data } = await getTopMovies(18);
-    items = uniqueByMalId(data.map(toBrowseItem));
-  } catch {
-    // MAL down → top movies from AniList (by popularity) so the row stays.
-    try {
-      const { data } = await searchAnilist({ format: "movie" }, 1);
-      items = uniqueByMalId(data.map(toBrowseItem)).slice(0, 18);
-    } catch {
-      return null;
-    }
-  }
-  const library = await libraryP;
-  return <DiscoverRow title="Top movies" href="/movies" items={items} library={library} />;
+  const [list, library] = await Promise.all([getTopMoviesAnime(18), getLibraryIndex()]);
+  if (list.length === 0) return null;
+  return (
+    <DiscoverRow
+      title="Top movies"
+      href="/movies"
+      items={uniqueByMalId(list.map(toBrowseItem))}
+      library={library}
+    />
+  );
 }
 
 const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
@@ -224,10 +206,11 @@ const SCHEDULE_DATE_FMT = new Intl.DateTimeFormat("en", {
 
 /** Yesterday / today / tomorrow (JST) with each day's releases, time-sorted. */
 async function SchedulePanel() {
+  // Catalog snapshot → MAL → AniList (JST slots derived from next episodes).
+  const all = await getScheduleAnime();
+  if (all.length === 0) return null;
   let days: ScheduleDay[];
   try {
-    // MAL primary, AniList fallback (JST slots derived from next airing eps).
-    const all = await getSchedules(3).catch(() => getAnilistAiringSchedule());
     const todayName = todayInJst();
     const todayIdx = JST_DAYS.indexOf(todayName);
 

@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { animeFixture, paginationFixture } from "../helpers/fixtures";
 
 /**
- * The anime search fallback chain: Jikan (MAL) → AniList → the local catalog.
+ * The anime search tiers: the local catalog first for a text query's first
+ * page (with the live engines as enrichment), then Jikan (MAL) → AniList, and
+ * the catalog again as the degraded last resort.
  *
  * This is the app's most valuable behaviour and the least visible to a
  * typecheck — every branch here is an upstream *failure* path, so the only way
@@ -22,11 +24,14 @@ vi.mock("@/lib/anilist", async (importOriginal) => {
   return { ...actual, searchAnilist: vi.fn() };
 });
 vi.mock("@/lib/catalog-fallback", () => ({ searchCatalog: vi.fn() }));
+// The write-back's service-role client (also what catalog-seed imports).
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 
 const { searchAnime, JikanError, jikanRecentlyUnreachable } = await import("@/lib/jikan");
 const { searchAnilist, AnilistError } = await import("@/lib/anilist");
 const { searchCatalog } = await import("@/lib/catalog-fallback");
 const { resetRateLimit } = await import("@/lib/rate-limit");
+const { createAdminClient } = await import("@/lib/supabase/admin");
 const { GET } = await import("@/app/api/anime/search/route");
 
 const searchAnimeMock = vi.mocked(searchAnime);
@@ -242,17 +247,18 @@ describe("AniList-only filters", () => {
 });
 
 describe("catalog merge", () => {
-  it("appends catalog substring hits the live engine missed", async () => {
-    // AniList matches whole tokens only, so a partial prefix finds nothing
-    // upstream while the catalog's ilike %q% does.
+  it("leads with catalog title matches, then the live engine's results", async () => {
+    // The catalog is the first tier now: its title matches outrank the live
+    // engine's. (AniList matches whole tokens only, so for a partial prefix
+    // like this the catalog is often the *only* tier that finds it.)
     searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
     searchCatalogMock.mockResolvedValue([animeFixture({ mal_id: 999, title: "Narutaru" })]);
 
     const body = await (await get("q=narut")).json();
 
     expect(body.results.map((r: { title: string }) => r.title)).toEqual([
-      "Naruto",
       "Narutaru",
+      "Naruto",
     ]);
   });
 
@@ -621,5 +627,256 @@ describe("engine=catalog (the palette's instant first paint)", () => {
 
     expect((await as("q=naruto")).status).toBe(429);
     expect((await as("q=naruto&engine=catalog")).status).toBe(200);
+  });
+});
+
+describe("catalog first: tier ordering", () => {
+  /** A live engine that never answers inside the test. */
+  const hang = () => new Promise<never>(() => {});
+  const titles = (body: { results: { title: string }[] }) => body.results.map((r) => r.title);
+
+  /** Resolves `value` after `ms` of (fake) time. */
+  const after = <T,>(ms: number, value: T) =>
+    new Promise<T>((r) => setTimeout(() => r(value), ms));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ranks the catalog's fuzzy guesses after the live engine's results", async () => {
+    // A trigram match that doesn't contain the query is a guess; the live
+    // engine's real match should beat it.
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+    searchCatalogMock.mockResolvedValue([
+      animeFixture({ mal_id: 1, title: "Naruto Shippuden" }),
+      animeFixture({ mal_id: 2, title: "Nartuo Typo Guess" }),
+    ]);
+
+    const body = await (await get("q=naruto")).json();
+
+    expect(titles(body)).toEqual(["Naruto Shippuden", "Naruto", "Nartuo Typo Guess"]);
+  });
+
+  it("starts the live search alongside the catalog lookup, not after it", async () => {
+    let answerCatalog!: (v: ReturnType<typeof animeFixture>[]) => void;
+    searchCatalogMock.mockImplementation(() => new Promise((r) => (answerCatalog = r)));
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+
+    const res = get("q=naruto&limit=6");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(searchCatalogMock).toHaveBeenCalledTimes(1);
+    expect(searchAnimeMock).toHaveBeenCalledTimes(1);
+    answerCatalog([]);
+    expect((await res).status).toBe(200);
+  });
+
+  it("answers from the catalog alone when live misses the 150ms type-ahead grace", async () => {
+    searchAnimeMock.mockImplementation(hang);
+    searchCatalogMock.mockResolvedValue([animeFixture({ mal_id: 999, title: "Naruto" })]);
+
+    let done = false;
+    const res = get("q=naruto&limit=6").finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(149);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done).toBe(true);
+
+    const response = await res;
+    const body = await response.json();
+    expect(body).toMatchObject({ source: "catalog", partial: true, results: [{ title: "Naruto" }] });
+    expect(body.degraded).toBeUndefined();
+    // Transitional: the client's follow-up must reach the server.
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("gives the search page a longer grace, so a live answer at 600ms still merges", async () => {
+    searchCatalogMock.mockResolvedValue([animeFixture({ mal_id: 999, title: "Naruto Shippuden" })]);
+    searchAnimeMock.mockImplementation(() => after(600, jikanPage(["Naruto"])));
+
+    const page = get("q=naruto");
+    await vi.advanceTimersByTimeAsync(600);
+    const pageBody = await (await page).json();
+    expect(pageBody.source).toBe("mal");
+    expect(titles(pageBody)).toEqual(["Naruto Shippuden", "Naruto"]);
+
+    // The same timing misses the type-ahead's window.
+    searchAnimeMock.mockImplementation(() => after(600, jikanPage(["Naruto"])));
+    const typeahead = get("q=naruto&limit=6");
+    await vi.advanceTimersByTimeAsync(600);
+    expect((await (await typeahead).json()).partial).toBe(true);
+  });
+
+  it("merges a live answer that lands inside the window, with live pagination", async () => {
+    searchCatalogMock.mockResolvedValue([animeFixture({ mal_id: 999, title: "Naruto Shippuden" })]);
+    searchAnimeMock.mockImplementation(() =>
+      after(100, jikanPage(["Naruto"], { last_visible_page: 7, items: { count: 1, total: 160, per_page: 25 } })),
+    );
+
+    const res = get("q=naruto&limit=6");
+    await vi.advanceTimersByTimeAsync(100);
+    const response = await res;
+    const body = await response.json();
+
+    expect(body).toMatchObject({ source: "mal", totalPages: 7, totalItems: 160 });
+    expect(body.partial).toBeUndefined();
+    // Catalog rows were read under the caller's session: never edge-shared.
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=60");
+  });
+
+  it("says degraded, not partial, when live fails inside the window", async () => {
+    searchAnimeMock.mockRejectedValue(new JikanError(504, "down"));
+    searchAnilistMock.mockRejectedValue(new AnilistError(500, "down"));
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+
+    const res = get("q=naruto&limit=6");
+    await vi.advanceTimersByTimeAsync(0);
+    const body = await (await res).json();
+
+    expect(body).toMatchObject({ source: "catalog", degraded: true });
+    expect(body.partial).toBeUndefined();
+  });
+
+  it("waits out the live engines in full when the catalog has nothing", async () => {
+    searchCatalogMock.mockResolvedValue([]);
+    searchAnimeMock.mockImplementation(() => after(1_000, jikanPage(["Dandadan"])));
+
+    let done = false;
+    const res = get("q=dandadan&limit=6").finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    const response = await res;
+    expect((await response.json()).source).toBe("mal");
+    // A live-only answer is still shared at the edge, as before.
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage");
+  });
+
+  it("keeps the live search running for the follow-up once the catalog has answered", async () => {
+    // Jikan down → AniList starts at once; it is still out at the deadline.
+    searchAnimeMock.mockRejectedValue(new JikanError(504, "down"));
+    searchAnilistMock.mockImplementation(hang);
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+    const caller = new AbortController();
+
+    const res = GET(
+      new NextRequest("https://app.test/api/anime/search?q=naruto&limit=6", {
+        signal: caller.signal,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(150);
+    expect((await (await res).json()).partial).toBe(true);
+
+    // The palette moves on to the next keystroke…
+    caller.abort();
+    // …but this search is now the follow-up's answer: it keeps its AniList slot.
+    expect(searchAnilistMock.mock.calls[0][2]?.signal?.aborted).toBe(false);
+  });
+
+  it("still lets a caller leave AniList's queue before anything has answered", async () => {
+    searchAnimeMock.mockRejectedValue(new JikanError(504, "down"));
+    searchAnilistMock.mockImplementation(hang);
+    searchCatalogMock.mockResolvedValue([]);
+    const caller = new AbortController();
+
+    void GET(
+      new NextRequest("https://app.test/api/anime/search?q=naruto&limit=6", {
+        signal: caller.signal,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    caller.abort();
+
+    expect(searchAnilistMock.mock.calls[0][2]?.signal?.aborted).toBe(true);
+  });
+
+  it("leaves filtered searches to the live engines — the catalog can't apply the filter", async () => {
+    // /movies searches with format=movie: leading with the catalog's TV
+    // series would break the filter the user chose.
+    searchAnimeMock.mockImplementation(() => after(1_000, jikanPage(["Naruto the Movie"])));
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+
+    const res = get("q=naruto&format=movie&limit=6");
+    await vi.advanceTimersByTimeAsync(1_000);
+    const body = await (await res).json();
+
+    expect(body.source).toBe("mal");
+    expect(body.partial).toBeUndefined();
+    expect(titles(body)[0]).toBe("Naruto the Movie");
+  });
+
+  it("leaves page 2 and filter-only browses to the live engines", async () => {
+    searchAnimeMock.mockImplementation(() => after(1_000, jikanPage(["Naruto"])));
+    searchCatalogMock.mockResolvedValue([animeFixture({ title: "Naruto" })]);
+
+    const res = get("q=naruto&page=2");
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await (await res).json()).source).toBe("mal");
+    expect(searchCatalogMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("writing live finds back to the catalog", () => {
+  const upsert = vi.fn(async () => ({ error: null }));
+  /** Let the after-response write (run inline outside a request) settle. */
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role");
+    vi.mocked(createAdminClient).mockReturnValue({
+      from: () => ({ upsert }),
+    } as unknown as ReturnType<typeof createAdminClient>);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("inserts what the live engine found that the catalog lacked — never overwriting", async () => {
+    searchCatalogMock.mockResolvedValue([]);
+    searchAnimeMock.mockResolvedValue(jikanPage(["Dandadan", "Dandadan 2nd Season"]));
+
+    await get("q=dandadan&limit=6");
+    await settle();
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [rows, options] = upsert.mock.calls[0] as unknown as [{ mal_id: number }[], object];
+    expect(rows.map((r) => r.mal_id)).toEqual([1000, 1001]);
+    expect(options).toEqual({ onConflict: "mal_id", ignoreDuplicates: true });
+  });
+
+  it("skips titles the catalog already returned", async () => {
+    searchCatalogMock.mockResolvedValue([animeFixture({ mal_id: 1000, title: "Naruto" })]);
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto", "Naruto Shippuden"]));
+
+    await get("q=naruto&limit=6");
+    await settle();
+
+    const [rows] = upsert.mock.calls[0] as unknown as [{ mal_id: number }[]];
+    expect(rows.map((r) => r.mal_id)).toEqual([1001]);
+  });
+
+  it("does nothing without the service-role key", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    searchCatalogMock.mockResolvedValue([]);
+    searchAnimeMock.mockResolvedValue(jikanPage(["Dandadan"]));
+
+    await get("q=dandadan&limit=6");
+    await settle();
+
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not write back a filter-only browse", async () => {
+    searchAnimeMock.mockResolvedValue(jikanPage(["Naruto"]));
+
+    await get("genres=1");
+    await settle();
+
+    expect(upsert).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import {
@@ -8,6 +8,7 @@ import {
   type AnilistSearchFilters,
 } from "@/lib/anilist";
 import { searchCatalog } from "@/lib/catalog-fallback";
+import { toCatalogRow } from "@/lib/catalog-seed";
 import { hedge, HedgeError } from "@/lib/hedge";
 import {
   JikanError,
@@ -18,6 +19,7 @@ import {
   type JikanSearchOptions,
 } from "@/lib/jikan";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   COUNTRY_OPTIONS,
   FORMAT_OPTIONS,
@@ -45,10 +47,24 @@ import {
  *  - AniList-only: season, streaming, country, source, min_ep/max_ep,
  *    min_dur/max_dur, doujin, tags — any of these routes the query to AniList.
  *
- * Fallback chain when the primary engine fails: Jikan → AniList → the local
- * catalog (degraded). Responses carry `source` so the UI can say where the
- * results came from. A slow Jikan is *hedged*: past `HEDGE_DELAY_MS` AniList
- * is raced alongside it rather than waiting out Jikan's timeout.
+ * Tiers, for a text query's first page:
+ *
+ *  1. **The local catalog** (`search_anime_catalog`, migration 0030), which a
+ *     scheduled sync keeps stocked. It and the live search start together;
+ *     once the catalog answers, live gets `LIVE_GRACE_MS` more. In time, the
+ *     two merge — catalog title matches first, then live results, then the
+ *     catalog's fuzzy guesses. Too late, and the catalog answers alone with
+ *     `partial: true` (the client asks again shortly, by when the live search
+ *     has filled the upstream caches); failed, and `degraded: true`.
+ *  2. **Jikan → AniList**, awaited in full only when the catalog has nothing.
+ *     What they find is written back to the catalog (insert-only), so a
+ *     title searched once is a catalog hit from then on.
+ *
+ * Every other request (page 2+, a pure filter browse) runs on the live
+ * engines, with the catalog as the degraded last resort. Responses carry
+ * `source` so the UI can say where the results came from. A slow Jikan is
+ * *hedged*: past `HEDGE_DELAY_MS` AniList is raced alongside it rather than
+ * waiting out Jikan's timeout.
  *
  * Two knobs exist for the ⌘K palette, which shows six rows per keystroke:
  *  - `limit=N` (1–25): one upstream request sized to N, no two-page stitch.
@@ -184,12 +200,133 @@ export interface AnimeSearchResponse {
   approxTotal?: boolean;
   /** True when live APIs were unreachable and results came from the local catalog. */
   degraded?: boolean;
+  /**
+   * True when the catalog answered before the live engines did. They're still
+   * running; asking again in a moment returns the merged answer.
+   */
+  partial?: boolean;
 }
 
 const CACHE_HEADERS = {
   // Cache at the edge for 1 hour; serve stale up to a day while revalidating.
   "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
 };
+
+/**
+ * Any response with catalog rows in it was read under the caller's session
+ * (the catalog is RLS-gated to signed-in users), so it is never shared at the
+ * edge — a repeat from the same browser within a minute needn't leave it.
+ */
+const CATALOG_HEADERS = { "Cache-Control": "private, max-age=60" };
+
+/**
+ * How long the live engines get once the catalog has answered. Type-ahead is
+ * a person watching a dropdown, so barely any: a cached live answer lands in
+ * that window, a real upstream round trip doesn't and becomes the follow-up.
+ * The search page waits longer because a live answer brings its pagination.
+ */
+const LIVE_GRACE_MS = { typeahead: 150, page: 700 } as const;
+
+/** Most rows one search writes back to the catalog. */
+const REMEMBER_MAX = 25;
+
+type LiveAnswer = {
+  results: JikanAnime[];
+  totalPages: number;
+  total: number;
+  source: "mal" | "anilist";
+  approxTotal: boolean;
+};
+
+type Settled<T> =
+  | { state: "fulfilled"; value: T }
+  | { state: "rejected"; reason: unknown }
+  | { state: "pending" };
+
+/** Where `promise` stands after at most `ms`, without ever rejecting. */
+async function settleWithin<T>(promise: Promise<T>, ms: number): Promise<Settled<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<Settled<T>>((resolve) => {
+    timer = setTimeout(() => resolve({ state: "pending" }), ms);
+  });
+  try {
+    return await Promise.race([
+      promise.then(
+        (value): Settled<T> => ({ state: "fulfilled", value }),
+        (reason): Settled<T> => ({ state: "rejected", reason }),
+      ),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** True when the query appears in one of the title's names, as typed. */
+function isTitleMatch(a: JikanAnime, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  return [a.title, a.title_english, ...(a.title_synonyms ?? [])].some((t) =>
+    t?.toLowerCase().includes(needle),
+  );
+}
+
+/**
+ * The catalog leads, but only with titles that actually contain the query:
+ * its fuzzy (trigram) matches are guesses, and a live engine's real match
+ * should outrank a guess. So: catalog title matches → live results → the
+ * catalog's guesses, deduped by mal_id, cut to `limit` when there is one.
+ */
+function catalogFirstMerge(
+  catalog: JikanAnime[],
+  live: JikanAnime[],
+  q: string,
+  limit?: number,
+): JikanAnime[] {
+  const seen = new Set<number>();
+  const take = (list: JikanAnime[]) =>
+    list.filter((a) => !seen.has(a.mal_id) && Boolean(seen.add(a.mal_id)));
+  const merged = [
+    ...take(catalog.filter((a) => isTitleMatch(a, q))),
+    ...take(live),
+    ...take(catalog),
+  ];
+  return limit != null ? merged.slice(0, limit) : merged;
+}
+
+/** Run after the response is sent (outside a request — tests — right away). */
+function inBackground(work: () => Promise<unknown>) {
+  const run = () =>
+    work().catch((err) => console.warn("[/api/anime/search] background work failed:", err));
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
+/**
+ * Write the live engines' finds back to the catalog, so the next search for
+ * them is answered locally. Insert-only: an existing row — a synced one above
+ * all — is never overwritten by a search result's sparser view of the title.
+ * Uses the service role because it runs after the response, outside the
+ * caller's session; without the key it is a no-op.
+ */
+function rememberInCatalog(live: JikanAnime[], known: JikanAnime[]) {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  const knownIds = new Set(known.map((a) => a.mal_id));
+  const rows = live
+    .filter((a) => !knownIds.has(a.mal_id))
+    .slice(0, REMEMBER_MAX)
+    .map(toCatalogRow)
+    .filter((row): row is NonNullable<typeof row> => row != null);
+  if (rows.length === 0) return;
+  inBackground(async () => {
+    const { error } = await createAdminClient()
+      .from("anime")
+      .upsert(rows, { onConflict: "mal_id", ignoreDuplicates: true });
+    if (error) console.warn("[/api/anime/search] catalog write-back failed:", error.message);
+  });
+}
 
 /**
  * Per-IP ceiling. This route is public (no auth) and fronts a rate-limited
@@ -298,6 +435,16 @@ export async function GET(request: NextRequest) {
     f.doujin != null ||
     tags.length > 0;
 
+  // The catalog matches title + genres and nothing else: a filtered query
+  // answered from it would silently ignore the filter.
+  const catalogCanAnswer =
+    !anilistOnly &&
+    f.year == null &&
+    f.format == null &&
+    f.status == null &&
+    f.min_year == null &&
+    f.max_year == null;
+
   /**
    * The page-1 catalog lookup, created at most once per request. The MAL path
    * starts it up front, in parallel with the live engines — it used to begin
@@ -341,10 +488,17 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // The request's signal lets a caller who has gone (the palette aborts the
-  // previous keystroke's fetch) give up its place in AniList's 2.1s queue.
+  // A caller who has gone (the palette aborts the previous keystroke's fetch)
+  // gives up its place in AniList's 2.1s queue — until the catalog has
+  // answered for it. From then on the live search is the follow-up request's
+  // answer, and has to run to completion even though this caller is done.
+  const liveAbort = new AbortController();
+  let detached = false;
+  request.signal.addEventListener("abort", () => {
+    if (!detached) liveAbort.abort(request.signal.reason);
+  });
   const fetchAnilist = () =>
-    searchAnilist(anilistFilters, page, { signal: request.signal });
+    searchAnilist(anilistFilters, page, { signal: liveAbort.signal });
 
   async function anilistResponse(
     res: Awaited<ReturnType<typeof searchAnilist>>,
@@ -392,16 +546,8 @@ export async function GET(request: NextRequest) {
 
   // ---- Catalog only (the palette's instant first paint). ------------------
   if (f.engine === "catalog") {
-    // The catalog matches title + genres and nothing else. Answering a
-    // filtered query from it would silently ignore the filter, so refuse.
-    if (
-      anilistOnly ||
-      f.year != null ||
-      f.format != null ||
-      f.status != null ||
-      f.min_year != null ||
-      f.max_year != null
-    ) {
+    // Refuse a filter rather than silently ignore it.
+    if (!catalogCanAnswer) {
       return NextResponse.json(
         { error: "engine=catalog supports only q and genres." },
         { status: 400 },
@@ -519,9 +665,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (f.q && page === 1) void lookupCatalog();
-
-  try {
+  /** Whichever live engine answers first, in one shape. Throws only when both fail. */
+  async function fetchLive(): Promise<LiveAnswer> {
     const outcome = await hedge(fetchJikan, fetchAnilist, {
       delayMs: jikanRecentlyUnreachable()
         ? HEDGE_DELAY_MS.suspect
@@ -530,17 +675,91 @@ export async function GET(request: NextRequest) {
           : HEDGE_DELAY_MS.page,
       canHedge: () => anilistReadyWithin(HEDGE_MAX_QUEUE_WAIT_MS),
     });
-    if (outcome.winner === "backup") return await anilistResponse(outcome.value);
+    if (outcome.winner === "primary") {
+      const { results, totalPages, total } = outcome.value;
+      return { results, totalPages, total, source: "mal", approxTotal: false };
+    }
+    const res = outcome.value;
+    return {
+      results: res.data,
+      totalPages: res.pagination.last_visible_page,
+      total: res.pagination.items.total,
+      source: "anilist",
+      approxTotal: res.pagination.items.total >= ANILIST_MAX_TOTAL,
+    };
+  }
 
-    const { results, totalPages, total } = outcome.value;
-    const merged = await mergeCatalog(results);
+  // Both tiers start now, side by side; neither waits for the other to begin.
+  const catalogFirst = Boolean(f.q) && page === 1 && catalogCanAnswer;
+  if (catalogFirst) void lookupCatalog();
+  const live = fetchLive();
+  // It may be answered without (the catalog alone) — never an unhandled rejection.
+  live.catch(() => {});
+
+  // ---- Tier 1: the catalog, for a text query's first page. ---------------
+  if (catalogFirst) {
+    const catalog = await lookupCatalog().catch(() => [] as JikanAnime[]);
+    if (catalog.length > 0) {
+      const settled = await settleWithin(
+        live,
+        limit != null ? LIVE_GRACE_MS.typeahead : LIVE_GRACE_MS.page,
+      );
+
+      if (settled.state === "fulfilled") {
+        const answer = settled.value;
+        const results = catalogFirstMerge(catalog, answer.results, f.q!, limit);
+        rememberInCatalog(answer.results, catalog);
+        return NextResponse.json(
+          {
+            results,
+            page,
+            totalPages: answer.totalPages,
+            totalItems: Math.max(answer.total, results.length),
+            // The live engine's: it supplied the totals and the pagination.
+            source: answer.source,
+            ...(answer.approxTotal ? { approxTotal: true } : {}),
+          } satisfies AnimeSearchResponse,
+          { headers: CATALOG_HEADERS },
+        );
+      }
+
+      // Live failed, or is still out: the catalog's answer stands. A pending
+      // search keeps running past the response — it fills Jikan's/AniList's
+      // caches for the client's follow-up, and the catalog for next time.
+      if (settled.state === "pending") {
+        detached = true;
+        inBackground(() => live.then((answer) => rememberInCatalog(answer.results, catalog)));
+      }
+      const results = limit != null ? catalog.slice(0, limit) : catalog;
+      return NextResponse.json(
+        {
+          results,
+          page: 1,
+          totalPages: 1,
+          totalItems: results.length,
+          source: "catalog",
+          ...(settled.state === "rejected" ? { degraded: true } : { partial: true }),
+        } satisfies AnimeSearchResponse,
+        // Transitional either way, so never cached: the follow-up request must
+        // reach the server to pick up live results (or recovery).
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+
+  // ---- Tier 2: MAL hedged with AniList (the catalog had nothing). --------
+  try {
+    const answer = await live;
+    if (catalogFirst) rememberInCatalog(answer.results, []);
+    const merged = await mergeCatalog(answer.results);
     return NextResponse.json(
       {
         results: merged,
         page,
-        totalPages,
-        totalItems: Math.max(total, merged.length),
-        source: "mal",
+        totalPages: answer.totalPages,
+        totalItems: Math.max(answer.total, merged.length),
+        source: answer.source,
+        ...(answer.approxTotal ? { approxTotal: true } : {}),
       } satisfies AnimeSearchResponse,
       { headers: CACHE_HEADERS },
     );

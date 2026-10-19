@@ -37,8 +37,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
  * catches best, since the table itself will already be there).
  *
  * Not everything is probeable this way. Realtime publications (0006), pg_cron
- * schedules (0009, 0019), storage buckets (0012), and bare constraints (0025)
- * are invisible to PostgREST's schema cache; they're listed as `unprobeable`
+ * schedules (0009, 0019, 0031), storage buckets (0012), bare constraints (0025)
+ * and function grants (0029, 0030) are invisible to PostgREST's schema cache; they're listed as `unprobeable`
  * so this file stays an honest inventory rather than looking complete.
  */
 export const MANIFEST = [
@@ -69,6 +69,22 @@ export const MANIFEST = [
   { migration: "0024", table: "manga_chapters", columns: ["id", "manga_id"] },
   { migration: "0026", table: "http_cache", columns: ["key", "value", "expires_at"] },
   { migration: "0028", table: "calendar_feeds", columns: ["user_id", "token_hash", "created_at"] },
+  {
+    migration: "0030",
+    table: "anime",
+    columns: [
+      "title_synonyms",
+      "banner_url",
+      "trailer_youtube_id",
+      "members",
+      "duration_mins",
+      "broadcast_day",
+      "broadcast_time",
+      "synced_at",
+      "search_text",
+    ],
+  },
+  { migration: "0030", table: "catalog_lists", columns: ["key", "mal_ids", "source", "synced_at"] },
 ];
 
 /** Objects PostgREST cannot see; verify these by hand (see DEPLOY.md). */
@@ -80,6 +96,8 @@ export const UNPROBEABLE = [
   { migration: "0025", what: "unique constraint: manga.mangadex_id" },
   { migration: "0026", what: "pg_cron: hourly http_cache purge" },
   { migration: "0029", what: "EXECUTE revoked from anon/authenticated on SECURITY DEFINER trigger functions" },
+  { migration: "0030", what: "RPCs search_anime_catalog / catalog_list / catalog_sync_apply (+ their grants) and the pg_trgm index" },
+  { migration: "0031", what: "pg_cron: catalog-sync every 6h (needs the catalog-sync Edge Function deployed)" },
 ];
 
 /**

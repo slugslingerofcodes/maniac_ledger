@@ -33,8 +33,9 @@ Apply in order (1–5 are already applied if the app has been running):
 | `supabase/migrations/0026_http_cache.sql` | `http_cache` table (service-role only) + hourly purge job — the durable Jikan cache |
 | `supabase/migrations/0028_calendar_feeds.sql` | `calendar_feeds` table (SHA-256 token hashes, one per user) + owner-only RLS — the live calendar subscription on `/schedule` |
 | `supabase/migrations/0029_revoke_trigger_fn_execute.sql` | revokes RPC access (`EXECUTE` from `public`/`anon`/`authenticated`) to the SECURITY DEFINER trigger functions; the triggers keep firing |
+| `supabase/migrations/0030_catalog_sync.sql` | the catalog-first layer: synced `anime` columns (synonyms, banner, trailer, broadcast slot, members, duration, `synced_at`), a trigram-indexed `search_text`, the `catalog_lists` chart snapshots, and the RPCs `search_anime_catalog` / `catalog_list` / `catalog_sync_apply` (`pg_trgm`) |
 
-(`0009` is run in step 3, after the Edge Functions are deployed; `0019` in step 3a.)
+(`0009` is run in step 3, after the Edge Functions are deployed; `0019` in step 3a; `0031` in step 3b.)
 
 **Verify rather than guess.** Nothing records which migrations have run, so after
 applying any of the above, confirm the database actually has what the code needs:
@@ -62,6 +63,12 @@ with the service role. Until both are in place the "Get subscription link"
 control on `/schedule` stays hidden; the one-time "Add to calendar" download
 works either way.
 
+**`0030` is safe to apply before anything else ships.** The app reads the new
+RPCs first and falls back when they're missing (substring search, the live
+engines for every rail), so code and schema can land in either order. Until the
+sync has run (step 3b) there are no chart snapshots, and pages behave exactly as
+before.
+
 **Make an administrator** (for the `/admin` dashboard) — after `0011`, flag a user,
 then have them sign out/in so the claim lands in their token:
 
@@ -82,6 +89,7 @@ supabase secrets set RESEND_API_KEY=re_xxx RESEND_FROM="anime_maniacs <alerts@yo
 
 supabase functions deploy resolve-franchise
 supabase functions deploy send-airing-notifications
+supabase functions deploy catalog-sync        # needs 0030 applied first
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically — do not set them.
@@ -100,6 +108,26 @@ select net.http_post(
 select * from cron.job_run_details order by start_time desc limit 5;
 ```
 
+## 3b. Cron — catalog sync every 6h (Supabase → SQL Editor)
+
+After `0030` and `supabase functions deploy catalog-sync`, run once by hand to
+fill the catalog (a dry run maps and reports without writing):
+
+```sql
+select net.http_post(
+  url := 'https://<ref>.supabase.co/functions/v1/catalog-sync',
+  headers := jsonb_build_object('Authorization', 'Bearer <service_role>'),
+  body := '{"dryRun": true}'::jsonb,
+  timeout_milliseconds := 150000);
+select status_code, left(content::text, 400) from net._http_response order by created desc limit 1;
+```
+
+Drop `dryRun` to write, then check `select key, source, cardinality(mal_ids), synced_at from public.catalog_lists;`
+Then schedule it: run `supabase/migrations/0031_catalog_sync_cron.sql` with
+`__PROJECT_REF__` replaced (it refuses to run while the placeholder is still
+there). One run is ~25 Jikan and ~3 AniList requests; a run where Jikan is
+unreachable gives up on it after two timeouts and syncs from AniList alone.
+
 ## 4. Environment variables (Vercel → Settings → Environment Variables)
 
 | Var | Notes |
@@ -109,7 +137,7 @@ select * from cron.job_run_details order by start_time desc limit 5;
 | `XAI_API_KEY` | Server-only; required for `/recommendations` — the AI picks and the describe-it search box (xAI / Grok) |
 | `XAI_MODEL` | Optional; overrides the default Grok model. Set this when xAI retires one rather than editing code |
 | `GEMINI_API_KEY` | Server-only; required for the natural-language filter box on `/search` |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only; bypasses RLS.** Used by the `/admin` dashboard (`src/lib/supabase/admin.ts`) to list users via the Auth admin API, by the shared Jikan cache (`0026`), and by the calendar subscription feed (`0028`) to resolve feed tokens. Also add to `.env.local` for local admin and feed testing. Never expose to the client. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only; bypasses RLS.** Used by the `/admin` dashboard (`src/lib/supabase/admin.ts`) to list users via the Auth admin API, by the shared Jikan cache (`0026`), by the calendar subscription feed (`0028`) to resolve feed tokens, and by `/api/anime/search` to write live finds back to the catalog (`0030`; insert-only, skipped without the key). Also add to `.env.local` for local admin and feed testing. Never expose to the client. |
 
 Resend keys live in Supabase Edge secrets (step 2), **not** Vercel.
 

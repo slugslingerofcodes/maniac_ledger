@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tables } from "@/lib/database.types";
-import { clientReturning, queryBuilder } from "../helpers/supabase";
+import { clientReturning, queryBuilder, RPC_NOT_FOUND } from "../helpers/supabase";
 
 /**
  * The last link in the anime fallback chain: the local `anime` catalog, which
@@ -17,9 +17,13 @@ import { clientReturning, queryBuilder } from "../helpers/supabase";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
 const { createClient } = await import("@/lib/supabase/server");
-const { searchCatalog, searchAdultCatalog, randomCatalogAnime } = await import(
-  "@/lib/catalog-fallback"
-);
+const {
+  __resetCatalogSearchMemo,
+  catalogRowToJikan,
+  searchCatalog,
+  searchAdultCatalog,
+  randomCatalogAnime,
+} = await import("@/lib/catalog-fallback");
 
 const createClientMock = vi.mocked(createClient);
 
@@ -55,7 +59,12 @@ function animeRow(
   } as unknown as Tables<"anime">;
 }
 
-/** Point `createClient` at a builder resolving to `data`, and hand it back. */
+/**
+ * Point `createClient` at a builder resolving to `data`, and hand it back. The
+ * client's RPC reports "no such function" — the database before 0030 — so
+ * `searchCatalog` exercises its substring fallback; see "ranked search" below
+ * for the RPC path.
+ */
 function withRows(data: unknown, extra: { count?: number } = {}) {
   const builder = queryBuilder({ data, ...extra });
   createClientMock.mockResolvedValue(
@@ -64,8 +73,19 @@ function withRows(data: unknown, extra: { count?: number } = {}) {
   return builder;
 }
 
+/** A client whose `search_anime_catalog` RPC answers `rpcResult`. */
+function withRpc(rpcResult: unknown, fallbackRows: unknown = []) {
+  const builder = queryBuilder({ data: fallbackRows });
+  const client = clientReturning(builder, rpcResult);
+  createClientMock.mockResolvedValue(
+    client as unknown as Awaited<ReturnType<typeof createClient>>,
+  );
+  return { builder, rpc: client.rpc };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetCatalogSearchMemo();
 });
 
 describe("searchCatalog", () => {
@@ -241,6 +261,127 @@ describe("searchCatalog", () => {
     withRows(null);
 
     expect(await searchCatalog("frieren")).toEqual([]);
+  });
+});
+
+describe("ranked search (search_anime_catalog, 0030)", () => {
+  it("asks the RPC first, with the query as typed", async () => {
+    // Wildcards are escaped inside the function, so nothing is stripped here.
+    const { rpc, builder } = withRpc({ data: [animeRow()], error: null });
+
+    const results = await searchCatalog("100% hero", [1], 6);
+
+    expect(rpc).toHaveBeenCalledWith("search_anime_catalog", {
+      q: "100% hero",
+      genre_names: ["Action"],
+      max_results: 6,
+    });
+    expect(results.map((a) => a.mal_id)).toEqual([52991]);
+    // The substring fallback is never sent when the RPC answered.
+    expect(builder.called("select")).toBe(false);
+  });
+
+  it("keeps the RPC's order — it ranks by match quality, not score", async () => {
+    withRpc({
+      data: [
+        animeRow({ mal_id: 1, title: "Naruto", score: 8.0 }),
+        animeRow({ mal_id: 2, title: "Boruto", score: 9.9 }),
+      ],
+      error: null,
+    });
+
+    const results = await searchCatalog("narut");
+
+    expect(results.map((a) => a.title)).toEqual(["Naruto", "Boruto"]);
+  });
+
+  it("asks for at most the RPC's own cap of 50", async () => {
+    const { rpc } = withRpc({ data: [], error: null });
+
+    await searchCatalog("frieren", [], 200);
+
+    expect(rpc.mock.calls[0]).toEqual([
+      "search_anime_catalog",
+      expect.objectContaining({ max_results: 50 }),
+    ]);
+  });
+
+  it("falls back to the substring match while 0030 isn't applied", async () => {
+    const { builder } = withRpc(RPC_NOT_FOUND, [animeRow()]);
+
+    const results = await searchCatalog("frieren");
+
+    expect(results).toHaveLength(1);
+    expect(builder.called("or")).toBe(true);
+  });
+
+  it("remembers a missing RPC instead of paying a round trip per search", async () => {
+    const { rpc } = withRpc(RPC_NOT_FOUND, [animeRow()]);
+
+    await searchCatalog("frieren");
+    await searchCatalog("frieren");
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps asking after any other RPC error — only 'no such function' is remembered", async () => {
+    const { rpc } = withRpc({ data: null, error: { code: "57014", message: "statement timeout" } });
+
+    await searchCatalog("frieren");
+    await searchCatalog("frieren");
+
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not trust a malformed RPC answer", async () => {
+    const { builder } = withRpc({ data: { not: "an array" }, error: null }, [animeRow()]);
+
+    expect(await searchCatalog("frieren")).toHaveLength(1);
+    expect(builder.called("or")).toBe(true);
+  });
+});
+
+describe("catalogRowToJikan", () => {
+  it("carries the synced columns in Jikan's own fields", () => {
+    const anime = catalogRowToJikan(
+      animeRow({
+        title_synonyms: ["Frieren at the Funeral"],
+        members: 1_200_000,
+        duration_mins: 24,
+        banner_url: "https://s4.anilist.co/banner.jpg",
+        trailer_youtube_id: "qgQ0G9tq0eI",
+        broadcast_day: "Fridays",
+        broadcast_time: "23:00",
+        airing_start: "2023-09-29",
+        airing_end: "2024-03-22",
+      }),
+    );
+
+    expect(anime).toMatchObject({
+      title_synonyms: ["Frieren at the Funeral"],
+      members: 1_200_000,
+      // What the banner's parseDurationMins and the info grid read.
+      duration: "24 min per ep",
+      banner_image: "https://s4.anilist.co/banner.jpg",
+      broadcast: { day: "Fridays", time: "23:00", timezone: "Asia/Tokyo" },
+      aired: { from: "2023-09-29", to: "2024-03-22" },
+    });
+    // trailerYoutubeId() reads youtube_id; the detail page embeds no-cookie.
+    expect(anime.trailer).toEqual({
+      youtube_id: "qgQ0G9tq0eI",
+      url: "https://www.youtube.com/watch?v=qgQ0G9tq0eI",
+      embed_url: "https://www.youtube-nocookie.com/embed/qgQ0G9tq0eI",
+    });
+  });
+
+  it("leaves those fields absent on a row the sync never touched", () => {
+    // Same as a sparse Jikan record: absent, not null, so `?? fallback` and
+    // `"trailer" in a` checks downstream behave as they always did.
+    const anime = catalogRowToJikan(animeRow());
+
+    for (const key of ["title_synonyms", "members", "duration", "banner_image", "trailer", "broadcast", "aired"]) {
+      expect(anime).not.toHaveProperty(key);
+    }
   });
 });
 

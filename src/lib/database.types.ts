@@ -37,6 +37,16 @@ export type Database = {
           year: number | null;
           type: Database["public"]["Enums"]["anime_type"];
           genres: string[];
+          title_synonyms: string[];
+          banner_url: string | null;
+          trailer_youtube_id: string | null;
+          members: number | null;
+          duration_mins: number | null;
+          broadcast_day: string | null;
+          broadcast_time: string | null;
+          synced_at: string | null;
+          /** Generated (0030): lowercased titles + synonyms, trigram-indexed. */
+          search_text: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -59,6 +69,14 @@ export type Database = {
           year?: number | null;
           type?: Database["public"]["Enums"]["anime_type"];
           genres?: string[];
+          title_synonyms?: string[];
+          banner_url?: string | null;
+          trailer_youtube_id?: string | null;
+          members?: number | null;
+          duration_mins?: number | null;
+          broadcast_day?: string | null;
+          broadcast_time?: string | null;
+          synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -81,6 +99,14 @@ export type Database = {
           year?: number | null;
           type?: Database["public"]["Enums"]["anime_type"];
           genres?: string[];
+          title_synonyms?: string[];
+          banner_url?: string | null;
+          trailer_youtube_id?: string | null;
+          members?: number | null;
+          duration_mins?: number | null;
+          broadcast_day?: string | null;
+          broadcast_time?: string | null;
+          synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -878,6 +904,32 @@ export type Database = {
         Relationships: [];
       };
       /**
+       * Chart snapshots written by the catalog-sync Edge Function (migration
+       * 0030): each key's ordered MAL ids as the sync last saw them. Readable
+       * by signed-in users; written only with the service role.
+       */
+      catalog_lists: {
+        Row: {
+          key: string;
+          mal_ids: number[];
+          source: "mal" | "anilist";
+          synced_at: string;
+        };
+        Insert: {
+          key: string;
+          mal_ids?: number[];
+          source: "mal" | "anilist";
+          synced_at?: string;
+        };
+        Update: {
+          key?: string;
+          mal_ids?: number[];
+          source?: "mal" | "anilist";
+          synced_at?: string;
+        };
+        Relationships: [];
+      };
+      /**
        * Calendar subscription tokens (migration 0028), one per user. Holds a
        * SHA-256 of the token, never the token. Owner-only RLS for the server
        * actions; the public feed route reads it with the service role.
@@ -919,7 +971,25 @@ export type Database = {
         Relationships: [];
       };
     };
-    Functions: Record<never, never>;
+    /**
+     * RPCs (migration 0030). The read functions return a JSON array of `anime`
+     * rows (without `search_text`) so the ranking survives PostgREST.
+     */
+    Functions: {
+      search_anime_catalog: {
+        Args: { q: string; genre_names?: string[]; max_results?: number };
+        Returns: Json;
+      };
+      catalog_list: {
+        Args: { list_key: string; max_results?: number; max_age?: string };
+        Returns: Json;
+      };
+      /** Service role only. */
+      catalog_sync_apply: {
+        Args: { p_rows: Json; p_lists?: Json };
+        Returns: Json;
+      };
+    };
     Enums: {
       airing_status:
         | "not_yet_aired"

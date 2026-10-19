@@ -62,9 +62,22 @@ export function queryBuilder(result: { data?: unknown; error?: unknown; count?: 
   return builder as Record<string, ReturnType<typeof vi.fn>> & QueryBuilderMock;
 }
 
-/** A Supabase client whose `.from()` always returns `builder`. */
-export function clientReturning(builder: unknown) {
-  return { from: vi.fn(() => builder) };
+/**
+ * What PostgREST answers for an RPC the database doesn't have — e.g. one from a
+ * migration that hasn't been applied yet.
+ */
+export const RPC_NOT_FOUND = {
+  data: null,
+  error: { code: "PGRST202", message: "Could not find the function in the schema cache" },
+};
+
+/**
+ * A Supabase client whose `.from()` always returns `builder`. `.rpc()` resolves
+ * to `rpcResult` — by default "no such function", so code with a pre-migration
+ * fallback takes that path unless a test says otherwise.
+ */
+export function clientReturning(builder: unknown, rpcResult: unknown = RPC_NOT_FOUND) {
+  return { from: vi.fn(() => builder), rpc: vi.fn(async () => rpcResult) };
 }
 
 type Row = Record<string, unknown>;

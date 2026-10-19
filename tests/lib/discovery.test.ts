@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { animeFixture, paginationFixture } from "../helpers/fixtures";
 
 /**
- * The home page's discovery rails: MAL (Jikan) → AniList → local catalog.
+ * The home page's discovery rails: the catalog-sync snapshot → MAL (Jikan) →
+ * AniList → the snapshot again at any age → the catalog's best-scored rows.
  *
  * These rails shipped as `getX().catch(() => [])` with nothing after the catch,
  * so an upstream outage blanked the three biggest tabs on the landing page
@@ -36,6 +37,10 @@ vi.mock("@/lib/anilist", async (importOriginal) => {
   };
 });
 vi.mock("@/lib/catalog-fallback", () => ({ browseCatalog: vi.fn() }));
+vi.mock("@/lib/catalog", () => ({
+  getCatalogList: vi.fn(),
+  getStaleCatalogList: vi.fn(),
+}));
 
 const {
   getSeasonNow,
@@ -46,6 +51,7 @@ const {
 } = await import("@/lib/jikan");
 const { searchAnilist, getAnilistUpcoming } = await import("@/lib/anilist");
 const { browseCatalog } = await import("@/lib/catalog-fallback");
+const { getCatalogList, getStaleCatalogList } = await import("@/lib/catalog");
 const {
   getNewestAnime,
   getPopularAnime,
@@ -57,6 +63,8 @@ const {
 const searchAnilistMock = vi.mocked(searchAnilist);
 const browseCatalogMock = vi.mocked(browseCatalog);
 const getAnilistUpcomingMock = vi.mocked(getAnilistUpcoming);
+const getCatalogListMock = vi.mocked(getCatalogList);
+const getStaleCatalogListMock = vi.mocked(getStaleCatalogList);
 
 function list(prefix: string, n: number, base = 1000) {
   return Array.from({ length: n }, (_, i) =>
@@ -73,6 +81,9 @@ beforeEach(() => {
   // Silence the chain's deliberate console noise; assertions cover behaviour.
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  // Default: no snapshot (the sync hasn't run), so the live chain is exercised.
+  getCatalogListMock.mockResolvedValue([]);
+  getStaleCatalogListMock.mockResolvedValue([]);
 });
 
 /**
@@ -82,31 +93,71 @@ beforeEach(() => {
 const RAILS = [
   {
     name: "newest",
+    key: "season-now",
     run: () => getNewestAnime(5),
     primary: vi.mocked(getSeasonNow),
     primaryResolves: (data: ReturnType<typeof list>) => jikanPage(data),
   },
   {
     name: "popular",
+    key: "popular",
     run: () => getPopularAnime(5),
     primary: vi.mocked(getTopByPopularity),
     primaryResolves: (data: ReturnType<typeof list>) => jikanPage(data),
   },
   {
     name: "top-rated",
+    key: "top-rated",
     run: () => getTopRatedAnime(5),
     primary: vi.mocked(getTopRated),
     primaryResolves: (data: ReturnType<typeof list>) => jikanPage(data),
   },
   {
     name: "top-airing",
+    key: "airing",
     run: () => getTopAiringAnime(5),
     primary: vi.mocked(getTopAnime),
     primaryResolves: (data: ReturnType<typeof list>) => jikanPage(data),
   },
 ] as const;
 
-describe.each(RAILS)("$name rail", ({ run, primary, primaryResolves }) => {
+describe.each(RAILS)("$name rail", ({ key, run, primary, primaryResolves }) => {
+  it("serves a fresh catalog snapshot without asking MAL or AniList", async () => {
+    getCatalogListMock.mockResolvedValue(list("synced", 5, 4000));
+
+    const res = await run();
+
+    expect(res[0]!.title).toBe("synced 0");
+    expect(getCatalogListMock).toHaveBeenCalledWith(key, expect.any(Number));
+    expect(primary).not.toHaveBeenCalled();
+    expect(searchAnilistMock).not.toHaveBeenCalled();
+  });
+
+  it("asks the live engines only when there is no fresh snapshot", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    primary.mockResolvedValue(primaryResolves(list("mal", 5)) as any);
+
+    const res = await run();
+
+    expect(getCatalogListMock).toHaveBeenCalledTimes(1);
+    expect(res[0]!.title).toBe("mal 0");
+    // A live answer means the old snapshot is never consulted.
+    expect(getStaleCatalogListMock).not.toHaveBeenCalled();
+  });
+
+  it("prefers an old snapshot to the best-scored list when both live engines fail", async () => {
+    primary.mockRejectedValue(new Error("MAL down"));
+    searchAnilistMock.mockRejectedValue(new Error("AniList down"));
+    getStaleCatalogListMock.mockResolvedValue(list("old chart", 5, 5000));
+    browseCatalogMock.mockResolvedValue(list("best-scored", 5, 3000));
+
+    const res = await run();
+
+    expect(res[0]!.title).toBe("old chart 0");
+    expect(getStaleCatalogListMock).toHaveBeenCalledWith(key, expect.any(Number));
+    expect(browseCatalogMock).not.toHaveBeenCalled();
+  });
+
   it("serves MAL when it answers, without touching the backups", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     primary.mockResolvedValue(primaryResolves(list("mal", 5)) as any);
@@ -192,10 +243,20 @@ describe("upcoming rail", () => {
     expect(res[0]!.title).toBe("anilist 0");
   });
 
-  it("never reaches the catalog — it cannot tell upcoming from finished", async () => {
-    // The catalog stores no air-date status, so a rail captioned "Upcoming"
-    // full of decade-old titles would be worse than an absent one. This rail
-    // is deliberately allowed to disappear.
+  it("serves the synced upcoming chart first", async () => {
+    getCatalogListMock.mockResolvedValue(list("synced", 5, 4000));
+
+    const res = await getUpcomingAnime(5);
+
+    expect(res[0]!.title).toBe("synced 0");
+    expect(getCatalogListMock).toHaveBeenCalledWith("upcoming", expect.any(Number));
+    expect(getUpcomingSeasons).not.toHaveBeenCalled();
+  });
+
+  it("never reaches the best-scored list — it cannot tell upcoming from finished", async () => {
+    // The best-scored rows know nothing about air dates, so a rail captioned
+    // "Upcoming" full of decade-old titles would be worse than an absent one.
+    // Only the upcoming *snapshot* may stand in; without one the rail goes.
     vi.mocked(getUpcomingSeasons).mockRejectedValue(new Error("MAL down"));
     getAnilistUpcomingMock.mockRejectedValue(new Error("AniList down"));
 
